@@ -229,7 +229,7 @@ export default function LoginPage() {
                   textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '8px'
                 }}>Username</label>
                 <input
-                  type="email" value={email}
+                  type="text" value={email}
                   onChange={e => setEmail(e.target.value.trim())}
                   placeholder="Enter username"
                   required autoComplete="email" autoFocus
