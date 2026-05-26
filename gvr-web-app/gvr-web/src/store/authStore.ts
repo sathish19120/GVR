@@ -3,6 +3,13 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { supabase } from '@/lib/supabase'
 
+// Convert plain username to email format for Supabase
+function toEmail(username: string): string {
+  if (username.includes('@')) return username
+  return `${username.toLowerCase()}@greenvillagerice.in`
+}
+
+
 interface User {
   id: string
   email: string | null
@@ -39,7 +46,7 @@ export const useAuthStore = create<AuthStore>()(
       signIn: async (email: string, password: string) => {
         set({ loading: true, error: null })
         try {
-          const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+          const { data, error } = await supabase.auth.signInWithPassword({ email: toEmail(email), password })
           if (error) throw error
           const { data: profile } = await supabase
             .from('users')
@@ -58,7 +65,7 @@ export const useAuthStore = create<AuthStore>()(
       signUp: async (email: string, password: string, name?: string) => {
         set({ loading: true, error: null })
         try {
-          const { data, error } = await supabase.auth.signUp({ email, password })
+          const { data, error } = await supabase.auth.signUp({ email: toEmail(email), password })
           if (!error && data.user && name) {
             await supabase.from("users").upsert({ id: data.user.id, email, name }, { onConflict: "id" })
           }
