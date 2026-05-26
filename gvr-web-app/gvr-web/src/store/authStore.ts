@@ -1,10 +1,13 @@
+
+
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { supabase } from '@/lib/supabase'
 
 interface User {
   id: string
-  phone: string
+  email: string
+  phone: string | null
   name: string | null
   role: 'owner' | 'delivery' | 'customer'
   language: 'en' | 'te'
@@ -15,8 +18,8 @@ interface AuthStore {
   loading: boolean
   error: string | null
   language: 'en' | 'te'
-  sendOTP: (phone: string) => Promise<void>
-  verifyOTP: (phone: string, otp: string) => Promise<void>
+  sendOTP: (email: string) => Promise<void>
+  verifyOTP: (email: string, otp: string) => Promise<void>
   logout: () => Promise<void>
   setLanguage: (lang: 'en' | 'te') => void
   clearError: () => void
@@ -30,11 +33,12 @@ export const useAuthStore = create<AuthStore>()(
       error: null,
       language: 'en',
 
-      sendOTP: async (phone: string) => {
+      sendOTP: async (email: string) => {
         set({ loading: true, error: null })
         try {
           const { error } = await supabase.auth.signInWithOtp({
-            phone: phone.startsWith('+91') ? phone : `+91${phone}`,
+            email,
+            options: { shouldCreateUser: true }
           })
           if (error) throw error
         } catch (e: any) {
@@ -45,27 +49,29 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      verifyOTP: async (phone: string, otp: string) => {
+      verifyOTP: async (email: string, otp: string) => {
         set({ loading: true, error: null })
         try {
           const { data, error } = await supabase.auth.verifyOtp({
-            phone: phone.startsWith('+91') ? phone : `+91${phone}`,
+            email,
             token: otp,
-            type: 'sms',
+            type: 'email',
           })
           if (error) throw error
 
-          // Upsert user profile
           const { data: profile, error: profileErr } = await supabase
             .from('users')
-            .upsert({ id: data.user!.id, phone: data.user!.phone! }, { onConflict: 'id' })
+            .upsert(
+              { id: data.user!.id, email: data.user!.email, phone: null },
+              { onConflict: 'id' }
+            )
             .select()
             .single()
 
           if (profileErr) throw profileErr
           set({ user: profile as User, language: profile.language || 'en' })
         } catch (e: any) {
-          set({ error: e.message || 'Invalid OTP' })
+          set({ error: e.message || 'Invalid OTP. Check your email.' })
           throw e
         } finally {
           set({ loading: false })
@@ -89,3 +95,5 @@ export const useAuthStore = create<AuthStore>()(
     { name: 'gvr-auth', partialize: (s) => ({ user: s.user, language: s.language }) }
   )
 )
+ENDOFFILE
+echo "authStore.ts written"
