@@ -1,3 +1,4 @@
+cat > src/store/authStore.ts << 'ENDOFFILE'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { supabase } from '@/lib/supabase'
@@ -57,7 +58,6 @@ export const useAuthStore = create<AuthStore>()(
           })
           if (error) throw error
 
-          // Upsert user profile
           const { data: profile, error: profileErr } = await supabase
             .from('users')
             .upsert(
@@ -94,3 +94,5 @@ export const useAuthStore = create<AuthStore>()(
     { name: 'gvr-auth', partialize: (s) => ({ user: s.user, language: s.language }) }
   )
 )
+ENDOFFILE
+echo "authStore.ts written"
