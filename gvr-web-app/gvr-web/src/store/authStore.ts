@@ -18,7 +18,7 @@ interface AuthStore {
   error: string | null
   language: 'en' | 'te'
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string, name?: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
   sendOTP: (email: string) => Promise<void>
@@ -55,10 +55,13 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      signUp: async (email: string, password: string) => {
+      signUp: async (email: string, password: string, name?: string) => {
         set({ loading: true, error: null })
         try {
-          const { error } = await supabase.auth.signUp({ email, password })
+          const { data, error } = await supabase.auth.signUp({ email, password })
+          if (!error && data.user && name) {
+            await supabase.from("users").upsert({ id: data.user.id, email, name }, { onConflict: "id" })
+          }
           if (error) throw error
         } catch (e: any) {
           set({ error: e.message || 'Failed to create account' })
