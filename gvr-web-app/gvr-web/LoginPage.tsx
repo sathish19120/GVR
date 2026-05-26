@@ -1,3 +1,4 @@
+cat > src/pages/LoginPage.tsx << 'ENDOFFILE'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -20,7 +21,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--gvr-surface)' }}>
-      {/* Left — brand panel */}
       <div className="hidden lg:flex flex-col justify-between w-[420px] flex-shrink-0 p-12"
            style={{ background: 'var(--gvr-green)' }}>
         <div>
@@ -47,10 +47,8 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Right — form */}
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-sm">
-          {/* Mobile brand */}
           <div className="flex items-center gap-3 mb-10 lg:hidden">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center text-2xl"
                  style={{ background: 'var(--gvr-green)' }}>🌾</div>
@@ -90,7 +88,6 @@ export default function LoginPage() {
                 autoFocus
               />
             </div>
-
             <button
               type="submit"
               disabled={loading || !isValidEmail(email)}
@@ -116,3 +113,5 @@ export default function LoginPage() {
     </div>
   )
 }
+ENDOFFILE
+echo "LoginPage.tsx written"
