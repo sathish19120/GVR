@@ -3,16 +3,18 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 
 export default function LoginPage() {
-  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const { sendOTP, loading, error, clearError, language } = useAuthStore()
   const navigate = useNavigate()
 
+  const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (phone.length !== 10) return
+    if (!isValidEmail(email)) return
     try {
-      await sendOTP(phone)
-      navigate('/otp', { state: { phone } })
+      await sendOTP(email)
+      navigate('/otp', { state: { email } })
     } catch {}
   }
 
@@ -62,50 +64,51 @@ export default function LoginPage() {
             {language === 'te' ? 'స్వాగతం' : 'Welcome back'}
           </h2>
           <p className="text-sm text-gray-500 mb-8">
-            {language === 'te' ? 'మీ ఫోన్ నంబర్ నమోదు చేయండి' : 'Enter your mobile number to continue'}
+            {language === 'te' ? 'మీ ఇమెయిల్ నమోదు చేయండి' : 'Enter your email to receive a login code'}
           </p>
 
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm flex items-center justify-between">
               <span>{error}</span>
-              <button onClick={clearError} className="text-red-400 hover:text-red-600">✕</button>
+              <button onClick={clearError} className="text-red-400 hover:text-red-600 ml-2">✕</button>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                {language === 'te' ? 'మొబైల్ నంబర్' : 'Mobile Number'}
+                {language === 'te' ? 'ఇమెయిల్ చిరునామా' : 'Email Address'}
               </label>
-              <div className="flex gap-2">
-                <div className="px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-600 flex items-center gap-1.5 whitespace-nowrap">
-                  🇮🇳 +91
-                </div>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  maxLength={10}
-                  value={phone}
-                  onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
-                  placeholder="10-digit number"
-                  className="input flex-1"
-                  required
-                />
-              </div>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value.trim())}
+                placeholder="you@example.com"
+                className="input w-full"
+                required
+                autoComplete="email"
+                autoFocus
+              />
             </div>
 
             <button
               type="submit"
-              disabled={loading || phone.length !== 10}
+              disabled={loading || !isValidEmail(email)}
               className="btn-primary w-full"
             >
               {loading
-                ? (language === 'te' ? 'పంపుతోంది…' : 'Sending OTP…')
-                : (language === 'te' ? 'OTP పంపండి' : 'Send OTP →')}
+                ? (language === 'te' ? 'పంపుతోంది…' : 'Sending code…')
+                : (language === 'te' ? 'కోడ్ పంపండి' : 'Send Login Code →')}
             </button>
           </form>
 
-          <p className="mt-6 text-xs text-center text-gray-400">
+          <div className="mt-6 p-3 rounded-xl bg-green-50 border border-green-100">
+            <p className="text-xs text-green-700 text-center">
+              📧 A 6-digit code will be sent to your email inbox
+            </p>
+          </div>
+
+          <p className="mt-4 text-xs text-center text-gray-400">
             By continuing you agree to our Terms & Privacy Policy
           </p>
         </div>
