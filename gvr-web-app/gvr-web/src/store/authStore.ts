@@ -1,5 +1,4 @@
-
-
+/// <reference types="vite/client" />
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { supabase } from '@/lib/supabase'
@@ -83,17 +82,19 @@ export const useAuthStore = create<AuthStore>()(
         set({ user: null })
       },
 
-      setLanguage: (lang) => {
+      setLanguage: (lang: 'en' | 'te') => {
         set({ language: lang })
-        if (get().user) {
-          supabase.from('users').update({ language: lang }).eq('id', get().user!.id)
+        const user = get().user
+        if (user) {
+          supabase.from('users').update({ language: lang }).eq('id', user.id)
         }
       },
 
       clearError: () => set({ error: null }),
     }),
-    { name: 'gvr-auth', partialize: (s) => ({ user: s.user, language: s.language }) }
+    {
+      name: 'gvr-auth',
+      partialize: (s) => ({ user: s.user, language: s.language })
+    }
   )
 )
-ENDOFFILE
-echo "authStore.ts written"
