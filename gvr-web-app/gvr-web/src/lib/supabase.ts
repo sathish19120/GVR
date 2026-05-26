@@ -18,7 +18,8 @@ export interface Database {
       users: {
         Row: {
           id: string
-          phone: string
+          email: string | null
+          phone: string | null
           name: string | null
           role: 'owner' | 'delivery' | 'customer'
           language: 'en' | 'te'
