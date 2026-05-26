@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 
 interface User {
   id: string
-  email: string
+  email: string | null
   phone: string | null
   name: string | null
   role: 'owner' | 'delivery' | 'customer'
@@ -17,6 +17,10 @@ interface AuthStore {
   loading: boolean
   error: string | null
   language: 'en' | 'te'
+  signIn: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string) => Promise<void>
+  signInWithGoogle: () => Promise<void>
+  resetPassword: (email: string) => Promise<void>
   sendOTP: (email: string) => Promise<void>
   verifyOTP: (email: string, otp: string) => Promise<void>
   logout: () => Promise<void>
@@ -31,6 +35,69 @@ export const useAuthStore = create<AuthStore>()(
       loading: false,
       error: null,
       language: 'en',
+
+      signIn: async (email: string, password: string) => {
+        set({ loading: true, error: null })
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+          if (error) throw error
+          const { data: profile } = await supabase
+            .from('users')
+            .upsert({ id: data.user.id, email: data.user.email }, { onConflict: 'id' })
+            .select()
+            .single()
+          set({ user: profile as User, language: profile?.language || 'en' })
+        } catch (e: any) {
+          set({ error: e.message || 'Invalid email or password' })
+          throw e
+        } finally {
+          set({ loading: false })
+        }
+      },
+
+      signUp: async (email: string, password: string) => {
+        set({ loading: true, error: null })
+        try {
+          const { error } = await supabase.auth.signUp({ email, password })
+          if (error) throw error
+        } catch (e: any) {
+          set({ error: e.message || 'Failed to create account' })
+          throw e
+        } finally {
+          set({ loading: false })
+        }
+      },
+
+      signInWithGoogle: async () => {
+        set({ loading: true, error: null })
+        try {
+          const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo: window.location.origin }
+          })
+          if (error) throw error
+        } catch (e: any) {
+          set({ error: e.message || 'Google login failed' })
+          throw e
+        } finally {
+          set({ loading: false })
+        }
+      },
+
+      resetPassword: async (email: string) => {
+        set({ loading: true, error: null })
+        try {
+          const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/reset-password`
+          })
+          if (error) throw error
+        } catch (e: any) {
+          set({ error: e.message || 'Failed to send reset email' })
+          throw e
+        } finally {
+          set({ loading: false })
+        }
+      },
 
       sendOTP: async (email: string) => {
         set({ loading: true, error: null })
@@ -52,25 +119,17 @@ export const useAuthStore = create<AuthStore>()(
         set({ loading: true, error: null })
         try {
           const { data, error } = await supabase.auth.verifyOtp({
-            email,
-            token: otp,
-            type: 'email',
+            email, token: otp, type: 'email'
           })
           if (error) throw error
-
-          const { data: profile, error: profileErr } = await supabase
+          const { data: profile } = await supabase
             .from('users')
-            .upsert(
-              { id: data.user!.id, email: data.user!.email, phone: null },
-              { onConflict: 'id' }
-            )
+            .upsert({ id: data.user!.id, email: data.user!.email }, { onConflict: 'id' })
             .select()
             .single()
-
-          if (profileErr) throw profileErr
-          set({ user: profile as User, language: profile.language || 'en' })
+          set({ user: profile as User, language: profile?.language || 'en' })
         } catch (e: any) {
-          set({ error: e.message || 'Invalid OTP. Check your email.' })
+          set({ error: e.message || 'Invalid OTP' })
           throw e
         } finally {
           set({ loading: false })
@@ -92,9 +151,6 @@ export const useAuthStore = create<AuthStore>()(
 
       clearError: () => set({ error: null }),
     }),
-    {
-      name: 'gvr-auth',
-      partialize: (s) => ({ user: s.user, language: s.language })
-    }
+    { name: 'gvr-auth', partialize: (s) => ({ user: s.user, language: s.language }) }
   )
 )
