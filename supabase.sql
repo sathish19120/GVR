@@ -70,3 +70,14 @@ VALUES
   ('Sona Masoori 5kg',  'సోనా మసూరి 5కిలో',  5,  250, 150, 30, 'GVR-5KG',  true, CURRENT_DATE, CURRENT_DATE + INTERVAL '12 months'),
   ('Sona Masoori 25kg', 'సోనా మసూరి 25కిలో', 25, 1100,  0,  10, 'GVR-25KG', false, NULL, NULL)
 ON CONFLICT (sku) DO NOTHING;
+
+-- Stock movements table (add this if not exists)
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id  UUID REFERENCES products(id),
+  change_bags INTEGER NOT NULL,
+  type        TEXT CHECK (type IN ('add','subtract','sale','adjustment')),
+  note        TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE stock_movements DISABLE ROW LEVEL SECURITY;
