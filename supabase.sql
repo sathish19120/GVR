@@ -2,15 +2,17 @@
 -- GREEN VILLAGE RICE — Run this in Supabase SQL Editor ONCE
 -- ============================================================
 
--- Profiles table (stores username, name, role)
+-- Profiles table (NO email, NO Supabase auth)
 CREATE TABLE IF NOT EXISTS profiles (
-  id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  username    TEXT UNIQUE,
-  full_name   TEXT,
-  role        TEXT DEFAULT 'customer' CHECK (role IN ('superadmin','admin','delivery','customer')),
-  phone       TEXT,
-  area        TEXT,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username      TEXT UNIQUE NOT NULL,
+  full_name     TEXT,
+  password_hash TEXT NOT NULL,
+  role          TEXT DEFAULT 'customer' CHECK (role IN ('superadmin','admin','delivery','customer')),
+  phone         TEXT,
+  area          TEXT,
+  active        BOOLEAN DEFAULT true,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Products table
@@ -55,41 +57,13 @@ CREATE TABLE IF NOT EXISTS order_items (
   price_per_unit NUMERIC(10,2) NOT NULL
 );
 
--- ============================================================
--- DISABLE RLS (simplest for getting started)
--- ============================================================
+-- DISABLE RLS completely
 ALTER TABLE profiles    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE products    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE orders      DISABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items DISABLE ROW LEVEL SECURITY;
 
--- ============================================================
--- AUTO-CREATE PROFILE ON SIGNUP
--- ============================================================
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO profiles (id, username, full_name, role, created_at)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1)),
-    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
-    'customer',
-    NOW()
-  )
-  ON CONFLICT (id) DO NOTHING;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
-
--- ============================================================
--- SEED PRODUCTS
--- ============================================================
+-- Seed products
 INSERT INTO products (name, name_telugu, weight_kg, price_per_bag, stock_bags, low_stock_threshold, sku, active, packing_date, best_before_date)
 VALUES
   ('Sona Masoori 1kg',  'సోనా మసూరి 1కిలో',  1,  60,  200, 50, 'GVR-1KG',  true, CURRENT_DATE, CURRENT_DATE + INTERVAL '12 months'),
