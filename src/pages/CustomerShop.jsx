@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
 
@@ -10,7 +11,13 @@ const G = {
 }
 
 export default function CustomerShop() {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
+  const navigate = useNavigate()
+
+  const handleLogout = async () => {
+    await signOut()
+    navigate('/login')
+  }
   const [tab, setTab] = useState('shop') // shop | myorders
   const [myOrders, setMyOrders] = useState([])
   const [ordersLoading, setOrdersLoading] = useState(false)
@@ -181,14 +188,29 @@ export default function CustomerShop() {
             <p style={{ color: 'rgba(255,255,255,0.6)', margin: 0, fontSize: 11 }}>Fresh Sona Masoori</p>
           </div>
         </div>
-        {totalItems > 0 && (
-          <button onClick={() => setStep('checkout')} style={{
-            background: G.white, border: 'none', borderRadius: 20, padding: '7px 16px',
-            fontWeight: 700, color: G.green, cursor: 'pointer', fontSize: 13
-          }}>
-            🛒 {totalItems} items · ₹{totalAmount}
-          </button>
-        )}
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          {totalItems > 0 && (
+            <button onClick={() => setStep('checkout')} style={{
+              background: G.white, border: 'none', borderRadius: 20, padding: '7px 16px',
+              fontWeight: 700, color: G.green, cursor: 'pointer', fontSize: 13
+            }}>
+              🛒 {totalItems} items · ₹{totalAmount}
+            </button>
+          )}
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ width:30, height:30, borderRadius:'50%', background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:G.white }}>
+              {user?.full_name?.[0] || user?.username?.[0]?.toUpperCase() || 'U'}
+            </div>
+            <span style={{ color:'rgba(255,255,255,0.85)', fontSize:12, fontWeight:500 }}>
+              {user?.full_name || user?.username}
+            </span>
+            <button onClick={handleLogout} style={{
+              background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)',
+              borderRadius:8, padding:'5px 12px', color:G.white, fontSize:12,
+              fontWeight:600, cursor:'pointer'
+            }}>Logout</button>
+          </div>
+        </div>
       </header>
 
       {/* Tab bar */}
