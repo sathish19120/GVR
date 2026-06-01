@@ -322,7 +322,8 @@ function MyProfile({ currentUser, onUpdated }) {
 
 // ── Main AdminPage ────────────────────────────────────────
 export default function AdminPage() {
-  const { user: currentUser } = useAuth()
+  const authStore = useAuth()
+  const currentUser = authStore.user
   const [tab, setTab]           = useState('users') // users | profile
   const [users, setUsers]       = useState([])
   const [loading, setLoading]   = useState(true)
