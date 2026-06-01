@@ -412,7 +412,7 @@ export default function Dashboard() {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:24 }}>
                 {[
                   { icon:'🏆', label:'Our Mission', value:'Make fresh rice accessible to every household in Hyderabad' },
-                  { icon:'👁️', label:'Our Vision', value:"Become Telangana's most trusted farm-to-home rice brand" },
+                  { icon:'👁️', label:'Our Vision', value:'Become Telangana's most trusted farm-to-home rice brand' },
                   { icon:'💚', label:'Our Values', value:'Freshness, Transparency, Fair Pricing, Community' },
                   { icon:'📞', label:'Contact Us', value:'admin@greenvillagerice.in · Hyderabad' },
                 ].map(item => (
@@ -553,21 +553,41 @@ export default function Dashboard() {
                   <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:8, padding:'7px 16px', fontSize:13, fontWeight:600, cursor:'pointer' }}>+ New Order</button>
                 </div>
               </div>
-              <Table headers={['Order #','Customer','Amount','Method','Status','Action']}>
-                {orders.slice(0,8).map((o,i)=>(
-                  <tr key={o.id} style={{ borderTop:`1px solid ${G.border}`, background:i%2?'#FAFAFA':G.white }}>
-                    <td style={{ padding:'11px 14px', fontWeight:600, color:G.green }}>{o.order_number}</td>
-                    <td style={{ padding:'11px 14px' }}>{o.customer_name||'—'}</td>
-                    <td style={{ padding:'11px 14px', fontWeight:600 }}>{fmtRs(o.total_amount)}</td>
-                    <td style={{ padding:'11px 14px', color:G.muted, fontSize:11, textTransform:'uppercase' }}>{o.payment_method||'—'}</td>
-                    <td style={{ padding:'11px 14px' }}><Badge status={o.status} /></td>
-                    <td style={{ padding:'11px 14px' }}>
-                      <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'4px 10px', fontSize:11, fontWeight:600, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
-                    </td>
-                  </tr>
-                ))}
-                {orders.length===0 && <tr><td colSpan={6} style={{ padding:40, textAlign:'center', color:G.muted }}>No orders yet</td></tr>}
-              </Table>
+              {orders.length===0 && <p style={{ textAlign:'center', padding:40, color:G.muted }}>No orders yet</p>}
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {orders.slice(0,8).map((o,i)=>(
+                <div key={o.id} style={{ display:'flex', gap:0, border:`1px solid ${G.border}`, borderRadius:12, overflow:'hidden', background:G.white }}>
+                  {/* Items column */}
+                  <div style={{ width:200, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'10px 12px' }}>
+                    <p style={{ margin:'0 0 6px', fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase' }}>Items</p>
+                    {(o.order_items||[]).map((item,idx)=>(
+                      <div key={idx} style={{ fontSize:11, display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                        <span style={{ color:G.text, fontWeight:600 }}>🌾 {item.name}</span>
+                        <span style={{ color:G.green, fontWeight:700 }}>×{item.quantity}</span>
+                      </div>
+                    ))}
+                    {(o.order_items||[]).length===0 && <p style={{ margin:0, fontSize:11, color:G.muted }}>—</p>}
+                    <div style={{ marginTop:6, paddingTop:6, borderTop:`1px solid ${G.border}`, display:'flex', justifyContent:'space-between' }}>
+                      <span style={{ fontSize:11, color:G.muted }}>Total</span>
+                      <span style={{ fontSize:12, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
+                    </div>
+                  </div>
+                  {/* Details column */}
+                  <div style={{ flex:1, padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+                    <div>
+                      <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:13, color:G.green }}>{o.order_number}</p>
+                      <p style={{ margin:0, fontSize:12, color:G.text }}>{o.customer_name||'—'}</p>
+                      <p style={{ margin:0, fontSize:11, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</p>
+                    </div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ fontSize:11, color:G.muted, textTransform:'uppercase' }}>{o.payment_method||'—'}</span>
+                      <Badge status={o.status} />
+                      <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'4px 10px', fontSize:11, fontWeight:600, color:G.blue, cursor:'pointer' }}>🖨</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              </div>
             </div>
           </>}
 
@@ -612,28 +632,73 @@ export default function Dashboard() {
               </div>
             )}
             <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-              <Table headers={['Order #','Customer','Address','Amount','Method','Status','Actions']}>
-                {orders.map((o,i)=>(
-                  <tr key={o.id} style={{ borderTop:`1px solid ${G.border}`, background:i%2?'#FAFAFA':G.white }}>
-                    <td style={{ padding:'11px 14px', fontWeight:600, color:G.green }}>{o.order_number}</td>
-                    <td style={{ padding:'11px 14px' }}>{o.customer_name||'—'}</td>
-                    <td style={{ padding:'11px 14px', color:G.muted, fontSize:12, maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{o.delivery_address||'—'}</td>
-                    <td style={{ padding:'11px 14px', fontWeight:600 }}>{fmtRs(o.total_amount)}</td>
-                    <td style={{ padding:'11px 14px', color:G.muted, fontSize:11, textTransform:'uppercase' }}>{o.payment_method||'—'}</td>
-                    <td style={{ padding:'11px 14px' }}><Badge status={o.status} /></td>
-                    <td style={{ padding:'11px 14px' }}>
-                      <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-                        {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:600, color:G.green, cursor:'pointer' }}>Confirm</button>}
-                        {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:600, color:G.blue, cursor:'pointer' }}>Pack</button>}
-                        {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:600, color:'#7C3AED', cursor:'pointer' }}>Dispatch</button>}
-                        {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:600, color:G.green, cursor:'pointer' }}>Delivered</button>}
-                        <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:600, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
+              {orders.length===0 && (
+                <div style={{ textAlign:'center', padding:60, color:G.muted }}>No orders yet</div>
+              )}
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              {orders.map((o,i)=>(
+                <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
+                  <div style={{ display:'flex', gap:0 }}>
+
+                    {/* LEFT — product items panel */}
+                    <div style={{ width:220, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'14px 16px' }}>
+                      <p style={{ margin:'0 0 10px', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px' }}>Items Ordered</p>
+                      {(o.order_items||[]).length === 0 && (
+                        <p style={{ margin:0, fontSize:12, color:G.muted }}>No items found</p>
+                      )}
+                      {(o.order_items||[]).map((item,idx)=>(
+                        <div key={idx} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, padding:'8px 10px', background:G.white, borderRadius:8, border:`1px solid ${G.border}` }}>
+                          <div style={{ width:32, height:32, borderRadius:8, background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>🌾</div>
+                          <div style={{ minWidth:0 }}>
+                            <p style={{ margin:'0 0 1px', fontSize:12, fontWeight:700, color:G.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</p>
+                            <p style={{ margin:0, fontSize:11, color:G.muted }}>{item.weight_kg}kg × {item.quantity} = <strong style={{ color:G.green }}>₹{item.quantity * item.price_per_unit}</strong></p>
+                          </div>
+                        </div>
+                      ))}
+                      <div style={{ marginTop:8, padding:'8px 10px', background:G.greenLight, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                        <span style={{ fontSize:12, fontWeight:600, color:G.greenDark }}>Total</span>
+                        <span style={{ fontSize:14, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-                {orders.length===0 && <tr><td colSpan={7} style={{ padding:40, textAlign:'center', color:G.muted }}>No orders yet</td></tr>}
-              </Table>
+                    </div>
+
+                    {/* RIGHT — order details */}
+                    <div style={{ flex:1, padding:'14px 16px' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+                        <div>
+                          <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15, color:G.green }}>{o.order_number}</p>
+                          <p style={{ margin:0, fontSize:12, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
+                        </div>
+                        <Badge status={o.status} />
+                      </div>
+
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+                        <div style={{ fontSize:12 }}>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Customer</p>
+                          <p style={{ margin:0, fontWeight:600, color:G.text }}>{o.customer_name||'—'}</p>
+                        </div>
+                        <div style={{ fontSize:12 }}>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p>
+                          <p style={{ margin:0, fontWeight:600, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
+                        </div>
+                        <div style={{ fontSize:12, gridColumn:'1/-1' }}>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Delivery Address</p>
+                          <p style={{ margin:0, color:G.text }}>{o.delivery_address||'—'}</p>
+                        </div>
+                      </div>
+
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                        {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
+                        {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
+                        {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
+                        {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
+                        {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
+                        <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              </div>
             </div>
           </>}
 
