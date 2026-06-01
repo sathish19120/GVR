@@ -1,4 +1,5 @@
 import AdminPage from './AdminPage'
+import VendorPage from './VendorPage'
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
@@ -23,6 +24,7 @@ const PAGES = [
   { key:'users',     icon:'👥', label:'Users' },
   { key:'admin',     icon:'⚙️', label:'Admin' },
   { key:'branches',  icon:'🏪', label:'Branches' },
+  { key:'vendors',   icon:'🌾', label:'Vendors' },
 ]
 const TOP_LINKS = ['Where We Work','What We Do','About']
 
@@ -1017,6 +1019,9 @@ export default function Dashboard() {
               })}
             </div>
           </>}
+
+          {/* VENDORS */}
+          {page==='vendors' && <VendorPage />}
 
           {/* BRANCHES */}
           {page==='branches' && <>
