@@ -255,6 +255,10 @@ export default function Dashboard() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [newOrderAlert, setNewOrderAlert] = useState(0)
+  const [orderSearch, setOrderSearch] = useState('')
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all')
+  const [orderPayFilter, setOrderPayFilter] = useState('all')
+  const [orderDateFilter, setOrderDateFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
 
   useEffect(() => { load() }, [filter])
@@ -633,178 +637,143 @@ export default function Dashboard() {
             )}
 
             {/* Search & Filter bar */}
-            {(() => {
-              const [search, setSearch] = React.useState('')
-              const [statusFilter, setStatusFilter] = React.useState('all')
-              const [payFilter, setPayFilter] = React.useState('all')
-              const [dateFilter, setDateFilter] = React.useState('all')
-
+            {(()=>{
               const filtered = orders.filter(o => {
-                const matchSearch = !search ||
-                  o.order_number?.toLowerCase().includes(search.toLowerCase()) ||
-                  o.customer_name?.toLowerCase().includes(search.toLowerCase()) ||
-                  o.delivery_address?.toLowerCase().includes(search.toLowerCase())
-                const matchStatus = statusFilter === 'all' || o.status === statusFilter
-                const matchPay = payFilter === 'all' || o.payment_method === payFilter
+                const matchSearch = !orderSearch ||
+                  o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                  o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                  o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
+                const matchStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter
+                const matchPay = orderPayFilter === 'all' || o.payment_method === orderPayFilter
                 const now = new Date()
                 let matchDate = true
-                if (dateFilter === 'today') {
-                  matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
-                } else if (dateFilter === 'week') {
-                  const weekAgo = new Date(now - 7 * 86400000)
-                  matchDate = new Date(o.created_at) >= weekAgo
-                } else if (dateFilter === 'month') {
-                  matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
-                }
+                if (orderDateFilter === 'today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
+                else if (orderDateFilter === 'week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
+                else if (orderDateFilter === 'month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
                 return matchSearch && matchStatus && matchPay && matchDate
               })
-
-              return (
-                <>
-                  {/* Search & filters */}
-                  <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-                    {/* Search input */}
-                    <div style={{ position:'relative', marginBottom:12 }}>
-                      <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:15, color:G.muted }}>🔍</span>
-                      <input
-                        type="text"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        placeholder="Search by order number or customer name..."
-                        style={{ width:'100%', padding:'10px 14px 10px 36px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
-                        onFocus={e => e.target.style.borderColor = G.green}
-                        onBlur={e => e.target.style.borderColor = G.border}
-                      />
-                      {search && (
-                        <button onClick={() => setSearch('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:16 }}>✕</button>
-                      )}
-                    </div>
-
-                    {/* Filter chips */}
-                    <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
-                      {/* Status filter */}
-                      <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-                        {[['all','All'],['pending','Pending'],['confirmed','Confirmed'],['packed','Packed'],['dispatched','Dispatched'],['delivered','Delivered'],['cancelled','Cancelled']].map(([val,lbl]) => (
-                          <button key={val} onClick={() => setStatusFilter(val)} style={{
-                            padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer',
-                            fontSize:11, fontWeight:600, transition:'all 0.15s',
-                            background: statusFilter === val ? G.green : '#F3F4F6',
-                            color: statusFilter === val ? G.white : G.muted
-                          }}>{lbl}</button>
-                        ))}
-                      </div>
-
-                      <div style={{ width:1, height:20, background:G.border }} />
-
-                      {/* Payment filter */}
-                      <div style={{ display:'flex', gap:4 }}>
-                        {[['all','All Pay'],['cod','COD'],['upi','UPI'],['bank','Bank']].map(([val,lbl]) => (
-                          <button key={val} onClick={() => setPayFilter(val)} style={{
-                            padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer',
-                            fontSize:11, fontWeight:600,
-                            background: payFilter === val ? G.amber : '#F3F4F6',
-                            color: payFilter === val ? G.white : G.muted
-                          }}>{lbl}</button>
-                        ))}
-                      </div>
-
-                      <div style={{ width:1, height:20, background:G.border }} />
-
-                      {/* Date filter */}
-                      <div style={{ display:'flex', gap:4 }}>
-                        {[['all','All Time'],['today','Today'],['week','This Week'],['month','This Month']].map(([val,lbl]) => (
-                          <button key={val} onClick={() => setDateFilter(val)} style={{
-                            padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer',
-                            fontSize:11, fontWeight:600,
-                            background: dateFilter === val ? G.blue : '#F3F4F6',
-                            color: dateFilter === val ? G.white : G.muted
-                          }}>{lbl}</button>
-                        ))}
-                      </div>
-
-                      {/* Results count */}
-                      <span style={{ marginLeft:'auto', fontSize:12, color:G.muted, fontWeight:500 }}>
-                        {filtered.length} of {orders.length} orders
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Orders list */}
-                  {filtered.length === 0 && (
-                    <div style={{ textAlign:'center', padding:60, background:G.white, borderRadius:14, color:G.muted }}>
-                      <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
-                      <p style={{ fontWeight:600, color:G.text, margin:'0 0 4px' }}>No orders found</p>
-                      <p style={{ fontSize:13 }}>Try a different search or filter</p>
-                      <button onClick={() => { setSearch(''); setStatusFilter('all'); setPayFilter('all'); setDateFilter('all') }}
-                        style={{ marginTop:12, background:G.green, color:G.white, border:'none', borderRadius:8, padding:'8px 20px', fontWeight:600, cursor:'pointer', fontSize:13 }}>
-                        Clear Filters
-                      </button>
-                    </div>
-                  )}
-
-                  <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                  {filtered.map((o,i)=>(
-                    <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
-                      <div style={{ display:'flex', gap:0 }}>
-                        {/* LEFT — product items panel */}
-                        <div style={{ width:220, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'14px 16px' }}>
-                          <p style={{ margin:'0 0 10px', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px' }}>Items Ordered</p>
-                          {(o.order_items||[]).length === 0 && (
-                            <p style={{ margin:0, fontSize:12, color:G.muted }}>No items found</p>
-                          )}
-                          {(o.order_items||[]).map((item,idx)=>(
-                            <div key={idx} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, padding:'8px 10px', background:G.white, borderRadius:8, border:`1px solid ${G.border}` }}>
-                              <div style={{ width:32, height:32, borderRadius:8, background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>🌾</div>
-                              <div style={{ minWidth:0 }}>
-                                <p style={{ margin:'0 0 1px', fontSize:12, fontWeight:700, color:G.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</p>
-                                <p style={{ margin:0, fontSize:11, color:G.muted }}>{item.weight_kg}kg × {item.quantity} = <strong style={{ color:G.green }}>₹{item.quantity * item.price_per_unit}</strong></p>
-                              </div>
-                            </div>
-                          ))}
-                          <div style={{ marginTop:8, padding:'8px 10px', background:G.greenLight, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                            <span style={{ fontSize:12, fontWeight:600, color:G.greenDark }}>Total</span>
-                            <span style={{ fontSize:14, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
-                          </div>
-                        </div>
-                        {/* RIGHT — order details */}
-                        <div style={{ flex:1, padding:'14px 16px' }}>
-                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-                            <div>
-                              <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15, color:G.green }}>{o.order_number}</p>
-                              <p style={{ margin:0, fontSize:12, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
-                            </div>
-                            <Badge status={o.status} />
-                          </div>
-                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
-                            <div style={{ fontSize:12 }}>
-                              <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Customer</p>
-                              <p style={{ margin:0, fontWeight:600, color:G.text }}>{o.customer_name||'—'}</p>
-                            </div>
-                            <div style={{ fontSize:12 }}>
-                              <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p>
-                              <p style={{ margin:0, fontWeight:600, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
-                            </div>
-                            <div style={{ fontSize:12, gridColumn:'1/-1' }}>
-                              <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Delivery Address</p>
-                              <p style={{ margin:0, color:G.text }}>{o.delivery_address||'—'}</p>
-                            </div>
-                          </div>
-                          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                            {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
-                            {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
-                            {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
-                            {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
-                            {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
-                            <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  </div>
-                </>
-              )
+              return null
             })()}
+
+            {/* Filter UI */}
+            <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ position:'relative', marginBottom:12 }}>
+                <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:15, color:G.muted }}>🔍</span>
+                <input type="text" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)}
+                  placeholder="Search by order number or customer name..."
+                  style={{ width:'100%', padding:'10px 36px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
+                  onFocus={e=>e.target.style.borderColor=G.green}
+                  onBlur={e=>e.target.style.borderColor=G.border} />
+                {orderSearch && <button onClick={()=>setOrderSearch('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:16 }}>✕</button>}
+              </div>
+              <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+                <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                  {[['all','All'],['pending','Pending'],['confirmed','Confirmed'],['packed','Packed'],['dispatched','Dispatched'],['delivered','Delivered'],['cancelled','Cancelled']].map(([val,lbl])=>(
+                    <button key={val} onClick={()=>setOrderStatusFilter(val)} style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderStatusFilter===val?G.green:'#F3F4F6', color:orderStatusFilter===val?G.white:G.muted }}>{lbl}</button>
+                  ))}
+                </div>
+                <div style={{ width:1, height:20, background:G.border }} />
+                <div style={{ display:'flex', gap:4 }}>
+                  {[['all','All Pay'],['cod','COD'],['upi','UPI'],['bank','Bank']].map(([val,lbl])=>(
+                    <button key={val} onClick={()=>setOrderPayFilter(val)} style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderPayFilter===val?G.amber:'#F3F4F6', color:orderPayFilter===val?G.white:G.muted }}>{lbl}</button>
+                  ))}
+                </div>
+                <div style={{ width:1, height:20, background:G.border }} />
+                <div style={{ display:'flex', gap:4 }}>
+                  {[['all','All Time'],['today','Today'],['week','This Week'],['month','This Month']].map(([val,lbl])=>(
+                    <button key={val} onClick={()=>setOrderDateFilter(val)} style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderDateFilter===val?G.blue:'#F3F4F6', color:orderDateFilter===val?G.white:G.muted }}>{lbl}</button>
+                  ))}
+                </div>
+                <span style={{ marginLeft:'auto', fontSize:12, color:G.muted, fontWeight:500 }}>
+                  {orders.filter(o=>{
+                    const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase())
+                    const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
+                    const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
+                    return matchSearch && matchStatus && matchPay
+                  }).length} of {orders.length} orders
+                </span>
+              </div>
+            </div>
+
+            {/* Orders list */}
+            {orders.filter(o=>{
+              const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) || o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
+              const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
+              const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
+              const now = new Date()
+              let matchDate = true
+              if (orderDateFilter==='today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
+              else if (orderDateFilter==='week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
+              else if (orderDateFilter==='month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
+              return matchSearch && matchStatus && matchPay && matchDate
+            }).length === 0 && (
+              <div style={{ textAlign:'center', padding:60, background:G.white, borderRadius:14, color:G.muted }}>
+                <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
+                <p style={{ fontWeight:600, color:G.text, margin:'0 0 4px' }}>No orders found</p>
+                <p style={{ fontSize:13 }}>Try a different search or filter</p>
+                <button onClick={()=>{ setOrderSearch(''); setOrderStatusFilter('all'); setOrderPayFilter('all'); setOrderDateFilter('all') }}
+                  style={{ marginTop:12, background:G.green, color:G.white, border:'none', borderRadius:8, padding:'8px 20px', fontWeight:600, cursor:'pointer', fontSize:13 }}>
+                  Clear Filters
+                </button>
+              </div>
+            )}
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {orders.filter(o=>{
+              const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) || o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
+              const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
+              const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
+              const now = new Date()
+              let matchDate = true
+              if (orderDateFilter==='today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
+              else if (orderDateFilter==='week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
+              else if (orderDateFilter==='month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
+              return matchSearch && matchStatus && matchPay && matchDate
+            }).map((o,i)=>(
+              <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
+                <div style={{ display:'flex' }}>
+                  <div style={{ width:220, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'14px 16px' }}>
+                    <p style={{ margin:'0 0 10px', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px' }}>Items Ordered</p>
+                    {(o.order_items||[]).length===0 && <p style={{ margin:0, fontSize:12, color:G.muted }}>No items found</p>}
+                    {(o.order_items||[]).map((item,idx)=>(
+                      <div key={idx} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, padding:'8px 10px', background:G.white, borderRadius:8, border:`1px solid ${G.border}` }}>
+                        <div style={{ width:32, height:32, borderRadius:8, background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>🌾</div>
+                        <div style={{ minWidth:0 }}>
+                          <p style={{ margin:'0 0 1px', fontSize:12, fontWeight:700, color:G.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</p>
+                          <p style={{ margin:0, fontSize:11, color:G.muted }}>{item.weight_kg}kg × {item.quantity} = <strong style={{ color:G.green }}>₹{item.quantity*item.price_per_unit}</strong></p>
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ marginTop:8, padding:'8px 10px', background:G.greenLight, borderRadius:8, display:'flex', justifyContent:'space-between' }}>
+                      <span style={{ fontSize:12, fontWeight:600, color:G.greenDark }}>Total</span>
+                      <span style={{ fontSize:14, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
+                    </div>
+                  </div>
+                  <div style={{ flex:1, padding:'14px 16px' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+                      <div>
+                        <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15, color:G.green }}>{o.order_number}</p>
+                        <p style={{ margin:0, fontSize:12, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
+                      </div>
+                      <Badge status={o.status} />
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+                      <div><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Customer</p><p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text }}>{o.customer_name||'—'}</p></div>
+                      <div><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p><p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p></div>
+                      <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Address</p><p style={{ margin:0, fontSize:13, color:G.text }}>{o.delivery_address||'—'}</p></div>
+                    </div>
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                      {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
+                      {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
+                      {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
+                      {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
+                      {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
+                      <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            </div>
             <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
               {orders.length===0 && (
                 <div style={{ textAlign:'center', padding:60, color:G.muted }}>No orders yet</div>
