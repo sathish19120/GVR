@@ -1,7 +1,12 @@
+import AdminPage from './AdminPage'
 import { useState, useEffect } from 'react'
+import AdminPage from './AdminPage'
 import { useNavigate } from 'react-router-dom'
+import AdminPage from './AdminPage'
 import { useAuth } from '../store/auth'
+import AdminPage from './AdminPage'
 import { supabase } from '../lib/supabase'
+import AdminPage from './AdminPage'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid, Cell
@@ -20,6 +25,7 @@ const PAGES = [
   { key:'inventory', icon:'📦', label:'Inventory' },
   { key:'analytics', icon:'📊', label:'Analytics' },
   { key:'users',     icon:'👥', label:'Users' },
+  { key:'admin',     icon:'⚙️', label:'Admin' },
 ]
 const TOP_LINKS = ['Where We Work','What We Do','About']
 
@@ -577,6 +583,9 @@ export default function Dashboard() {
               </Table>
             </div>
           </>}
+
+          {/* ADMIN */}
+          {page==='admin' && <AdminPage />}
 
           </>}
         </main>
