@@ -13,7 +13,8 @@
     "react-router-dom": "^6.24.0",
     "@supabase/supabase-js": "^2.44.2",
     "recharts": "^2.12.7",
-    "lucide-react": "^0.400.0"
+    "lucide-react": "^0.400.0",
+    "zustand": "^4.5.4"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
