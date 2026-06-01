@@ -112,6 +112,7 @@ export default function CustomerShop() {
   const [error, setError]         = useState('')
   const [loading, setLoading]     = useState(true)
   const [topModal, setTopModal]   = useState(null)
+  const [utrRef, setUtrRef]         = useState('')
 
   useEffect(() => { loadProducts() }, [])
   useEffect(() => { if (tab === 'myorders') loadMyOrders() }, [tab])
@@ -157,11 +158,15 @@ export default function CustomerShop() {
     try {
       const { count } = await supabase.from('orders').select('*', { count: 'exact', head: true })
       const orderNumber = `GVR-${String((count || 0) + 1).padStart(4, '0')}`
+      const paymentConfirmed = payMethod === 'cod' || (utrRef.trim().length > 0)
       const { data: order, error: oErr } = await supabase.from('orders').insert({
         order_number: orderNumber, customer_id: user?.id || null,
         customer_name: user?.full_name || user?.username || 'Customer',
         delivery_address: address, total_amount: grand,
-        status: 'pending', payment_status: 'pending', payment_method: payMethod,
+        status: 'pending',
+        payment_status: paymentConfirmed ? 'paid' : 'pending',
+        payment_method: payMethod,
+        notes: utrRef.trim() ? `Payment Ref: ${utrRef.trim()}` : null,
         created_at: new Date().toISOString()
       }).select().single()
       if (oErr || !order) throw new Error(oErr?.message || 'Failed to create order')
@@ -256,30 +261,85 @@ export default function CustomerShop() {
             </div>
           ))}
 
-          {/* UPI QR Code */}
+          {/* UPI QR + confirmation */}
           {payMethod === 'upi' && (
-            <div style={{ marginTop: 12, padding: 16, background: '#F9FAF7', borderRadius: 12, border: `1px solid ${G.border}`, textAlign: 'center' }}>
-              <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: G.text }}>Scan to Pay — GPay / PhonePe / Paytm</p>
-              <div style={{ background: G.white, display: 'inline-block', padding: 12, borderRadius: 12, border: `1px solid ${G.border}`, marginBottom: 12 }}>
-                <img src={qrUrl} alt="UPI QR Code" width={180} height={180} style={{ display: 'block', borderRadius: 8 }} />
+            <div style={{ marginTop: 12, padding: 16, background: '#F9FAF7', borderRadius: 12, border: `1px solid ${G.border}` }}>
+              <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: G.text, textAlign: 'center' }}>Step 1 — Scan & Pay</p>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ background: G.white, display: 'inline-block', padding: 12, borderRadius: 12, border: `1px solid ${G.border}`, marginBottom: 10 }}>
+                  <img src={qrUrl} alt="UPI QR Code" width={180} height={180} style={{ display: 'block', borderRadius: 8 }} />
+                </div>
+                <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: G.text }}>₹{grand}</p>
+                <p style={{ margin: '0 0 10px', fontSize: 12, color: G.muted }}>Powered by UPI · Green Village Rice</p>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+                  {[
+                    { name: 'GPay',    color: '#1A73E8', letter: 'G' },
+                    { name: 'PhonePe', color: '#5F259F', letter: 'P' },
+                    { name: 'Paytm',   color: '#00BAF2', letter: 'P' },
+                    { name: 'BHIM',    color: '#00A650', letter: 'B' },
+                  ].map(app => (
+                    <a key={app.name} href={upiUrl}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 20, background: app.color + '18', color: app.color, fontSize: 12, fontWeight: 700, textDecoration: 'none', border: `1px solid ${app.color}40` }}>
+                      <span style={{ width: 18, height: 18, borderRadius: '50%', background: app.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{app.letter}</span>
+                      {app.name}
+                    </a>
+                  ))}
+                </div>
               </div>
-              <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: G.text }}>₹{grand}</p>
-              <p style={{ margin: '0 0 12px', fontSize: 12, color: G.muted }}>Powered by UPI · Green Village Rice</p>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+              <div style={{ borderTop: `1px solid ${G.border}`, paddingTop: 14 }}>
+                <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: G.text }}>Step 2 — Enter UPI Transaction ID</p>
+                <p style={{ margin: '0 0 8px', fontSize: 12, color: G.muted }}>After payment, enter the 12-digit UTR / transaction ID shown in your payment app</p>
+                <input
+                  type="text" value={utrRef} onChange={e => setUtrRef(e.target.value.trim())}
+                  placeholder="e.g. 425318976234"
+                  style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: `1.5px solid ${utrRef.trim().length > 0 ? G.green : G.border}`, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: G.white }}
+                />
+                {utrRef.trim().length > 0 && (
+                  <p style={{ margin: '6px 0 0', fontSize: 12, color: G.green }}>✓ Transaction ID saved — your order will be confirmed</p>
+                )}
+                {utrRef.trim().length === 0 && (
+                  <p style={{ margin: '6px 0 0', fontSize: 11, color: G.amber }}>⚠ Enter transaction ID to confirm payment. You can still place order without it.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Bank transfer details */}
+          {payMethod === 'bank' && (
+            <div style={{ marginTop: 12, padding: 16, background: '#F9FAF7', borderRadius: 12, border: `1px solid ${G.border}` }}>
+              <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: G.text }}>Step 1 — Transfer to this account</p>
+              <div style={{ background: G.white, borderRadius: 10, padding: 14, marginBottom: 14 }}>
                 {[
-                  { name: 'GPay',    color: '#1A73E8', letter: 'G' },
-                  { name: 'PhonePe', color: '#5F259F', letter: 'P' },
-                  { name: 'Paytm',   color: '#00BAF2', letter: 'P' },
-                  { name: 'BHIM',    color: '#00A650', letter: 'B' },
-                ].map(app => (
-                  <a key={app.name} href={upiUrl}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 20, background: app.color + '18', color: app.color, fontSize: 12, fontWeight: 700, textDecoration: 'none', border: `1px solid ${app.color}40` }}>
-                    <span style={{ width: 18, height: 18, borderRadius: '50%', background: app.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{app.letter}</span>
-                    {app.name}
-                  </a>
+                  ['Account Name', 'Green Village Rice'],
+                  ['Bank', 'State Bank of India'],
+                  ['Account No', 'XXXX XXXX XXXX'],
+                  ['IFSC Code', 'SBIN0XXXXXX'],
+                  ['Amount', `₹${grand}`],
+                ].map(([label, val]) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${G.border}`, fontSize: 13 }}>
+                    <span style={{ color: G.muted }}>{label}</span>
+                    <span style={{ fontWeight: 600, color: G.text }}>{val}</span>
+                  </div>
                 ))}
               </div>
-              <p style={{ margin: 0, fontSize: 11, color: G.muted }}>After payment, share screenshot with us mentioning your order number</p>
+              <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: G.text }}>Step 2 — Enter Transaction Reference</p>
+              <input
+                type="text" value={utrRef} onChange={e => setUtrRef(e.target.value.trim())}
+                placeholder="Enter NEFT/IMPS/RTGS reference number"
+                style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: `1.5px solid ${utrRef.trim().length > 0 ? G.green : G.border}`, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: G.white }}
+              />
+              {utrRef.trim().length > 0 && (
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: G.green }}>✓ Reference saved — your order will be confirmed</p>
+              )}
+            </div>
+          )}
+
+          {/* COD confirmation note */}
+          {payMethod === 'cod' && (
+            <div style={{ marginTop: 12, padding: 12, background: G.greenLight, borderRadius: 10, border: `1px solid #97C459` }}>
+              <p style={{ margin: 0, fontSize: 13, color: G.greenDark }}>
+                💵 <strong>Cash on Delivery</strong> — Pay ₹{grand} in cash when your order arrives. No advance payment needed.
+              </p>
             </div>
           )}
         </div>
