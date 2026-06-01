@@ -22,6 +22,7 @@ const PAGES = [
   { key:'analytics', icon:'📊', label:'Analytics' },
   { key:'users',     icon:'👥', label:'Users' },
   { key:'admin',     icon:'⚙️', label:'Admin' },
+  { key:'branches',  icon:'🏪', label:'Branches' },
 ]
 const TOP_LINKS = ['Where We Work','What We Do','About']
 
@@ -256,9 +257,12 @@ export default function Dashboard() {
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [newOrderAlert, setNewOrderAlert] = useState(0)
   const [orderSearch, setOrderSearch] = useState('')
+  const [selectedBranch, setSelectedBranch] = useState('all')
   const [orderStatusFilter, setOrderStatusFilter] = useState('all')
   const [orderPayFilter, setOrderPayFilter] = useState('all')
   const [orderDateFilter, setOrderDateFilter] = useState('all')
+  const [invoiceSearch, setInvoiceSearch] = useState('')
+  const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
 
   useEffect(() => { load() }, [filter])
@@ -657,14 +661,37 @@ export default function Dashboard() {
 
             {/* Filter UI */}
             <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-              <div style={{ position:'relative', marginBottom:12 }}>
-                <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:15, color:G.muted }}>🔍</span>
-                <input type="text" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)}
-                  placeholder="Search by order number or customer name..."
-                  style={{ width:'100%', padding:'10px 36px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
-                  onFocus={e=>e.target.style.borderColor=G.green}
-                  onBlur={e=>e.target.style.borderColor=G.border} />
-                {orderSearch && <button onClick={()=>setOrderSearch('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:16 }}>✕</button>}
+              {/* Search row */}
+              <div style={{ display:'flex', gap:10, marginBottom:12 }}>
+                {/* Order / customer search */}
+                <div style={{ position:'relative', flex:1 }}>
+                  <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:15, color:G.muted }}>🔍</span>
+                  <input type="text" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)}
+                    placeholder="Search by order number or customer name..."
+                    style={{ width:'100%', padding:'10px 36px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
+                    onFocus={e=>e.target.style.borderColor=G.green}
+                    onBlur={e=>e.target.style.borderColor=G.border} />
+                  {orderSearch && <button onClick={()=>setOrderSearch('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:16 }}>✕</button>}
+                </div>
+                {/* Invoice number search */}
+                <div style={{ position:'relative', width:200 }}>
+                  <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:13, color:G.muted }}>🧾</span>
+                  <input type="text" value={invoiceSearch} onChange={e=>setInvoiceSearch(e.target.value)}
+                    placeholder="Invoice / GVR-XXXX"
+                    style={{ width:'100%', padding:'10px 10px 10px 34px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
+                    onFocus={e=>e.target.style.borderColor=G.amber}
+                    onBlur={e=>e.target.style.borderColor=G.border} />
+                  {invoiceSearch && <button onClick={()=>setInvoiceSearch('')} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:14 }}>✕</button>}
+                </div>
+              </div>
+              {/* Branch filter */}
+              <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:10, alignItems:'center' }}>
+                <span style={{ fontSize:11, fontWeight:600, color:G.muted, marginRight:4 }}>Branch:</span>
+                {['all','Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu'].map(b=>(
+                  <button key={b} onClick={()=>setStockBranchFilter(b)} style={{ padding:'4px 10px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:stockBranchFilter===b?'#7C3AED':'#F3F4F6', color:stockBranchFilter===b?G.white:G.muted }}>
+                    {b==='all'?'All':b}
+                  </button>
+                ))}
               </div>
               <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
                 <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
@@ -687,9 +714,10 @@ export default function Dashboard() {
                 <span style={{ marginLeft:'auto', fontSize:12, color:G.muted, fontWeight:500 }}>
                   {orders.filter(o=>{
                     const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase())
+                    const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
                     const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
                     const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
-                    return matchSearch && matchStatus && matchPay
+                    return matchSearch && matchInvoice && matchStatus && matchPay
                   }).length} of {orders.length} orders
                 </span>
               </div>
@@ -698,6 +726,7 @@ export default function Dashboard() {
             {/* Orders list */}
             {orders.filter(o=>{
               const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) || o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
+              const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
               const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
               const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
               const now = new Date()
@@ -705,7 +734,7 @@ export default function Dashboard() {
               if (orderDateFilter==='today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
               else if (orderDateFilter==='week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
               else if (orderDateFilter==='month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
-              return matchSearch && matchStatus && matchPay && matchDate
+              return matchSearch && matchInvoice && matchStatus && matchPay && matchDate
             }).length === 0 && (
               <div style={{ textAlign:'center', padding:60, background:G.white, borderRadius:14, color:G.muted }}>
                 <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
@@ -720,6 +749,7 @@ export default function Dashboard() {
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
             {orders.filter(o=>{
               const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) || o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
+              const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
               const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
               const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
               const now = new Date()
@@ -727,7 +757,7 @@ export default function Dashboard() {
               if (orderDateFilter==='today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
               else if (orderDateFilter==='week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
               else if (orderDateFilter==='month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
-              return matchSearch && matchStatus && matchPay && matchDate
+              return matchSearch && matchInvoice && matchStatus && matchPay && matchDate
             }).map((o,i)=>(
               <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
                 <div style={{ display:'flex' }}>
@@ -847,6 +877,17 @@ export default function Dashboard() {
 
           {/* INVENTORY */}
           {page==='inventory' && <>
+            {/* Branch + Search filter bar */}
+            <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+              <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                <span style={{ fontSize:12, fontWeight:600, color:G.muted, padding:'5px 4px' }}>Branch:</span>
+                {['all','Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu'].map(b=>(
+                  <button key={b} onClick={()=>setStockBranchFilter(b)} style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:stockBranchFilter===b?G.green:'#F3F4F6', color:stockBranchFilter===b?G.white:G.muted }}>
+                    {b==='all'?'All Branches':b}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:16, marginBottom:24 }}>
               {products.map(p=>{
                 const isLow = p.stock_bags <= p.low_stock_threshold
@@ -948,6 +989,80 @@ export default function Dashboard() {
                   </div>
                 )
               })}
+            </div>
+          </>}
+
+          {/* BRANCHES */}
+          {page==='branches' && <>
+            <div style={{ marginBottom:20 }}>
+              <h2 style={{ margin:'0 0 6px', fontSize:18, fontWeight:700, color:G.greenDark }}>🏪 Our Branches</h2>
+              <p style={{ margin:0, fontSize:13, color:G.muted }}>Green Village Rice locations across Andhra Pradesh & Telangana</p>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:16, marginBottom:24 }}>
+              {[
+                { city:'Hyderabad', state:'Telangana', icon:'🏙️', address:'Kukatpally, Hyderabad - 500072', phone:'+91 98765 43210', status:'Main Branch', color:G.green, timings:'Mon-Sat: 8AM - 8PM' },
+                { city:'Vijayawada', state:'Andhra Pradesh', icon:'🌉', address:'MG Road, Vijayawada - 520010', phone:'+91 98765 43211', status:'Active', color:G.blue, timings:'Mon-Sat: 9AM - 7PM' },
+                { city:'Kadapa', state:'Andhra Pradesh', icon:'🏛️', address:'Gandhi Nagar, Kadapa - 516001', phone:'+91 98765 43212', status:'Active', color:G.blue, timings:'Mon-Sat: 9AM - 7PM' },
+                { city:'Anantapur', state:'Andhra Pradesh', icon:'🌾', address:'Subash Road, Anantapur - 515001', phone:'+91 98765 43213', status:'Active', color:G.blue, timings:'Mon-Sat: 9AM - 7PM' },
+                { city:'Tadipatri', state:'Andhra Pradesh', icon:'🏘️', address:'Main Bazaar, Tadipatri - 515411', phone:'+91 98765 43214', status:'Active', color:G.green2, timings:'Mon-Sat: 9AM - 6PM' },
+                { city:'Jammalamadugu', state:'Andhra Pradesh', icon:'🌿', address:'Bus Stand Road, Jammalamadugu - 516434', phone:'+91 98765 43215', status:'Active', color:G.green2, timings:'Mon-Sat: 9AM - 6PM' },
+              ].map((b,i)=>(
+                <div key={b.city} style={{ background:G.white, borderRadius:16, padding:'20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderTop:`4px solid ${b.color}` }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <div style={{ width:44, height:44, borderRadius:12, background:b.color+'18', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>{b.icon}</div>
+                      <div>
+                        <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15, color:G.text }}>{b.city}</p>
+                        <p style={{ margin:0, fontSize:11, color:G.muted }}>{b.state}</p>
+                      </div>
+                    </div>
+                    <span style={{ fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:b.color+'18', color:b.color }}>{b.status}</span>
+                  </div>
+                  <div style={{ display:'grid', gap:8, fontSize:13 }}>
+                    <div style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
+                      <span style={{ fontSize:14, flexShrink:0 }}>📍</span>
+                      <span style={{ color:G.muted, lineHeight:1.5 }}>{b.address}</span>
+                    </div>
+                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                      <span style={{ fontSize:14 }}>📞</span>
+                      <span style={{ color:G.text, fontWeight:500 }}>{b.phone}</span>
+                    </div>
+                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                      <span style={{ fontSize:14 }}>🕐</span>
+                      <span style={{ color:G.muted }}>{b.timings}</span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop:14, display:'flex', gap:8 }}>
+                    <a href={`https://maps.google.com/?q=${b.city}+Green+Village+Rice`} target="_blank" rel="noreferrer"
+                      style={{ flex:1, padding:'8px', background:G.blueLight, border:'none', borderRadius:8, fontSize:12, fontWeight:600, color:G.blue, textAlign:'center', textDecoration:'none', cursor:'pointer' }}>
+                      🗺 Navigate
+                    </a>
+                    <a href={`tel:${b.phone.replace(/ /g,'')}`}
+                      style={{ flex:1, padding:'8px', background:G.greenLight, border:'none', borderRadius:8, fontSize:12, fontWeight:600, color:G.green, textAlign:'center', textDecoration:'none', cursor:'pointer' }}>
+                      📞 Call
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Branch summary stats */}
+            <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+              <p style={{ margin:'0 0 16px', fontSize:13, fontWeight:700 }}>Branch Network Summary</p>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12 }}>
+                {[
+                  { label:'Total Branches', value:'6', icon:'🏪', color:G.green },
+                  { label:'Telangana', value:'1', icon:'🏙️', color:G.blue },
+                  { label:'Andhra Pradesh', value:'5', icon:'🌾', color:G.green2 },
+                  { label:'Cities Covered', value:'6', icon:'📍', color:G.amber },
+                ].map((s,i)=>(
+                  <div key={i} style={{ background:'#F9FAF7', borderRadius:12, padding:'14px 16px', borderLeft:`3px solid ${s.color}` }}>
+                    <p style={{ margin:'0 0 4px', fontSize:11, color:G.muted }}>{s.label}</p>
+                    <p style={{ margin:0, fontSize:24, fontWeight:800, color:s.color }}>{s.value}</p>
+                    <span style={{ fontSize:18 }}>{s.icon}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </>}
 
