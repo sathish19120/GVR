@@ -1,68 +1,106 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 
-// username → email behind the scenes, user never sees this
-const toEmail = (u) => u.includes('@') ? u : `${u.toLowerCase().trim()}@gvr.local`
+// Simple hash for password (basic security)
+async function hashPassword(password) {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(password + 'gvr_salt_2026')
+  const hash = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
 
 export const useAuth = create((set, get) => ({
   user: null,
-  profile: null,
   loading: true,
   error: null,
 
   init: async () => {
-    const { data } = await supabase.auth.getSession()
-    if (data.session?.user) {
-      const profile = await get().fetchProfile(data.session.user.id)
-      set({ user: data.session.user, profile, loading: false })
+    // Check localStorage for saved session
+    const saved = localStorage.getItem('gvr_user')
+    if (saved) {
+      set({ user: JSON.parse(saved), loading: false })
     } else {
       set({ loading: false })
     }
-    supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        const profile = await get().fetchProfile(session.user.id)
-        set({ user: session.user, profile })
-      } else {
-        set({ user: null, profile: null })
-      }
-    })
-  },
-
-  fetchProfile: async (id) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', id).single()
-    return data
   },
 
   signUp: async (username, password, fullName) => {
     set({ error: null })
-    const email = toEmail(username)
-    const { data, error } = await supabase.auth.signUp({ email, password })
-    if (error) { set({ error: error.message }); return false }
-    if (data.user) {
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
-        username: username.toLowerCase().trim(),
-        full_name: fullName,
-        role: 'superadmin', // first signup = superadmin
-        created_at: new Date().toISOString()
-      })
+    try {
+      const clean = username.trim().toLowerCase()
+
+      // Check if username already exists
+      const { data: existing } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', clean)
+        .single()
+
+      if (existing) {
+        set({ error: 'Username already taken. Choose another.' })
+        return false
+      }
+
+      const hashed = await hashPassword(password)
+
+      // Check if this is first user — make them superadmin
+      const { count } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+
+      const role = count === 0 ? 'superadmin' : 'customer'
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+          username: clean,
+          full_name: fullName,
+          password_hash: hashed,
+          role,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+
+      if (error) { set({ error: error.message }); return false }
+
+      return true
+    } catch (e) {
+      set({ error: e.message })
+      return false
     }
-    return true
   },
 
   signIn: async (username, password) => {
     set({ error: null })
-    const email = toEmail(username)
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) { set({ error: 'Invalid username or password' }); return false }
-    const profile = await get().fetchProfile(data.user.id)
-    set({ user: data.user, profile })
-    return true
+    try {
+      const clean = username.trim().toLowerCase()
+      const hashed = await hashPassword(password)
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('username', clean)
+        .eq('password_hash', hashed)
+        .single()
+
+      if (error || !data) {
+        set({ error: 'Invalid username or password' })
+        return false
+      }
+
+      localStorage.setItem('gvr_user', JSON.stringify(data))
+      set({ user: data })
+      return true
+    } catch (e) {
+      set({ error: 'Invalid username or password' })
+      return false
+    }
   },
 
-  signOut: async () => {
-    await supabase.auth.signOut()
-    set({ user: null, profile: null })
+  signOut: () => {
+    localStorage.removeItem('gvr_user')
+    set({ user: null })
   },
 
   clearError: () => set({ error: null })
