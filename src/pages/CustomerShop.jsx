@@ -264,7 +264,7 @@ export default function CustomerShop() {
                 <img src={qrUrl} alt="UPI QR Code" width={180} height={180} style={{ display: 'block', borderRadius: 8 }} />
               </div>
               <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: G.text }}>₹{grand}</p>
-              <p style={{ margin: '0 0 12px', fontSize: 12, color: G.muted }}>UPI ID: {upiId}</p>
+              <p style={{ margin: '0 0 12px', fontSize: 12, color: G.muted }}>Powered by UPI · Green Village Rice</p>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
                 {[
                   { name: 'GPay',    color: '#1A73E8', letter: 'G' },
