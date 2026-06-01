@@ -1,12 +1,8 @@
 import AdminPage from './AdminPage'
 import { useState, useEffect } from 'react'
-import AdminPage from './AdminPage'
 import { useNavigate } from 'react-router-dom'
-import AdminPage from './AdminPage'
 import { useAuth } from '../store/auth'
-import AdminPage from './AdminPage'
 import { supabase } from '../lib/supabase'
-import AdminPage from './AdminPage'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid, Cell
@@ -242,7 +238,7 @@ function StockModal({ product, onClose, onSaved }) {
 }
 
 export default function Dashboard() {
-  const { profile, signOut } = useAuth()
+  const { user: profile, signOut } = useAuth()
   const navigate = useNavigate()
   const [page, setPage]     = useState('dashboard')
   const [filter, setFilter] = useState('monthly')
