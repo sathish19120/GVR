@@ -252,9 +252,32 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [topModal, setTopModal] = useState(null) // 'where' | 'what' | 'about'
   const [showNewOrder, setShowNewOrder] = useState(false)
+  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [lastRefresh, setLastRefresh] = useState(new Date())
+  const [newOrderAlert, setNewOrderAlert] = useState(0)
   const [showStock, setShowStock] = useState(null)
 
   useEffect(() => { load() }, [filter])
+
+  // Auto refresh every 30 seconds when enabled
+  useEffect(() => {
+    if (!autoRefresh) return
+    const interval = setInterval(async () => {
+      // Silent refresh — check for new orders
+      const { data } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+      const newCount = (data || []).length
+      if (newCount > stats.pending) {
+        setNewOrderAlert(newCount - stats.pending)
+      }
+      load()
+      setLastRefresh(new Date())
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [autoRefresh, stats.pending])
 
   async function load() {
     setLoading(true)
@@ -389,7 +412,7 @@ export default function Dashboard() {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:24 }}>
                 {[
                   { icon:'🏆', label:'Our Mission', value:'Make fresh rice accessible to every household in Hyderabad' },
-                  { icon:'👁️', label:'Our Vision', value:"Become Telangana's most trusted farm-to-home rice brand" },
+                  { icon:'👁️', label:'Our Vision', value:'Become Telangana's most trusted farm-to-home rice brand' },
                   { icon:'💚', label:'Our Values', value:'Freshness, Transparency, Fair Pricing, Community' },
                   { icon:'📞', label:'Contact Us', value:'admin@greenvillagerice.in · Hyderabad' },
                 ].map(item => (
@@ -517,8 +540,18 @@ export default function Dashboard() {
             </div>
             <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
-                <p style={{ margin:0, fontSize:13, fontWeight:700 }}>Recent Orders</p>
-                <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:8, padding:'7px 16px', fontSize:13, fontWeight:600, cursor:'pointer' }}>+ New Order</button>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <p style={{ margin:0, fontSize:13, fontWeight:700 }}>Recent Orders</p>
+                  {newOrderAlert > 0 && (
+                    <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:20, background:G.amberLight, color:G.amber }}>
+                      🔔 {newOrderAlert} new
+                    </span>
+                  )}
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{ background:'#F3F4F6', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:600, cursor:'pointer', color:G.muted }}>↻ Refresh</button>
+                  <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:8, padding:'7px 16px', fontSize:13, fontWeight:600, cursor:'pointer' }}>+ New Order</button>
+                </div>
               </div>
               <Table headers={['Order #','Customer','Amount','Method','Status','Action']}>
                 {orders.slice(0,8).map((o,i)=>(
@@ -540,9 +573,44 @@ export default function Dashboard() {
 
           {/* ORDERS */}
           {page==='orders' && <>
-            <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:16 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
+              {/* Left — refresh controls */}
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{
+                  display:'flex', alignItems:'center', gap:6,
+                  background:G.white, border:`1px solid ${G.border}`, borderRadius:10,
+                  padding:'9px 16px', fontSize:13, fontWeight:600, cursor:'pointer', color:G.text,
+                  boxShadow:'0 1px 4px rgba(0,0,0,0.06)'
+                }}>
+                  <span style={{ fontSize:15 }}>↻</span> Refresh
+                </button>
+                <div style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 14px', background:G.white, borderRadius:10, border:`1px solid ${G.border}`, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                  <div onClick={()=>setAutoRefresh(!autoRefresh)} style={{
+                    width:36, height:20, borderRadius:10, cursor:'pointer', transition:'background 0.2s', position:'relative',
+                    background: autoRefresh ? G.green : '#D1D5DB'
+                  }}>
+                    <div style={{ width:16, height:16, borderRadius:'50%', background:'white', position:'absolute', top:2, transition:'left 0.2s', left: autoRefresh ? 18 : 2 }} />
+                  </div>
+                  <span style={{ fontSize:12, color:G.muted, fontWeight:500 }}>
+                    {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
+                  </span>
+                </div>
+                <span style={{ fontSize:11, color:G.muted }}>
+                  Last updated: {lastRefresh.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
+                </span>
+              </div>
+              {/* Right — new order button */}
               <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 20px', fontSize:14, fontWeight:700, cursor:'pointer' }}>+ New Order</button>
             </div>
+            {/* New order alert banner */}
+            {newOrderAlert > 0 && (
+              <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:10, padding:'10px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ color:G.amber, fontWeight:600, fontSize:13 }}>
+                  🔔 {newOrderAlert} new order{newOrderAlert > 1 ? 's' : ''} received!
+                </span>
+                <button onClick={()=>setNewOrderAlert(0)} style={{ background:'none', border:'none', cursor:'pointer', color:G.amber, fontSize:16 }}>✕</button>
+              </div>
+            )}
             <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
               <Table headers={['Order #','Customer','Address','Amount','Method','Status','Actions']}>
                 {orders.map((o,i)=>(
