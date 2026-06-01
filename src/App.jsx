@@ -10,7 +10,7 @@ function Protected({ children }) {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 40, marginBottom: 12 }}>🌾</div>
-        <p style={{ color: '#3B6D11', fontWeight: 600 }}>Loading Green Village Rice...</p>
+        <p style={{ color: '#3B6D11', fontWeight: 600 }}>Loading...</p>
       </div>
     </div>
   )
