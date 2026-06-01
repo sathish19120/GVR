@@ -389,7 +389,7 @@ export default function Dashboard() {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:24 }}>
                 {[
                   { icon:'🏆', label:'Our Mission', value:'Make fresh rice accessible to every household in Hyderabad' },
-                  { icon:'👁️', label:'Our Vision', value:'Become Telangana's most trusted farm-to-home rice brand' },
+                  { icon:'👁️', label:'Our Vision', value:"Become Telangana's most trusted farm-to-home rice brand" },
                   { icon:'💚', label:'Our Values', value:'Freshness, Transparency, Fair Pricing, Community' },
                   { icon:'📞', label:'Contact Us', value:'admin@greenvillagerice.in · Hyderabad' },
                 ].map(item => (
