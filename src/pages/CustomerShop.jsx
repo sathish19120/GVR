@@ -11,6 +11,9 @@ const G = {
 
 export default function CustomerShop() {
   const { user } = useAuth()
+  const [tab, setTab] = useState('shop') // shop | myorders
+  const [myOrders, setMyOrders] = useState([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({})
   const [step, setStep] = useState('shop') // shop | checkout | success
@@ -21,6 +24,18 @@ export default function CustomerShop() {
   const [orderNum, setOrderNum] = useState('')
 
   useEffect(() => { loadProducts() }, [])
+
+  async function loadMyOrders() {
+    if (!user) return
+    setOrdersLoading(true)
+    const { data } = await supabase
+      .from('orders')
+      .select('*, order_items(name, weight_kg, quantity, price_per_unit)')
+      .eq('customer_id', user.id)
+      .order('created_at', { ascending: false })
+    setMyOrders(data || [])
+    setOrdersLoading(false)
+  }
 
   async function loadProducts() {
     const { data } = await supabase.from('products').select('*').eq('active', true).order('weight_kg')
@@ -49,6 +64,7 @@ export default function CustomerShop() {
 
       const { data: order } = await supabase.from('orders').insert({
         order_number: orderNumber,
+        customer_id: user?.id || null,
         customer_id: user?.id || null,
         customer_name: user?.full_name || user?.username || 'Customer',
         delivery_address: address,
@@ -152,6 +168,9 @@ export default function CustomerShop() {
     </div>
   )
 
+  // Load my orders when switching to that tab
+  useEffect(() => { if (tab === 'myorders') loadMyOrders() }, [tab])
+
   return (
     <div style={{ minHeight: '100vh', background: G.surface, fontFamily: "'Inter', sans-serif" }}>
       <header style={{ background: G.green, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -172,7 +191,91 @@ export default function CustomerShop() {
         )}
       </header>
 
-      <div style={{ maxWidth: 600, margin: '0 auto', padding: 16 }}>
+      {/* Tab bar */}
+      <div style={{ background: G.white, borderBottom: `1px solid ${G.border}`, padding: '0 16px', display: 'flex', gap: 0 }}>
+        {[['shop','🌾 Order Rice'],['myorders','📋 My Orders']].map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)} style={{
+            padding: '12px 20px', border: 'none', background: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, borderBottom: `3px solid ${tab === key ? G.green : 'transparent'}`,
+            color: tab === key ? G.green : G.muted, transition: 'all 0.15s'
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {/* MY ORDERS TAB */}
+      {tab === 'myorders' && (
+        <div style={{ maxWidth: 600, margin: '0 auto', padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: G.text }}>
+              Orders for {user?.full_name || user?.username}
+            </p>
+            <button onClick={loadMyOrders} style={{ background: G.greenLight, border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, color: G.green, cursor: 'pointer' }}>↻ Refresh</button>
+          </div>
+          {ordersLoading && <p style={{ textAlign: 'center', color: G.muted, padding: 40 }}>Loading orders...</p>}
+          {!ordersLoading && myOrders.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '60px 20px', background: G.white, borderRadius: 14 }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>📦</div>
+              <p style={{ fontWeight: 700, color: G.text, margin: '0 0 6px' }}>No orders yet</p>
+              <p style={{ color: G.muted, fontSize: 13, margin: '0 0 20px' }}>Your orders will appear here</p>
+              <button onClick={() => setTab('shop')} style={{ background: G.green, color: G.white, border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer' }}>Order Now</button>
+            </div>
+          )}
+          {myOrders.map(order => {
+            const statusColor = { pending: G.amber, confirmed: '#1E5FA5', packed: G.green2, dispatched: '#7C3AED', delivered: G.green, cancelled: G.red }
+            const statusBg = { pending: G.amberLight, confirmed: '#E6F1FB', packed: G.greenLight, dispatched: '#EDE9FE', delivered: G.greenLight, cancelled: G.redLight }
+            return (
+              <div key={order.id} style={{ background: G.white, borderRadius: 14, padding: '16px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                  <div>
+                    <p style={{ margin: '0 0 2px', fontWeight: 700, fontSize: 14, color: G.text }}>{order.order_number}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: G.muted }}>{new Date(order.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</p>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 20, background: statusBg[order.status] || '#F3F4F6', color: statusColor[order.status] || G.muted }}>
+                    {order.status?.charAt(0).toUpperCase() + order.status?.slice(1)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                  {(order.order_items || []).map((item, i) => (
+                    <span key={i} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: G.greenLight, color: G.greenDark, fontWeight: 600 }}>
+                      {item.name} × {item.quantity}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: G.muted }}>{order.payment_method?.toUpperCase()} · {order.delivery_address?.slice(0, 30)}{order.delivery_address?.length > 30 ? '…' : ''}</span>
+                  <span style={{ fontWeight: 700, fontSize: 15, color: G.green }}>₹{Number(order.total_amount).toLocaleString('en-IN')}</span>
+                </div>
+                {/* Order progress bar */}
+                {order.status !== 'cancelled' && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: 'flex', gap: 2 }}>
+                      {['pending','confirmed','packed','dispatched','delivered'].map((s, i, arr) => {
+                        const idx = arr.indexOf(order.status)
+                        const done = i <= idx
+                        return (
+                          <div key={s} style={{ flex: 1, height: 4, borderRadius: 2, background: done ? G.green : '#E5E7EB', transition: 'background 0.3s' }} />
+                        )
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                      {['Placed','Confirmed','Packed','Shipped','Delivered'].map((s, i, arr) => {
+                        const statusArr = ['pending','confirmed','packed','dispatched','delivered']
+                        const idx = statusArr.indexOf(order.status)
+                        return (
+                          <span key={s} style={{ fontSize: 9, color: i <= idx ? G.green : '#9CA3AF', fontWeight: i <= idx ? 600 : 400 }}>{s}</span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* SHOP TAB */}
+      {tab === 'shop' && <div style={{ maxWidth: 600, margin: '0 auto', padding: 16 }}>
         <p style={{ fontSize: 13, color: G.muted, margin: '12px 0' }}>Fresh stock available — order now for same day delivery</p>
         {products.map(p => (
           <div key={p.id} style={{ background: G.white, borderRadius: 14, padding: '16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
@@ -204,7 +307,7 @@ export default function CustomerShop() {
             Checkout — {totalItems} items · ₹{totalAmount} →
           </button>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
