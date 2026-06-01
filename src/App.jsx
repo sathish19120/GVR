@@ -6,9 +6,8 @@ import Dashboard from './pages/Dashboard'
 import CustomerShop from './pages/CustomerShop'
 import DeliveryPage from './pages/DeliveryPage'
 
-function Protected({ children, roles }) {
-  const { user, loading } = useAuth()
-  if (loading) return (
+function Loading() {
+  return (
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f5f5f5' }}>
       <div style={{ textAlign:'center' }}>
         <div style={{ fontSize:40, marginBottom:12 }}>🌾</div>
@@ -16,17 +15,31 @@ function Protected({ children, roles }) {
       </div>
     </div>
   )
+}
+
+function Protected({ children, roles }) {
+  const { user, loading } = useAuth()
+  if (loading) return <Loading />
   if (!user) return <Navigate to="/login" replace />
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />
   return children
 }
 
 function RoleRouter() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
+  if (loading) return <Loading />
   if (!user) return <Navigate to="/login" replace />
   if (user.role === 'delivery') return <Navigate to="/delivery" replace />
   if (user.role === 'customer') return <Navigate to="/shop" replace />
   return <Navigate to="/dashboard" replace />
+}
+
+// Redirect to login if already on /login but logged in
+function AuthGuard({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return <Loading />
+  if (user) return <Navigate to="/" replace />
+  return children
 }
 
 export default function App() {
@@ -36,7 +49,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<AuthPage />} />
+        <Route path="/login" element={<AuthGuard><AuthPage /></AuthGuard>} />
         <Route path="/" element={<RoleRouter />} />
         <Route path="/dashboard/*" element={<Protected roles={['superadmin','admin']}><Dashboard /></Protected>} />
         <Route path="/shop" element={<Protected><CustomerShop /></Protected>} />
