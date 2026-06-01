@@ -1,12 +1,11 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 
-// Simple hash for password (basic security)
 async function hashPassword(password) {
   const encoder = new TextEncoder()
   const data = encoder.encode(password + 'gvr_salt_2026')
   const hash = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
 
 export const useAuth = create((set, get) => ({
@@ -15,7 +14,6 @@ export const useAuth = create((set, get) => ({
   error: null,
 
   init: async () => {
-    // Check localStorage for saved session
     const saved = localStorage.getItem('gvr_user')
     if (saved) {
       set({ user: JSON.parse(saved), loading: false })
@@ -24,12 +22,18 @@ export const useAuth = create((set, get) => ({
     }
   },
 
-  signUp: async (username, password, fullName) => {
+  // role parameter: defaults to 'customer' for self-signup
+  signUp: async (username, password, fullName, phone = '', role = null) => {
     set({ error: null })
     try {
       const clean = username.trim().toLowerCase()
 
-      // Check if username already exists
+      if (clean.length < 3) {
+        set({ error: 'Username must be at least 3 characters' })
+        return false
+      }
+
+      // Check if username already taken
       const { data: existing } = await supabase
         .from('profiles')
         .select('id')
@@ -37,33 +41,32 @@ export const useAuth = create((set, get) => ({
         .single()
 
       if (existing) {
-        set({ error: 'Username already taken. Choose another.' })
+        set({ error: 'Username already taken. Please choose another.' })
         return false
       }
 
       const hashed = await hashPassword(password)
 
-      // Check if this is first user — make them superadmin
+      // First user ever = superadmin, otherwise use passed role or customer
       const { count } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true })
 
-      const role = count === 0 ? 'superadmin' : 'customer'
+      const assignedRole = count === 0 ? 'superadmin' : (role || 'customer')
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('profiles')
         .insert({
           username: clean,
           full_name: fullName,
           password_hash: hashed,
-          role,
+          role: assignedRole,
+          phone: phone || null,
+          active: true,
           created_at: new Date().toISOString()
         })
-        .select()
-        .single()
 
       if (error) { set({ error: error.message }); return false }
-
       return true
     } catch (e) {
       set({ error: e.message })
@@ -86,6 +89,11 @@ export const useAuth = create((set, get) => ({
 
       if (error || !data) {
         set({ error: 'Invalid username or password' })
+        return false
+      }
+
+      if (data.active === false) {
+        set({ error: 'Your account has been disabled. Contact admin.' })
         return false
       }
 
