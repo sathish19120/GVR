@@ -788,10 +788,30 @@ export default function Dashboard() {
                     </div>
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
                       <div><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Customer</p><p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text }}>{o.customer_name||'—'}</p></div>
-                      <div><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p><p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p></div>
+                      <div>
+                        <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p>
+                        <p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
+                        <span style={{ fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:10,
+                          background: o.payment_status==='paid' ? G.greenLight : G.amberLight,
+                          color: o.payment_status==='paid' ? G.green : G.amber }}>
+                          {o.payment_status==='paid' ? '✓ Paid' : '⏳ Pending'}
+                        </span>
+                      </div>
                       <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Address</p><p style={{ margin:0, fontSize:13, color:G.text }}>{o.delivery_address||'—'}</p></div>
+                      {o.notes && (
+                        <div style={{ gridColumn:'1/-1' }}>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment Reference</p>
+                          <p style={{ margin:0, fontSize:13, color:G.green, fontWeight:600 }}>🧾 {o.notes}</p>
+                        </div>
+                      )}
                     </div>
                     <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                      {o.payment_status==='pending' && o.payment_method!=='cod' && (
+                        <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); load() }}
+                          style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
+                          💰 Mark Paid
+                        </button>
+                      )}
                       {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
                       {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
                       {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
@@ -860,7 +880,13 @@ export default function Dashboard() {
                       </div>
 
                       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                        {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
+                        {o.payment_status==='pending' && o.payment_method!=='cod' && (
+                        <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); load() }}
+                          style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
+                          💰 Mark Paid
+                        </button>
+                      )}
+                      {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
                         {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
                         {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
                         {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
