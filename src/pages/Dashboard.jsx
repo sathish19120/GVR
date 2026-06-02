@@ -269,13 +269,7 @@ export default function Dashboard() {
   const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
 
-  useEffect(() => {
-    const now = Date.now()
-    const stale = now - cacheRef.current.lastLoad > 60000
-    if (!cacheRef.current.loaded || stale) {
-      load()
-    }
-  }, [filter])
+  useEffect(() => { load() }, [filter])
 
   // Auto refresh every 30 seconds — only refreshes order data silently
   useEffect(() => {
@@ -315,8 +309,6 @@ export default function Dashboard() {
     setStats({ revenue, orders:o.length, bags, pending:o.filter(x=>x.status==='pending').length, lowStock:p.filter(x=>x.stock_bags<=x.low_stock_threshold).length, customers:u.filter(x=>x.role==='customer').length })
     setOrders(o); setProducts(p); setUsers(u); setMovements(m)
     setChart(buildChart(o, filter))
-    cacheRef.current.loaded = true
-    cacheRef.current.lastLoad = Date.now()
     setLoading(false)
   }
 
