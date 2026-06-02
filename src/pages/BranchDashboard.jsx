@@ -130,11 +130,23 @@ export default function BranchDashboard() {
   })
 
   return (
-    <div style={{ display:'flex', minHeight:'100vh', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
+    <div style={{ display:'flex', minHeight:'100vh', background:G.surface, fontFamily:"'Inter', sans-serif", overflow:'hidden' }}>
+      <style>{`
+        @media (max-width: 640px) {
+          .branch-sidebar { position:fixed!important;z-index:200!important;height:100vh!important;transform:translateX(-100%)!important;transition:transform 0.25s ease!important; }
+          .branch-sidebar.open { transform:translateX(0)!important; }
+          .branch-overlay { display:block!important;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:199; }
+          .branch-main { padding:12px!important; }
+        }
+        @media (min-width: 641px) {
+          .branch-overlay { display:none!important; }
+        }
+      `}</style>
+      <div className="branch-overlay" style={{ display:'none' }} onClick={()=>setCol(true)} />
       {showProfile && <ProfilePage onClose={() => setShowProfile(false)} />}
 
       {/* SIDEBAR */}
-      <aside style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s', position:'sticky', top:0, height:'100vh', overflow:'hidden' }}>
+      <aside className={`branch-sidebar${!collapsed?' open':''}`} style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s, transform 0.25s', position:'sticky', top:0, height:'100vh', overflow:'hidden', zIndex:200 }}>
         <div style={{ padding:collapsed?'16px 10px':'16px 16px', borderBottom:`1px solid ${G.border}`, display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:9, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌾</div>
           {!collapsed && (
@@ -200,7 +212,7 @@ export default function BranchDashboard() {
           </div>
         </header>
 
-        <main style={{ flex:1, padding:'22px', overflowY:'auto' }}>
+        <main className='branch-main' style={{ flex:1, padding:'22px', overflowY:'auto', minWidth:0 }}>
           {loading ? <div style={{ textAlign:'center', padding:60, color:G.muted }}>Loading...</div> : <>
 
           {/* ── DASHBOARD ── */}
