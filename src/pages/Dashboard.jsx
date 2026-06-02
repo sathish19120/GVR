@@ -271,25 +271,26 @@ export default function Dashboard() {
 
   useEffect(() => { load() }, [filter])
 
-  // Auto refresh every 30 seconds when enabled
+  // Auto refresh every 30 seconds — only refreshes order data silently
   useEffect(() => {
-    if (!autoRefresh) return
+    if (!autoRefresh || page !== 'orders') return
     const interval = setInterval(async () => {
-      // Silent refresh — check for new orders
-      const { data } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false })
-      const newCount = (data || []).length
-      if (newCount > stats.pending) {
-        setNewOrderAlert(newCount - stats.pending)
-      }
-      load()
-      setLastRefresh(new Date())
+      try {
+        const { data } = await supabase
+          .from('orders')
+          .select('*, order_items(quantity, price_per_unit, product_id, name, weight_kg)')
+          .order('created_at', { ascending: false })
+        const newOrders = data || []
+        const pendingCount = newOrders.filter(o => o.status === 'pending').length
+        if (pendingCount > stats.pending) {
+          setNewOrderAlert(pendingCount - stats.pending)
+        }
+        setOrders(newOrders)
+        setLastRefresh(new Date())
+      } catch(e) { console.error('Auto refresh error:', e) }
     }, 30000)
     return () => clearInterval(interval)
-  }, [autoRefresh, stats.pending])
+  }, [autoRefresh, page, stats.pending])
 
   async function load() {
     setLoading(true)
