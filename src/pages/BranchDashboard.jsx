@@ -7,6 +7,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Cell
 } from 'recharts'
+import WalkInBilling from './WalkInBilling'
+import PickupQueue from './PickupQueue'
 
 const G = {
   green:'#3B6D11',greenDark:'#27500A',greenLight:'#EAF3DE',green2:'#639922',
@@ -20,6 +22,8 @@ const PAGES = [
   { key:'orders',    icon:'📋', label:'Orders' },
   { key:'inventory', icon:'📦', label:'Inventory' },
   { key:'stock',     icon:'🏭', label:'My Stock' },
+  { key:'walkin',    icon:'🧾', label:'Walk-in Billing' },
+  { key:'pickup',    icon:'🏪', label:'Pickup Queue' },
 ]
 
 function Badge({ status }) {
@@ -370,6 +374,12 @@ export default function BranchDashboard() {
               })}
             </div>
           )}
+
+          {/* ── WALK-IN BILLING ── */}
+          {page === 'walkin' && <WalkInBilling branch={branch} />}
+
+          {/* ── PICKUP QUEUE ── */}
+          {page === 'pickup' && <PickupQueue defaultBranch={branch} />}
 
           {/* ── MY BRANCH STOCK ── */}
           {page === 'stock' && (
