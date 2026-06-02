@@ -152,9 +152,22 @@ export default function ProfilePage({ onClose }) {
 
         <div style={{ padding:'0 24px 24px' }}>
 
+          {/* Read-only notice for branch_executive */}
+          {user?.role === 'branch_executive' && (
+            <div style={{ background:'#FFFBEB', border:`1px solid #FCD34D`, borderRadius:12, padding:'10px 14px', marginBottom:16, display:'flex', gap:8, alignItems:'center' }}>
+              <span style={{ fontSize:16 }}>🔒</span>
+              <p style={{ margin:0, fontSize:12, color:'#92400E', lineHeight:1.5 }}>
+                Profile details are managed by your administrator. You can only update your profile photo.
+              </p>
+            </div>
+          )}
+
           {/* Profile info */}
           <div style={{ background:'#F9FAF7', borderRadius:14, padding:16, marginBottom:16 }}>
-            <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700, color:G.text }}>Personal Information</p>
+            <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700, color:G.text }}>
+              Personal Information
+              {user?.role === 'branch_executive' && <span style={{ fontSize:10, color:G.muted, fontWeight:400, marginLeft:8 }}>· Read Only</span>}
+            </p>
 
             {err && <div style={{ background:G.redLight, border:`1px solid #FECACA`, borderRadius:8, padding:'8px 12px', marginBottom:12, color:G.red, fontSize:12 }}>{err}</div>}
             {msg && <div style={{ background:G.greenLight, border:`1px solid #97C459`, borderRadius:8, padding:'8px 12px', marginBottom:12, color:G.greenDark, fontSize:12 }}>✓ {msg}</div>}
@@ -162,8 +175,12 @@ export default function ProfilePage({ onClose }) {
             <div style={{ display:'grid', gap:12 }}>
               <div>
                 <label style={{ display:'block', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px', marginBottom:5 }}>Full Name</label>
-                <input type="text" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Your full name" style={inp}
-                  onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+                <input type="text" value={fullName}
+                  onChange={e => user?.role !== 'branch_executive' && setFullName(e.target.value)}
+                  readOnly={user?.role === 'branch_executive'}
+                  placeholder="Your full name"
+                  style={{ ...inp, background: user?.role === 'branch_executive' ? '#F3F4F6' : '#FAFAFA', cursor: user?.role === 'branch_executive' ? 'not-allowed' : 'text', color: user?.role === 'branch_executive' ? G.muted : G.text }}
+                />
               </div>
               <div>
                 <label style={{ display:'block', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px', marginBottom:5 }}>Username</label>
@@ -172,22 +189,35 @@ export default function ProfilePage({ onClose }) {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
                 <div>
                   <label style={{ display:'block', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px', marginBottom:5 }}>Phone</label>
-                  <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Mobile number" style={inp}
-                    onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+                  <input type="tel" value={phone}
+                    onChange={e => user?.role !== 'branch_executive' && setPhone(e.target.value)}
+                    readOnly={user?.role === 'branch_executive'}
+                    placeholder="Mobile number"
+                    style={{ ...inp, background: user?.role === 'branch_executive' ? '#F3F4F6' : '#FAFAFA', cursor: user?.role === 'branch_executive' ? 'not-allowed' : 'text', color: user?.role === 'branch_executive' ? G.muted : G.text }}
+                  />
                 </div>
                 <div>
-                  <label style={{ display:'block', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px', marginBottom:5 }}>Area</label>
-                  <input type="text" value={area} onChange={e=>setArea(e.target.value)} placeholder="Your area" style={inp}
-                    onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+                  <label style={{ display:'block', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px', marginBottom:5 }}>Area / Branch</label>
+                  <input type="text" value={user?.role === 'branch_executive' ? (user?.branch || area) : area}
+                    onChange={e => user?.role !== 'branch_executive' && setArea(e.target.value)}
+                    readOnly={user?.role === 'branch_executive'}
+                    placeholder="Your area"
+                    style={{ ...inp, background: user?.role === 'branch_executive' ? '#F3F4F6' : '#FAFAFA', cursor: user?.role === 'branch_executive' ? 'not-allowed' : 'text', color: user?.role === 'branch_executive' ? G.muted : G.text }}
+                  />
                 </div>
               </div>
             </div>
-            <button type="button" onClick={saveProfile} disabled={saving} style={{ width:'100%', marginTop:14, padding:11, background:saving?'#9CA3AF':G.green, color:G.white, border:'none', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer' }}>
-              {saving ? 'Saving...' : 'Save Profile'}
-            </button>
+
+            {/* Save button — hidden for branch_executive */}
+            {user?.role !== 'branch_executive' && (
+              <button type="button" onClick={saveProfile} disabled={saving} style={{ width:'100%', marginTop:14, padding:11, background:saving?'#9CA3AF':G.green, color:G.white, border:'none', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer' }}>
+                {saving ? 'Saving...' : 'Save Profile'}
+              </button>
+            )}
           </div>
 
-          {/* Change password */}
+          {/* Change password — hidden for branch_executive */}
+          {user?.role !== 'branch_executive' && (
           <div style={{ background:'#F9FAF7', borderRadius:14, padding:16, marginBottom:16 }}>
             <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700, color:G.text }}>Change Password</p>
 
@@ -219,6 +249,7 @@ export default function ProfilePage({ onClose }) {
               {savingPass ? 'Changing...' : 'Change Password'}
             </button>
           </div>
+          )}
 
           {/* Account info */}
           <div style={{ background:'#F9FAF7', borderRadius:14, padding:14, marginBottom:16 }}>
