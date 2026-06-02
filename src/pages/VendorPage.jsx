@@ -226,6 +226,109 @@ function AddVendorModal({ onClose, onSaved }) {
   )
 }
 
+// ── Edit Vendor Modal ────────────────────────────────────
+function EditVendorModal({ vendor, onClose, onSaved }) {
+  const [name, setName]     = useState(vendor.name || '')
+  const [type, setType]     = useState(vendor.type || 'Farmer')
+  const [phone, setPhone]   = useState(vendor.phone || '')
+  const [location, setLoc]  = useState(vendor.location || '')
+  const [notes, setNotes]   = useState(vendor.notes || '')
+  const [active, setActive] = useState(vendor.active !== false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
+
+  async function save() {
+    if (!name.trim()) { setError('Vendor name is required'); return }
+    setSaving(true); setError('')
+    try {
+      const { error: err } = await supabase.from('vendors').update({
+        name: name.trim(), type, phone: phone||null,
+        location: location||null, notes: notes||null, active
+      }).eq('id', vendor.id)
+      if (err) throw err
+      onSaved(); onClose()
+    } catch(e) { setError(e.message) }
+    finally { setSaving(false) }
+  }
+
+  async function deleteVendor() {
+    if (!window.confirm(`Delete vendor "${vendor.name}"? This cannot be undone.`)) return
+    setSaving(true)
+    try {
+      await supabase.from('vendors').delete().eq('id', vendor.id)
+      onSaved(); onClose()
+    } catch(e) { setError(e.message); setSaving(false) }
+  }
+
+  return (
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
+      <div style={{ background:G.white,borderRadius:20,width:'100%',maxWidth:440,padding:28,maxHeight:'90vh',overflowY:'auto' }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22 }}>
+          <h3 style={{ margin:0,fontSize:18,fontWeight:700,color:G.text }}>Edit Vendor</h3>
+          <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:G.muted }}>✕</button>
+        </div>
+        {error && <div style={{ background:G.redLight,border:`1px solid #FECACA`,borderRadius:10,padding:'10px 14px',marginBottom:16,color:G.red,fontSize:13 }}>{error}</div>}
+        <div style={{ display:'grid',gap:14 }}>
+          <div>
+            <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:6 }}>Name *</label>
+            <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="Farmer / Mill name" style={inp}
+              onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+          </div>
+          <div>
+            <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:6 }}>Type</label>
+            <div style={{ display:'flex',gap:8 }}>
+              {['Farmer','Rice Mill','Wholesaler','Transport'].map(t=>(
+                <button key={t} type="button" onClick={()=>setType(t)} style={{
+                  flex:1,padding:'9px 4px',borderRadius:9,border:`2px solid ${type===t?G.green:G.border}`,
+                  background:type===t?G.greenLight:G.white,cursor:'pointer',
+                  fontSize:11,fontWeight:600,color:type===t?G.greenDark:G.muted
+                }}>{t}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12 }}>
+            <div>
+              <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:6 }}>Phone</label>
+              <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Mobile number" style={inp}
+                onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+            </div>
+            <div>
+              <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:6 }}>Location</label>
+              <input type="text" value={location} onChange={e=>setLoc(e.target.value)} placeholder="District / Village" style={inp}
+                onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+            </div>
+          </div>
+          <div>
+            <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:6 }}>Notes</label>
+            <input type="text" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Any notes about this vendor" style={inp}
+              onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+          </div>
+          <div>
+            <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:8 }}>Status</label>
+            <div style={{ display:'flex',gap:8 }}>
+              {[true,false].map(val=>(
+                <button key={String(val)} type="button" onClick={()=>setActive(val)} style={{
+                  flex:1,padding:'9px',borderRadius:9,
+                  border:`2px solid ${active===val?(val?G.green:G.red):G.border}`,
+                  background:active===val?(val?G.greenLight:G.redLight):G.white,
+                  cursor:'pointer',fontSize:12,fontWeight:600,
+                  color:active===val?(val?G.green:G.red):G.muted
+                }}>{val ? '✓ Active' : '✕ Inactive'}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <button type="button" onClick={save} disabled={saving} style={{ width:'100%',marginTop:20,padding:13,background:saving?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer' }}>
+          {saving ? 'Saving...' : '✓ Save Changes'}
+        </button>
+        <button type="button" onClick={deleteVendor} disabled={saving} style={{ width:'100%',marginTop:10,padding:11,background:'none',color:G.red,border:`1px solid ${G.red}`,borderRadius:12,fontSize:13,fontWeight:600,cursor:'pointer' }}>
+          🗑 Delete Vendor
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main VendorPage ───────────────────────────────────────
 export default function VendorPage() {
   const [tab, setTab]           = useState('overview')
@@ -235,6 +338,7 @@ export default function VendorPage() {
   const [loading, setLoading]   = useState(true)
   const [showAddVendor, setShowAddVendor] = useState(false)
   const [showAddPurchase, setShowAddPurchase] = useState(false)
+  const [editVendor, setEditVendor] = useState(null)
   const [search, setSearch]     = useState('')
 
   useEffect(() => { load() }, [])
@@ -277,6 +381,7 @@ export default function VendorPage() {
   return (
     <div style={{ fontFamily:"'Inter', sans-serif" }}>
       {showAddVendor && <AddVendorModal onClose={() => setShowAddVendor(false)} onSaved={load} />}
+      {editVendor && <EditVendorModal vendor={editVendor} onClose={() => setEditVendor(null)} onSaved={load} />}
       {showAddPurchase && <AddPurchaseModal vendors={vendors} products={products} onClose={() => setShowAddPurchase(false)} onSaved={load} />}
 
       {/* Tab bar */}
@@ -430,6 +535,14 @@ export default function VendorPage() {
                     </a>
                   )}
                   {v.notes && <p style={{ margin:'6px 0 0',fontSize:11,color:G.muted,fontStyle:'italic' }}>📝 {v.notes}</p>}
+                  <div style={{ marginTop:12,display:'flex',gap:8 }}>
+                    <button type="button" onClick={()=>setEditVendor(v)} style={{ flex:1,padding:'7px 10px',background:G.blueLight,border:'none',borderRadius:8,fontSize:12,fontWeight:600,color:G.blue,cursor:'pointer' }}>
+                      ✏️ Edit
+                    </button>
+                    <button type="button" onClick={()=>setEditVendor(v)} style={{ flex:1,padding:'7px 10px',background:v.active?G.greenLight:G.redLight,border:'none',borderRadius:8,fontSize:12,fontWeight:600,color:v.active?G.green:G.red,cursor:'pointer' }}>
+                      {v.active ? '✓ Active' : '✕ Inactive'}
+                    </button>
+                  </div>
                 </div>
               )
             })}
