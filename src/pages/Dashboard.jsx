@@ -1,4 +1,5 @@
 import AdminPage from './AdminPage'
+import BatchPage from './BatchPage'
 import VendorPage from './VendorPage'
 import BranchStockPage from './BranchStockPage'
 import React, { useState, useEffect } from 'react'
@@ -26,6 +27,7 @@ const PAGES = [
   { key:'admin',     icon:'⚙️', label:'Admin' },
   { key:'branches',  icon:'🏪', label:'Branches' },
   { key:'vendors',   icon:'🌾', label:'Vendors' },
+  { key:'batches',   icon:'📦', label:'Batches' },
   { key:'branchstock',icon:'🏭', label:'Branch Stock' },
 ]
 const TOP_LINKS = ['Where We Work','What We Do','About']
@@ -1055,6 +1057,9 @@ export default function Dashboard() {
 
           {/* VENDORS */}
           {page==='vendors' && <VendorPage />}
+
+          {/* BATCHES */}
+          {page==='batches' && <BatchPage />}
 
           {/* BRANCH STOCK */}
           {page==='branchstock' && <BranchStockPage />}
