@@ -5,13 +5,14 @@ import AuthPage from './pages/AuthPage'
 import Dashboard from './pages/Dashboard'
 import CustomerShop from './pages/CustomerShop'
 import DeliveryPage from './pages/DeliveryPage'
+import BranchDashboard from './pages/BranchDashboard'
 
 function Loading() {
   return (
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f5f5f5' }}>
       <div style={{ textAlign:'center' }}>
         <div style={{ fontSize:40, marginBottom:12 }}>🌾</div>
-        <p style={{ color:'#3B6D11', fontWeight:600 }}>Loading...</p>
+        <p style={{ color:'#3B6D11', fontWeight:600 }}>Loading Green Village Rice...</p>
       </div>
     </div>
   )
@@ -31,10 +32,10 @@ function RoleRouter() {
   if (!user) return <Navigate to="/login" replace />
   if (user.role === 'delivery') return <Navigate to="/delivery" replace />
   if (user.role === 'customer') return <Navigate to="/shop" replace />
+  if (user.role === 'branch_executive') return <Navigate to="/branch" replace />
   return <Navigate to="/dashboard" replace />
 }
 
-// Redirect to login if already on /login but logged in
 function AuthGuard({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <Loading />
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="/login" element={<AuthGuard><AuthPage /></AuthGuard>} />
         <Route path="/" element={<RoleRouter />} />
         <Route path="/dashboard/*" element={<Protected roles={['superadmin','admin']}><Dashboard /></Protected>} />
+        <Route path="/branch/*" element={<Protected roles={['branch_executive','superadmin','admin']}><BranchDashboard /></Protected>} />
         <Route path="/shop" element={<Protected><CustomerShop /></Protected>} />
         <Route path="/delivery" element={<Protected roles={['delivery','superadmin','admin']}><DeliveryPage /></Protected>} />
         <Route path="*" element={<Navigate to="/" replace />} />
