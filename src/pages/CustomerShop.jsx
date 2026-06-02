@@ -107,6 +107,21 @@ export default function CustomerShop() {
   const [phone, setPhone]         = useState(user?.phone || '')
   const [payMethod, setPayMethod] = useState('cod')
   const [placing, setPlacing]     = useState(false)
+  const [autoPlacing, setAutoPlacing] = useState(false)
+
+  // Auto-place order when user returns from UPI payment app
+  useEffect(() => {
+    if (step !== 'checkout' || payMethod !== 'upi') return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && utrRef.trim().length === 0) {
+        // User returned from payment app — show prompt to enter UTR
+        setAutoPlacing(true)
+        setTimeout(() => setAutoPlacing(false), 4000)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [step, payMethod, utrRef])
   const [orderNum, setOrderNum]   = useState('')
   const [myOrders, setMyOrders]   = useState([])
   const [ordersLoading, setOrdersLoading] = useState(false)
@@ -227,6 +242,12 @@ export default function CustomerShop() {
         <button onClick={() => { setStep('shop'); setError('') }} style={{ background: 'none', border: 'none', color: G.white, fontSize: 22, cursor: 'pointer' }}>←</button>
         <span style={{ color: G.white, fontWeight: 700, fontSize: 16 }}>Checkout</span>
       </header>
+      {autoPlacing && (
+        <div style={{ background: G.amber, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, animation: 'pulse 1s ease-in-out' }}>
+          <span style={{ fontSize: 16 }}>📱</span>
+          <p style={{ margin: 0, fontSize: 13, color: G.white, fontWeight: 600 }}>Payment done? Enter your UTR/Transaction ID above to confirm your order automatically!</p>
+        </div>
+      )}
       <TopNav />
       <div style={{ maxWidth: 500, margin: '0 auto', padding: `16px 16px calc(100px + env(safe-area-inset-bottom))` }}>
         {error && <div style={{ background: G.redLight, border: `1px solid #FECACA`, borderRadius: 10, padding: '10px 14px', marginBottom: 16, color: G.red, fontSize: 13 }}>{error}</div>}
@@ -391,19 +412,30 @@ export default function CustomerShop() {
             </div>
           )}
 
-          {/* COD confirmation note */}
+          {/* COD — instant place */}
           {payMethod === 'cod' && (
-            <div style={{ marginTop: 12, padding: 12, background: G.greenLight, borderRadius: 10, border: `1px solid #97C459` }}>
-              <p style={{ margin: 0, fontSize: 13, color: G.greenDark }}>
-                💵 <strong>Cash on Delivery</strong> — Pay ₹{grand} in cash when your order arrives. No advance payment needed.
-              </p>
+            <div style={{ marginTop: 12, padding: 14, background: G.greenLight, borderRadius: 12, border: `1px solid #97C459` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <span style={{ fontSize: 22 }}>💵</span>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: G.greenDark }}>Cash on Delivery</p>
+                  <p style={{ margin: 0, fontSize: 12, color: G.green2 }}>Pay ₹{grand} in cash when your order arrives</p>
+                </div>
+              </div>
+              <button onClick={placeOrder} disabled={placing || (orderType==='delivery' && !address.trim())} style={{
+                width: '100%', padding: 13, background: placing ? '#9CA3AF' : G.greenDark,
+                color: G.white, border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: 'pointer',
+                boxShadow: '0 3px 10px rgba(39,80,10,0.3)'
+              }}>
+                {placing ? '⏳ Placing...' : `⚡ Place COD Order Now — ₹${grand}`}
+              </button>
             </div>
           )}
         </div>
 
-        <button onClick={placeOrder} disabled={placing || !address.trim()} style={{ width: '100%', padding: 16, background: placing || !address.trim() ? '#9CA3AF' : G.green, color: G.white, border: 'none', borderRadius: 14, fontSize: 16, fontWeight: 700, cursor: placing || !address.trim() ? 'not-allowed' : 'pointer' }}>
+        {payMethod !== 'cod' && <button id="auto-place-btn" onClick={placeOrder} disabled={placing || !address.trim()} style={{ width: '100%', padding: 16, background: placing || !address.trim() ? '#9CA3AF' : G.green, color: G.white, border: 'none', borderRadius: 14, fontSize: 16, fontWeight: 700, cursor: placing || !address.trim() ? 'not-allowed' : 'pointer' }}>
           {placing ? '⏳ Placing order...' : `${orderType === 'pickup' ? '🏪 Place Pickup Order' : '✅ Place Order'} — ₹${grand}`}
-        </button>
+        </button>}
       </div>
     </div>
   )
