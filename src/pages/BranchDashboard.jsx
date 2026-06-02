@@ -1,5 +1,5 @@
-
 import { useState, useEffect } from 'react'
+import ProfilePage from './ProfilePage'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
@@ -55,6 +55,7 @@ export default function BranchDashboard() {
   const [search, setSearch]     = useState('')
   const [statusFilter, setSF]   = useState('all')
   const [updateModal, setUpdate]= useState(null)
+  const [showProfile, setShowProfile] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -130,6 +131,7 @@ export default function BranchDashboard() {
 
   return (
     <div style={{ display:'flex', minHeight:'100vh', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
+      {showProfile && <ProfilePage onClose={() => setShowProfile(false)} />}
 
       {/* SIDEBAR */}
       <aside style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s', position:'sticky', top:0, height:'100vh', overflow:'hidden' }}>
@@ -161,9 +163,12 @@ export default function BranchDashboard() {
         <div style={{ padding:'10px 6px', borderTop:`1px solid ${G.border}` }}>
           {!collapsed && (
             <div style={{ padding:'8px 12px', marginBottom:4 }}>
-              <div style={{ width:28, height:28, borderRadius:'50%', background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:G.greenDark, marginBottom:4 }}>
-                {user?.full_name?.[0] || user?.username?.[0]?.toUpperCase() || 'E'}
-              </div>
+              <button type="button" onClick={() => setShowProfile(true)} style={{ width:34, height:34, borderRadius:'50%', background:G.greenLight, border:`2px solid ${G.border}`, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', overflow:'hidden', padding:0, marginBottom:4 }}>
+                {user?.avatar_url
+                  ? <img src={user.avatar_url} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                  : <span style={{ fontSize:12, fontWeight:700, color:G.greenDark }}>{user?.full_name?.[0] || user?.username?.[0]?.toUpperCase() || 'E'}</span>
+                }
+              </button>
               <p style={{ margin:0, fontSize:12, fontWeight:600, color:G.text }}>{user?.full_name || user?.username}</p>
               <p style={{ margin:0, fontSize:10, color:G.muted }}>Branch Executive · {branch}</p>
             </div>
