@@ -191,7 +191,7 @@ export default function AuthPage() {
             </div>
           )}
 
-          <form onSubmit={submit}>
+          {mode !== 'forgot' && <form onSubmit={submit}>
             {/* Full name — signup only */}
             {mode === 'signup' && (
               <div style={{ marginBottom: 16 }}>
@@ -257,7 +257,7 @@ export default function AuthPage() {
                 </button>
               )}
               {mode === 'login' && (
-                <span style={{ color: G.muted, fontSize: 12 }}>Contact admin to reset</span>
+                <button type="button" onClick={() => reset('forgot')} style={{ background:'none', border:'none', color:G.amber, fontSize:13, fontWeight:600, cursor:'pointer', padding:0, textDecoration:'underline' }}>Forgot Password?</button>
               )}
             </div>
 
