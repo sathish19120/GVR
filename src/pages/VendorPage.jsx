@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 const G = {
@@ -233,11 +233,21 @@ export default function VendorPage() {
   const [products, setProducts] = useState([])
   const [purchases, setPurchases] = useState([])
   const [loading, setLoading]   = useState(true)
+  const cache = React.useRef({ loaded: false, data: null })
   const [showAddVendor, setShowAddVendor] = useState(false)
   const [showAddPurchase, setShowAddPurchase] = useState(false)
   const [search, setSearch]     = useState('')
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (cache.current.loaded) {
+      setVendors(cache.current.data.vendors)
+      setProducts(cache.current.data.products)
+      setPurchases(cache.current.data.purchases)
+      setLoading(false)
+    } else {
+      load()
+    }
+  }, [])
 
   async function load() {
     setLoading(true)
@@ -249,6 +259,7 @@ export default function VendorPage() {
     setVendors(vRes.data || [])
     setProducts(pRes.data || [])
     setPurchases(purRes.data || [])
+    cache.current = { loaded: true, data: { vendors: vRes.data||[], products: pRes.data||[], purchases: purRes.data||[] } }
     setLoading(false)
   }
 
@@ -276,8 +287,8 @@ export default function VendorPage() {
 
   return (
     <div style={{ fontFamily:"'Inter', sans-serif" }}>
-      {showAddVendor && <AddVendorModal onClose={() => setShowAddVendor(false)} onSaved={load} />}
-      {showAddPurchase && <AddPurchaseModal vendors={vendors} products={products} onClose={() => setShowAddPurchase(false)} onSaved={load} />}
+      {showAddVendor && <AddVendorModal onClose={() => setShowAddVendor(false)} onSaved={() => { cache.current.loaded = false; load() }} />}
+      {showAddPurchase && <AddPurchaseModal vendors={vendors} products={products} onClose={() => setShowAddPurchase(false)} onSaved={() => { cache.current.loaded = false; load() }} />}
 
       {/* Tab bar */}
       <div style={{ display:'flex', gap:6, marginBottom:20, flexWrap:'wrap' }}>
