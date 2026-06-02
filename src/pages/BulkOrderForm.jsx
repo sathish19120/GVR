@@ -91,7 +91,7 @@ export default function BulkOrderForm() {
     finally { setPlacing(false) }
   }
 
-  const UPI_ID = '19120sathish.ss1@ybl'
+  const UPI_ID = import.meta.env.VITE_UPI_ID || ''
   const upiUrl = `upi://pay?pa=${UPI_ID}&pn=Green+Village+Rice&am=${grand}&cu=INR&tn=GVR+Bulk+Order`
   const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(upiUrl)}`
 
