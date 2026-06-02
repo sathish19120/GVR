@@ -144,6 +144,7 @@ export default function CustomerShop() {
   const totalItems  = Object.values(cart).reduce((s, q) => s + q, 0)
   const totalAmount = products.reduce((s, p) => s + (cart[p.id] || 0) * p.price_per_bag, 0)
   const gst         = Math.round(totalAmount * 0.05)
+  const deliveryFee = orderType === 'pickup' ? 0 : (totalItems > 0 ? 0 : 0)
   const grand       = totalAmount + gst
 
   const updateCart = (id, delta) => {
@@ -155,7 +156,8 @@ export default function CustomerShop() {
   }
 
   async function placeOrder() {
-    if (!address.trim()) { setError('Please enter delivery address'); return }
+    if (orderType === 'delivery' && !address.trim()) { setError('Please enter delivery address'); return }
+    if (orderType === 'pickup' && !pickupBranch) { setError('Please select a pickup branch'); return }
     setError(''); setPlacing(true)
     try {
       const { count } = await supabase.from('orders').select('*', { count: 'exact', head: true })
@@ -245,13 +247,60 @@ export default function CustomerShop() {
           </div>
         </div>
 
-        {/* Address */}
+        {/* Order Type */}
         <div style={{ background: G.white, borderRadius: 14, padding: 18, marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-          <p style={{ fontWeight: 700, margin: '0 0 12px', color: G.text, fontSize: 15 }}>Delivery Address *</p>
-          <textarea value={address} onChange={e => setAddress(e.target.value)} placeholder="House/flat number, street, area, landmark..." rows={3}
-            style={{ width: '100%', padding: 12, borderRadius: 10, border: `1.5px solid ${G.border}`, fontSize: 14, resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-          <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone number for delivery" type="tel"
-            style={{ width: '100%', padding: 12, borderRadius: 10, border: `1.5px solid ${G.border}`, fontSize: 14, marginTop: 8, outline: 'none', boxSizing: 'border-box' }} />
+          <p style={{ fontWeight: 700, margin: '0 0 12px', color: G.text, fontSize: 15 }}>How do you want your order?</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+            {[
+              ['delivery', '🚚', 'Home Delivery', `₹15 delivery fee`],
+              ['pickup',   '🏪', 'Store Pickup',  'Free — collect at branch'],
+            ].map(([val, icon, label, sub]) => (
+              <div key={val} onClick={() => setOrderType(val)} style={{ padding: '12px', borderRadius: 12, cursor: 'pointer', border: `2px solid ${orderType === val ? G.green : G.border}`, background: orderType === val ? G.greenLight : G.white, textAlign: 'center' }}>
+                <div style={{ fontSize: 24, marginBottom: 4 }}>{icon}</div>
+                <p style={{ margin: '0 0 2px', fontWeight: 700, fontSize: 13, color: orderType === val ? G.greenDark : G.text }}>{label}</p>
+                <p style={{ margin: 0, fontSize: 11, color: orderType === val ? G.green2 : G.muted }}>{sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Delivery fields */}
+          {orderType === 'delivery' && (
+            <>
+              <textarea value={address} onChange={e => setAddress(e.target.value)} placeholder="House/flat number, street, area, landmark..." rows={3}
+                style={{ width: '100%', padding: 12, borderRadius: 10, border: `1.5px solid ${G.border}`, fontSize: 14, resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 8 }} />
+              <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone number for delivery" type="tel"
+                style={{ width: '100%', padding: 12, borderRadius: 10, border: `1.5px solid ${G.border}`, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+            </>
+          )}
+
+          {/* Pickup fields */}
+          {orderType === 'pickup' && (
+            <>
+              <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: G.text }}>Select Pickup Branch *</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                {['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu'].map(b => (
+                  <div key={b} onClick={() => setPickupBranch(b)} style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `2px solid ${pickupBranch === b ? G.green : G.border}`, background: pickupBranch === b ? G.greenLight : G.white, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>🏪</span>
+                    <span style={{ fontSize: 13, fontWeight: pickupBranch === b ? 700 : 400, color: pickupBranch === b ? G.greenDark : G.text }}>{b}</span>
+                    {pickupBranch === b && <span style={{ marginLeft: 'auto', color: G.green, fontWeight: 700 }}>✓</span>}
+                  </div>
+                ))}
+              </div>
+              <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: G.text }}>Preferred Pickup Time</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {['9 AM – 11 AM', '11 AM – 1 PM', '1 PM – 3 PM', '3 PM – 5 PM', '5 PM – 7 PM'].map(t => (
+                  <button key={t} type="button" onClick={() => setPickupTime(t)} style={{ padding: '7px 12px', borderRadius: 20, border: `1.5px solid ${pickupTime === t ? G.green : G.border}`, background: pickupTime === t ? G.greenLight : G.white, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: pickupTime === t ? G.greenDark : G.muted }}>{t}</button>
+                ))}
+              </div>
+              {pickupBranch && (
+                <div style={{ marginTop: 12, padding: '10px 14px', background: G.greenLight, borderRadius: 10, fontSize: 12, color: G.greenDark }}>
+                  ✅ Pickup at <strong>{pickupBranch}</strong> branch{pickupTime ? ` · ${pickupTime}` : ''} · No delivery charge
+                </div>
+              )}
+              <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone number" type="tel"
+                style={{ width: '100%', padding: 12, borderRadius: 10, border: `1.5px solid ${G.border}`, fontSize: 14, outline: 'none', boxSizing: 'border-box', marginTop: 10 }} />
+            </>
+          )}
         </div>
 
         {/* Payment */}
@@ -353,7 +402,7 @@ export default function CustomerShop() {
         </div>
 
         <button onClick={placeOrder} disabled={placing || !address.trim()} style={{ width: '100%', padding: 16, background: placing || !address.trim() ? '#9CA3AF' : G.green, color: G.white, border: 'none', borderRadius: 14, fontSize: 16, fontWeight: 700, cursor: placing || !address.trim() ? 'not-allowed' : 'pointer' }}>
-          {placing ? '⏳ Placing order...' : `✅ Place Order — ₹${grand}`}
+          {placing ? '⏳ Placing order...' : `${orderType === 'pickup' ? '🏪 Place Pickup Order' : '✅ Place Order'} — ₹${grand}`}
         </button>
       </div>
     </div>
@@ -436,7 +485,7 @@ export default function CustomerShop() {
                 ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: order.status !== 'cancelled' ? 12 : 0 }}>
-                <span style={{ fontSize: 12, color: G.muted }}>📍 {order.delivery_address?.slice(0, 40)}{(order.delivery_address?.length || 0) > 40 ? '…' : ''} · {order.payment_method?.toUpperCase()}</span>
+                <span style={{ fontSize: 12, color: G.muted }}>{order.order_type === 'pickup' ? `🏪 Pickup: ${order.pickup_branch}${order.pickup_time ? ' · ' + order.pickup_time : ''}` : `📍 ${order.delivery_address?.slice(0,40)}${(order.delivery_address?.length||0)>40?'…':''}`} · {order.payment_method?.toUpperCase()}</span>
                 <span style={{ fontWeight: 700, fontSize: 15, color: G.green }}>₹{Number(order.total_amount).toLocaleString('en-IN')}</span>
               </div>
               {order.status !== 'cancelled' && (
