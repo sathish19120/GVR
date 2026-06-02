@@ -269,7 +269,13 @@ export default function Dashboard() {
   const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
 
-  useEffect(() => { load() }, [filter])
+  useEffect(() => {
+    const now = Date.now()
+    const stale = now - cacheRef.current.lastLoad > 60000
+    if (!cacheRef.current.loaded || stale) {
+      load()
+    }
+  }, [filter])
 
   // Auto refresh every 30 seconds — only refreshes order data silently
   useEffect(() => {
@@ -295,10 +301,10 @@ export default function Dashboard() {
   async function load() {
     setLoading(true)
     const [oRes, pRes, uRes, mRes] = await Promise.all([
-      supabase.from('orders').select('*, order_items(quantity, price_per_unit, product_id, name, weight_kg)').order('created_at',{ascending:false}),
+      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,notes,created_at,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(200),
       supabase.from('products').select('*').order('weight_kg'),
-      supabase.from('profiles').select('*'),
-      supabase.from('stock_movements').select('*, products(name)').order('created_at',{ascending:false}).limit(20),
+      supabase.from('profiles').select('id,username,full_name,role,phone,branch,created_at,active').order('created_at',{ascending:false}),
+      supabase.from('stock_movements').select('id,product_id,change_bags,type,note,created_at,products(name)').order('created_at',{ascending:false}).limit(30),
     ])
     const o = oRes.data || []
     const p = pRes.data || []
@@ -309,6 +315,8 @@ export default function Dashboard() {
     setStats({ revenue, orders:o.length, bags, pending:o.filter(x=>x.status==='pending').length, lowStock:p.filter(x=>x.stock_bags<=x.low_stock_threshold).length, customers:u.filter(x=>x.role==='customer').length })
     setOrders(o); setProducts(p); setUsers(u); setMovements(m)
     setChart(buildChart(o, filter))
+    cacheRef.current.loaded = true
+    cacheRef.current.lastLoad = Date.now()
     setLoading(false)
   }
 
