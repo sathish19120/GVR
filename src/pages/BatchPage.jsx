@@ -17,23 +17,13 @@ const inp = {
 
 const BRANCHES = ['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu']
 
-// ── QR Label Generator ────────────────────────────────────
+// ── Barcode Label Generator (Code 128) ───────────────────
 function QRLabel({ batch, onClose }) {
   const printRef = useRef()
 
-  const qrData = JSON.stringify({
-    batch: batch.batch_number,
-    product: batch.product_name,
-    weight: batch.weight_kg + 'kg',
-    packed: batch.packing_date,
-    bestBefore: batch.best_before,
-    origin: batch.origin_district,
-    mill: batch.mill_name,
-    fssai: batch.fssai_no,
-    verify: `https://gvr-lemon.vercel.app/verify/${batch.batch_number}`
-  })
-
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}&color=1E3A0F`
+  // Generate Code 128 barcode using barcodeapi.org (free, no key needed)
+  const barcodeVal = batch.batch_number
+  const barcodeUrl = `https://barcodeapi.org/api/128/${encodeURIComponent(barcodeVal)}`
 
   function printLabel() {
     const w = window.open('', '_blank')
@@ -43,91 +33,104 @@ function QRLabel({ batch, onClose }) {
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; background: #fff; }
-        .page { display: flex; flex-wrap: wrap; padding: 10mm; gap: 5mm; }
+        .page { display: flex; flex-wrap: wrap; padding: 8mm; gap: 4mm; justify-content: flex-start; }
         .label {
-          width: 90mm; border: 1.5px solid #27500A; border-radius: 4mm;
-          padding: 4mm; display: flex; gap: 3mm; align-items: flex-start;
-          page-break-inside: avoid; background: #fff;
+          width: 90mm; border: 1.5px solid #27500A; border-radius: 3mm;
+          padding: 3mm 4mm; page-break-inside: avoid; background: #fff;
         }
-        .qr { width: 28mm; height: 28mm; flex-shrink: 0; }
-        .info { flex: 1; }
-        .brand { font-size: 11pt; font-weight: 800; color: #27500A; margin-bottom: 1mm; }
-        .product { font-size: 9pt; font-weight: 700; color: #111; margin-bottom: 1mm; }
-        .telugu { font-size: 7pt; color: #666; margin-bottom: 2mm; }
-        .row { font-size: 7pt; color: #333; margin-bottom: 0.5mm; }
-        .row span { font-weight: 600; color: #111; }
-        .batch { font-size: 6.5pt; color: #666; margin-top: 1.5mm; padding-top: 1.5mm; border-top: 0.5px solid #ccc; }
-        .fssai { font-size: 6pt; color: #888; margin-top: 1mm; }
-        @media print { body { margin: 0; } }
+        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2mm; border-bottom: 0.5px solid #ccc; padding-bottom: 2mm; }
+        .brand { font-size: 10pt; font-weight: 800; color: #27500A; }
+        .telugu { font-size: 7pt; color: #555; }
+        .product { font-size: 9.5pt; font-weight: 700; color: #111; margin-bottom: 2mm; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5mm 4mm; margin-bottom: 2.5mm; }
+        .row { font-size: 6.5pt; color: #444; }
+        .row span { font-weight: 700; color: #111; display: block; font-size: 7pt; }
+        .barcode-wrap { text-align: center; margin: 2mm 0 1mm; }
+        .barcode-wrap img { height: 14mm; width: auto; max-width: 100%; }
+        .batch-num { text-align: center; font-size: 6.5pt; color: #333; font-family: Courier New, monospace; letter-spacing: 0.5px; margin-bottom: 1mm; }
+        .fssai { font-size: 5.5pt; color: #888; text-align: center; border-top: 0.5px solid #eee; padding-top: 1mm; }
+        @media print {
+          body { margin: 0; }
+          .page { padding: 5mm; gap: 3mm; }
+        }
       </style></head><body>
       <div class="page">
         ${Array(12).fill(0).map(() => `
         <div class="label">
-          <img class="qr" src="${qrUrl}" alt="QR" />
-          <div class="info">
-            <div class="brand">🌾 Green Village Rice</div>
-            <div class="product">${batch.product_name}</div>
-            <div class="telugu">గ్రీన్ విలేజ్ రైస్</div>
-            <div class="row">Packed: <span>${new Date(batch.packing_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span></div>
-            <div class="row">Best Before: <span>${new Date(batch.best_before).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span></div>
-            <div class="row">Weight: <span>${batch.weight_kg}kg</span></div>
-            <div class="row">Origin: <span>${batch.origin_district || 'Telangana'}</span></div>
-            <div class="batch">Batch: ${batch.batch_number} · ${batch.mill_name || 'GVR Mill'}</div>
-            <div class="fssai">FSSAI: ${batch.fssai_no}</div>
+          <div class="header">
+            <div>
+              <div class="brand">&#x1F33E; Green Village Rice</div>
+              <div class="telugu">&#x0C17;&#x0C4D;&#x0C30;&#x0C40;&#x0C28;&#x0C4D; &#x0C35;&#x0C3F;&#x0C32;&#x0C47;&#x0C1C;&#x0C4D; &#x0C30;&#x0C48;&#x0C38;&#x0C4D;</div>
+            </div>
+            <div style="font-size:7pt;color:#27500A;font-weight:700;text-align:right;">${batch.weight_kg}kg<br/>Pack</div>
           </div>
+          <div class="product">${batch.product_name}</div>
+          <div class="grid">
+            <div class="row">Packed On<span>${new Date(batch.packing_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span></div>
+            <div class="row">Best Before<span>${new Date(batch.best_before).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span></div>
+            <div class="row">Origin<span>${batch.origin_district || 'Telangana'}</span></div>
+            <div class="row">Mill<span>${batch.mill_name || 'GVR Mill'}</span></div>
+          </div>
+          <div class="barcode-wrap">
+            <img src="${barcodeUrl}" alt="${barcodeVal}" />
+          </div>
+          <div class="batch-num">${batch.batch_number}</div>
+          <div class="fssai">FSSAI Lic. No: ${batch.fssai_no} &nbsp;|&nbsp; Hyderabad, Telangana</div>
         </div>`).join('')}
       </div>
       </body></html>
     `)
     w.document.close()
-    setTimeout(() => w.print(), 800)
+    setTimeout(() => w.print(), 1200)
   }
 
   return (
     <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
-      <div style={{ background:G.white,borderRadius:20,width:'100%',maxWidth:500,padding:28,maxHeight:'90vh',overflowY:'auto' }}>
+      <div style={{ background:G.white,borderRadius:20,width:'100%',maxWidth:520,padding:28,maxHeight:'90vh',overflowY:'auto' }}>
         <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20 }}>
-          <h3 style={{ margin:0,fontSize:18,fontWeight:700 }}>QR Label — {batch.batch_number}</h3>
+          <h3 style={{ margin:0,fontSize:18,fontWeight:700 }}>Barcode Label — {batch.batch_number}</h3>
           <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:G.muted }}>✕</button>
         </div>
 
         {/* Label preview */}
-        <div ref={printRef} style={{ border:`2px solid ${G.green}`,borderRadius:12,padding:16,marginBottom:20,display:'flex',gap:14,alignItems:'flex-start',background:'#FAFFF7' }}>
-          <img src={qrUrl} alt="QR Code" width={100} height={100} style={{ borderRadius:8,border:`1px solid ${G.border}`,flexShrink:0 }} />
-          <div style={{ flex:1 }}>
-            <p style={{ margin:'0 0 3px',fontWeight:800,fontSize:15,color:G.greenDark }}>🌾 Green Village Rice</p>
-            <p style={{ margin:'0 0 2px',fontWeight:700,fontSize:14,color:G.text }}>{batch.product_name}</p>
-            <p style={{ margin:'0 0 8px',fontSize:11,color:G.muted }}>గ్రీన్ విలేజ్ రైస్</p>
+        <div ref={printRef} style={{ border:`2px solid ${G.green}`,borderRadius:12,padding:16,marginBottom:16,background:'#FAFFF7' }}>
+          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10,paddingBottom:10,borderBottom:`1px solid ${G.border}` }}>
+            <div>
+              <p style={{ margin:'0 0 2px',fontWeight:800,fontSize:15,color:G.greenDark }}>🌾 Green Village Rice</p>
+              <p style={{ margin:0,fontSize:11,color:G.muted }}>గ్రీన్ విలేజ్ రైస్</p>
+            </div>
+            <span style={{ fontWeight:700,fontSize:15,color:G.green }}>{batch.weight_kg}kg</span>
+          </div>
+          <p style={{ margin:'0 0 10px',fontWeight:700,fontSize:14 }}>{batch.product_name}</p>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:12,fontSize:12 }}>
             {[
-              ['Batch', batch.batch_number],
-              ['Packed', new Date(batch.packing_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})],
+              ['Packed On', new Date(batch.packing_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})],
               ['Best Before', new Date(batch.best_before).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})],
-              ['Weight', `${batch.weight_kg}kg`],
               ['Origin', batch.origin_district || 'Telangana'],
               ['Mill', batch.mill_name || 'GVR Mill'],
-              ['FSSAI', batch.fssai_no],
             ].map(([k,v])=>(
-              <div key={k} style={{ display:'flex',gap:6,fontSize:11,marginBottom:2 }}>
-                <span style={{ color:G.muted,minWidth:60 }}>{k}:</span>
-                <span style={{ fontWeight:600,color:G.text }}>{v}</span>
+              <div key={k}>
+                <p style={{ margin:0,fontSize:10,color:G.muted }}>{k}</p>
+                <p style={{ margin:0,fontWeight:600,fontSize:12 }}>{v}</p>
               </div>
             ))}
           </div>
+          {/* Barcode preview */}
+          <div style={{ textAlign:'center',background:G.white,padding:'10px',borderRadius:8,border:`1px solid ${G.border}`,marginBottom:8 }}>
+            <img src={barcodeUrl} alt={barcodeVal} style={{ height:56,maxWidth:'100%' }} />
+            <p style={{ margin:'4px 0 0',fontSize:10,fontFamily:'monospace',letterSpacing:'0.5px',color:G.text }}>{barcodeVal}</p>
+          </div>
+          <p style={{ margin:0,fontSize:10,color:G.muted,textAlign:'center' }}>FSSAI: {batch.fssai_no}</p>
         </div>
 
-        <div style={{ background:G.blueLight,borderRadius:10,padding:'10px 14px',marginBottom:16,fontSize:12,color:G.blue }}>
-          ℹ️ Click Print to generate a sheet of <strong>12 labels</strong> ready to stick on bags
+        <div style={{ background:G.greenLight,borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12,color:G.greenDark,display:'flex',gap:8,alignItems:'center' }}>
+          <span>📋</span>
+          <span>Prints <strong>12 labels per sheet</strong> — A4 paper, 2 columns × 6 rows. Each label is 90mm wide with Code 128 barcode.</span>
         </div>
 
-        <div style={{ display:'flex',gap:10 }}>
-          <button onClick={printLabel} style={{ flex:1,padding:13,background:G.green,color:G.white,border:'none',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer' }}>
-            🖨 Print 12 Labels
-          </button>
-          <a href={qrUrl} download={`GVR-QR-${batch.batch_number}.png`}
-            style={{ flex:1,padding:13,background:G.blueLight,color:G.blue,border:'none',borderRadius:12,fontSize:14,fontWeight:700,cursor:'pointer',textDecoration:'none',textAlign:'center',display:'flex',alignItems:'center',justifyContent:'center' }}>
-            ⬇ Download QR
-          </a>
-        </div>
+        <button onClick={printLabel} style={{ width:'100%',padding:13,background:G.green,color:G.white,border:'none',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer' }}>
+          🖨 Print 12 Barcode Labels
+        </button>
       </div>
     </div>
   )
@@ -241,7 +244,7 @@ function CreateBatchModal({ products, vendors, onClose, onSaved }) {
           )}
         </div>
         <button onClick={save} disabled={saving} style={{ width:'100%',marginTop:20,padding:13,background:saving?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer' }}>
-          {saving ? 'Creating...' : '✓ Create Batch & Generate QR'}
+          {saving ? 'Creating...' : '✓ Create Batch & Generate Barcode'}
         </button>
       </div>
     </div>
@@ -300,7 +303,7 @@ export default function BatchPage() {
       <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:12 }}>
         <div>
           <h2 style={{ margin:'0 0 4px',fontSize:18,fontWeight:700,color:G.text }}>📦 Batch Tracking</h2>
-          <p style={{ margin:0,fontSize:13,color:G.muted }}>Create batches, generate QR labels and track every bag</p>
+          <p style={{ margin:0,fontSize:13,color:G.muted }}>Create batches, generate barcode labels and track every bag</p>
         </div>
         <button onClick={()=>setShowCreate(true)} style={{ background:G.green,color:G.white,border:'none',borderRadius:10,padding:'10px 20px',fontSize:13,fontWeight:700,cursor:'pointer' }}>
           + Create New Batch
@@ -369,15 +372,14 @@ export default function BatchPage() {
             <div key={b.id} style={{ background:G.white,borderRadius:16,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${isExpired?G.red:isExpiringSoon?G.amber:G.border}` }}>
               <div style={{ display:'flex' }}>
 
-                {/* Left — QR */}
-                <div style={{ width:120,flexShrink:0,background:'#F9FAF7',borderRight:`1px solid ${G.border}`,padding:'14px 12px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8 }}>
+                {/* Left — Barcode */}
+                <div style={{ width:130,flexShrink:0,background:'#F9FAF7',borderRight:`1px solid ${G.border}`,padding:'12px 10px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6 }}>
                   <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(`https://gvr-lemon.vercel.app/verify/${b.batch_number}`)}&color=1E3A0F`}
-                    alt="QR"
-                    width={80} height={80}
-                    style={{ borderRadius:6,border:`1px solid ${G.border}` }}
+                    src={`https://barcodeapi.org/api/128/${encodeURIComponent(b.batch_number)}`}
+                    alt={b.batch_number}
+                    style={{ width:'100%',height:40,objectFit:'contain',background:G.white,padding:'3px',borderRadius:4,border:`1px solid ${G.border}` }}
                   />
-                  <p style={{ margin:0,fontSize:9,color:G.muted,textAlign:'center',lineHeight:1.3 }}>{b.batch_number}</p>
+                  <p style={{ margin:0,fontSize:8,color:G.muted,textAlign:'center',fontFamily:'monospace',lineHeight:1.3,wordBreak:'break-all' }}>{b.batch_number}</p>
                   <button onClick={()=>setShowQR(b)} style={{ background:G.green,color:G.white,border:'none',borderRadius:6,padding:'4px 8px',fontSize:10,fontWeight:700,cursor:'pointer',width:'100%' }}>
                     🖨 Print
                   </button>
@@ -436,7 +438,7 @@ export default function BatchPage() {
                   <div style={{ display:'flex',gap:6 }}>
                     {b.status==='active' && (
                       <>
-                        <button onClick={()=>setShowQR(b)} style={{ background:G.blueLight,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.blue,cursor:'pointer' }}>🖨 Print Labels</button>
+                        <button onClick={()=>setShowQR(b)} style={{ background:G.blueLight,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.blue,cursor:'pointer' }}>🖨 Print Barcode Labels</button>
                         <button onClick={()=>updateStatus(b.id,'exhausted')} style={{ background:'#F3F4F6',border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.muted,cursor:'pointer' }}>Mark Exhausted</button>
                         <button onClick={()=>updateStatus(b.id,'recalled')} style={{ background:G.redLight,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.red,cursor:'pointer' }}>⚠ Recall</button>
                       </>
