@@ -16,12 +16,14 @@ async function hashPassword(password) {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
 
-const ROLES = ['superadmin','admin','delivery','customer']
+const ROLES = ['superadmin','admin','branch_executive','delivery','customer']
+const BRANCHES = ['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu']
 const ROLE_COLORS = {
-  superadmin: [G.purple, G.purpleLight],
-  admin:      [G.blue,   G.blueLight],
-  delivery:   [G.amber,  G.amberLight],
-  customer:   [G.green,  G.greenLight],
+  superadmin:       [G.purple, G.purpleLight],
+  admin:            [G.blue,   G.blueLight],
+  branch_executive: ['#0891B2','#ECFEFF'],
+  delivery:         [G.amber,  G.amberLight],
+  customer:         [G.green,  G.greenLight],
 }
 
 function RoleBadge({ role }) {
@@ -87,6 +89,21 @@ function CreateUserModal({ onClose, onSaved }) {
           <Field label="Phone">
             <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Mobile number" style={inp} />
           </Field>
+          {role === 'branch_executive' && (
+            <Field label="Assign Branch *">
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                {BRANCHES.map(b => (
+                  <button key={b} type="button" onClick={() => setBranch(b)} style={{
+                    padding:'9px 8px', borderRadius:9,
+                    border:`2px solid ${branch===b?'#0891B2':G.border}`,
+                    background:branch===b?'#ECFEFF':'#fff',
+                    cursor:'pointer', fontSize:12, fontWeight:600,
+                    color:branch===b?'#0891B2':G.muted
+                  }}>{b}</button>
+                ))}
+              </div>
+            </Field>
+          )}
           <Field label="Role">
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
               {ROLES.map(r => {
@@ -144,6 +161,21 @@ function EditUserModal({ user: u, onClose, onSaved }) {
           <Field label="Phone">
             <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} style={inp} />
           </Field>
+          {role === 'branch_executive' && (
+            <Field label="Assign Branch *">
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                {BRANCHES.map(b => (
+                  <button key={b} type="button" onClick={() => setBranch(b)} style={{
+                    padding:'9px 8px', borderRadius:9,
+                    border:`2px solid ${branch===b?'#0891B2':G.border}`,
+                    background:branch===b?'#ECFEFF':'#fff',
+                    cursor:'pointer', fontSize:12, fontWeight:600,
+                    color:branch===b?'#0891B2':G.muted
+                  }}>{b}</button>
+                ))}
+              </div>
+            </Field>
+          )}
           <Field label="Role">
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
               {ROLES.map(r => {
@@ -432,7 +464,7 @@ export default function AdminPage() {
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
                 <thead>
                   <tr style={{ background:'#F9FAF7' }}>
-                    {['#','Name','Username','Role','Phone','Status','Joined','Actions'].map(h=>(
+                    {['#','Name','Username','Role','Branch','Phone','Status','Joined','Actions'].map(h=>(
                       <th key={h} style={{ padding:'11px 14px', textAlign:'left', fontSize:11, fontWeight:700, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'0.5px', whiteSpace:'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -455,6 +487,7 @@ export default function AdminPage() {
                       <td style={{ padding:'12px 14px', color:G.muted, fontFamily:'monospace', fontSize:12 }}>{u.username}</td>
                       <td style={{ padding:'12px 14px' }}><RoleBadge role={u.role} /></td>
                       <td style={{ padding:'12px 14px', color:G.muted, fontSize:12 }}>{u.phone || '—'}</td>
+                      <td style={{ padding:'12px 14px', color:u.branch?'#0891B2':G.muted, fontSize:12, fontWeight:u.branch?600:400 }}>{u.branch || '—'}</td>
                       <td style={{ padding:'12px 14px' }}>
                         <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:20, background:u.active!==false?G.greenLight:G.redLight, color:u.active!==false?G.green:G.red }}>
                           {u.active !== false ? 'Active' : 'Inactive'}
