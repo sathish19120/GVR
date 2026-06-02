@@ -38,6 +38,7 @@ function CreateUserModal({ onClose, onSaved }) {
   const [password, setPassword]   = useState('')
   const [role, setRole]           = useState('customer')
   const [phone, setPhone]         = useState('')
+  const [branch, setBranch]       = useState('')
   const [showPass, setShowPass]   = useState(false)
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
@@ -45,6 +46,7 @@ function CreateUserModal({ onClose, onSaved }) {
   async function save() {
     if (!username.trim() || !password.trim()) { setError('Username and password are required'); return }
     if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (role === 'branch_executive' && !branch) { setError('Please select a branch for branch executive'); return }
     setSaving(true); setError('')
     try {
       const clean = username.trim().toLowerCase()
@@ -53,11 +55,11 @@ function CreateUserModal({ onClose, onSaved }) {
       const hashed = await hashPassword(password)
       const { error: err } = await supabase.from('profiles').insert({
         username: clean, full_name: fullName, password_hash: hashed,
-        role, phone, created_at: new Date().toISOString()
+        role, phone, branch: branch || null, created_at: new Date().toISOString()
       })
       if (err) { setError(err.message); setSaving(false); return }
       onSaved(); onClose()
-    } catch(e) { setError(e.message) }
+    } catch (e) { setError(e.message) }
     finally { setSaving(false) }
   }
 
@@ -66,29 +68,50 @@ function CreateUserModal({ onClose, onSaved }) {
       <div style={{ background:G.white, borderRadius:20, width:'100%', maxWidth:460, padding:28, maxHeight:'90vh', overflowY:'auto' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
           <h3 style={{ margin:0, fontSize:20, fontWeight:700, color:G.text }}>Create New User</h3>
-          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:G.muted }}>✕</button>
+          <button type="button" onClick={onClose} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:G.muted }}>✕</button>
         </div>
 
         {error && <div style={{ background:G.redLight, border:`1px solid #FECACA`, borderRadius:10, padding:'10px 14px', marginBottom:16, color:G.red, fontSize:13 }}>{error}</div>}
 
         <div style={{ display:'grid', gap:16 }}>
           <Field label="Full Name">
-            <input type="text" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Enter full name" style={inp} />
+            <input type="text" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Enter full name" style={inp}
+              onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
           </Field>
           <Field label="Username *">
-            <input type="text" value={username} onChange={e=>setUsername(e.target.value.trim().toLowerCase())} placeholder="Enter username (no spaces)" style={inp} />
+            <input type="text" value={username} onChange={e=>setUsername(e.target.value.trim().toLowerCase())} placeholder="Enter username (no spaces)" style={inp}
+              onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
           </Field>
           <Field label="Password *">
             <div style={{ position:'relative' }}>
-              <input type={showPass?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Min 6 characters" style={{ ...inp, paddingRight:40 }} />
+              <input type={showPass?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Min 6 characters" style={{ ...inp, paddingRight:40 }}
+                onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
               <button type="button" onClick={()=>setShowPass(!showPass)} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:12 }}>
                 {showPass?'Hide':'Show'}
               </button>
             </div>
           </Field>
           <Field label="Phone">
-            <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Mobile number" style={inp} />
+            <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Mobile number" style={inp}
+              onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
           </Field>
+
+          <Field label="Role">
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {ROLES.map(r => {
+                const [color, bg] = ROLE_COLORS[r] || [G.muted, '#F3F4F6']
+                return (
+                  <button key={r} type="button" onClick={()=>{ setRole(r); if(r !== 'branch_executive') setBranch('') }} style={{
+                    padding:'10px', borderRadius:10,
+                    border:`2px solid ${role===r?color:G.border}`,
+                    background:role===r?bg:G.white, cursor:'pointer', fontWeight:600,
+                    fontSize:12, color:role===r?color:G.muted, textTransform:'capitalize'
+                  }}>{r.replace('_',' ')}</button>
+                )
+              })}
+            </div>
+          </Field>
+
           {role === 'branch_executive' && (
             <Field label="Assign Branch *">
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -96,37 +119,30 @@ function CreateUserModal({ onClose, onSaved }) {
                   <button key={b} type="button" onClick={() => setBranch(b)} style={{
                     padding:'9px 8px', borderRadius:9,
                     border:`2px solid ${branch===b?'#0891B2':G.border}`,
-                    background:branch===b?'#ECFEFF':'#fff',
+                    background:branch===b?'#ECFEFF':G.white,
                     cursor:'pointer', fontSize:12, fontWeight:600,
                     color:branch===b?'#0891B2':G.muted
                   }}>{b}</button>
                 ))}
               </div>
+              {!branch && <p style={{ margin:'6px 0 0', fontSize:11, color:G.amber }}>⚠ Select a branch to assign this executive</p>}
             </Field>
           )}
-          <Field label="Role">
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-              {ROLES.map(r => {
-                const [color, bg] = ROLE_COLORS[r]
-                return (
-                  <button key={r} type="button" onClick={()=>setRole(r)} style={{
-                    padding:'10px', borderRadius:10, border:`2px solid ${role===r?color:G.border}`,
-                    background:role===r?bg:G.white, cursor:'pointer', fontWeight:600,
-                    fontSize:13, color:role===r?color:G.muted, textTransform:'capitalize'
-                  }}>{r}</button>
-                )
-              })}
-            </div>
-          </Field>
         </div>
 
-        <button onClick={save} disabled={saving} style={{ width:'100%', marginTop:24, padding:13, background:saving?'#9CA3AF':G.green, color:G.white, border:'none', borderRadius:12, fontSize:15, fontWeight:700, cursor:'pointer' }}>
+        <button type="button" onClick={save} disabled={saving} style={{
+          width:'100%', marginTop:24, padding:13,
+          background:saving?'#9CA3AF':G.green,
+          color:G.white, border:'none', borderRadius:12,
+          fontSize:15, fontWeight:700, cursor:saving?'not-allowed':'pointer'
+        }}>
           {saving ? 'Creating...' : 'Create User'}
         </button>
       </div>
     </div>
   )
 }
+
 
 // ── Edit User Modal ───────────────────────────────────────
 function EditUserModal({ user: u, onClose, onSaved }) {
