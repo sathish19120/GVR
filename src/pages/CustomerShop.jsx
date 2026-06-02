@@ -405,7 +405,7 @@ export default function CustomerShop() {
       </div>
 
       {tab === 'myorders' && (
-        <div style={{ maxWidth: 600, margin: '0 auto', padding: 16 }}>
+        <div className='page-content' style={{ maxWidth: 600, margin: '0 auto', padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 16px' }}>
             <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: G.text }}>Orders for {user?.full_name || user?.username}</p>
             <button onClick={loadMyOrders} style={{ background: G.greenLight, border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, color: G.green, cursor: 'pointer' }}>↻ Refresh</button>
@@ -461,7 +461,7 @@ export default function CustomerShop() {
       )}
 
       {tab === 'shop' && (
-        <div style={{ maxWidth: 600, margin: '0 auto', padding: 16 }}>
+        <div className='page-content' style={{ maxWidth: 600, margin: '0 auto', padding: 16 }}>
           {error && (
             <div style={{ background: G.redLight, border: `1px solid #FECACA`, borderRadius: 10, padding: '10px 14px', marginBottom: 16, color: G.red, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
               <span>{error}</span>
