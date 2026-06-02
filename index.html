@@ -8,17 +8,21 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="GVR" />
-    <meta name="description" content="Green Village Rice — Fresh Sona Masoori delivered to your door" />
     <title>Green Village Rice</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
       html {
         font-size: 16px;
         -webkit-text-size-adjust: 100%;
         height: -webkit-fill-available;
+        overflow-x: hidden;
       }
 
       body {
@@ -26,60 +30,207 @@
         overflow-x: hidden;
         min-height: 100vh;
         min-height: -webkit-fill-available;
-        background: #f5f5f5;
+        background: #F4F6F3;
+        width: 100%;
       }
 
       #root {
         min-height: 100vh;
         min-height: -webkit-fill-available;
+        width: 100%;
+        overflow-x: hidden;
       }
 
       /* Prevent iOS auto-zoom on input focus */
       input, select, textarea, button {
         font-family: inherit;
-        font-size: 16px;
+        font-size: 16px !important;
         -webkit-tap-highlight-color: transparent;
         touch-action: manipulation;
       }
 
-      /* Smooth scrolling on iOS */
-      * { -webkit-overflow-scrolling: touch; }
-
-      /* Safe areas for notch phones */
-      .safe-area-top    { padding-top: env(safe-area-inset-top); }
-      .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
-
-      /* Responsive grid helpers */
-      @media (max-width: 640px) {
-        /* Stack auth page on mobile */
-        [data-auth-left] { display: none !important; }
-        [data-auth-right] { width: 100% !important; padding: 28px 20px !important; }
-
-        /* Smaller font on cards */
-        [data-stat-value] { font-size: 20px !important; }
-
-        /* Full width modals on mobile */
-        [data-modal] {
-          border-radius: 20px 20px 0 0 !important;
-          position: fixed !important;
-          bottom: 0 !important;
-          top: auto !important;
-          max-height: 92vh !important;
-          width: 100% !important;
-          max-width: 100% !important;
-        }
+      /* Smooth momentum scrolling on iOS */
+      * {
+        -webkit-overflow-scrolling: touch;
       }
 
-      @media (max-width: 480px) {
-        /* Tighter padding on small phones */
-        [data-page-content] { padding: 12px !important; }
-        [data-card] { padding: 14px !important; }
-      }
-
-      /* Scrollbar styling */
+      /* Thin scrollbar */
       ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+      /* ── MOBILE: <= 640px ── */
+      @media (max-width: 640px) {
+
+        /* Auth page — hide left brand panel, full width form */
+        .auth-left  { display: none !important; }
+        .auth-right {
+          width: 100% !important;
+          padding: 36px 24px 48px !important;
+          min-height: 100vh;
+          display: flex !important;
+          align-items: center;
+          justify-content: center;
+        }
+        .auth-right > div { width: 100% !important; max-width: 100% !important; }
+
+        /* Dashboard sidebar — slide-in overlay */
+        .dash-sidebar {
+          position: fixed !important;
+          z-index: 200 !important;
+          top: 0 !important;
+          left: 0 !important;
+          height: 100vh !important;
+          transform: translateX(-100%) !important;
+          transition: transform 0.25s ease !important;
+          box-shadow: 4px 0 24px rgba(0,0,0,0.18) !important;
+          width: 220px !important;
+        }
+        .dash-sidebar.open {
+          transform: translateX(0) !important;
+        }
+
+        /* Dashboard main — full width */
+        .dash-main {
+          padding: 12px !important;
+        }
+
+        /* Topbar */
+        .dash-topbar {
+          padding: 0 12px !important;
+        }
+
+        /* Stat grid — 2 columns on mobile */
+        .stat-grid {
+          grid-template-columns: repeat(2, 1fr) !important;
+          gap: 10px !important;
+        }
+
+        /* Order cards — stack vertically */
+        .order-card-inner {
+          flex-direction: column !important;
+        }
+        .order-left-panel {
+          width: 100% !important;
+          border-right: none !important;
+          border-bottom: 1px solid #E5E7EB !important;
+        }
+
+        /* Tables — horizontal scroll */
+        .table-scroll {
+          overflow-x: auto !important;
+          -webkit-overflow-scrolling: touch !important;
+        }
+
+        /* Modals — bottom sheet on mobile */
+        [data-modal="true"] {
+          align-items: flex-end !important;
+        }
+        [data-modal="true"] > div {
+          border-radius: 20px 20px 0 0 !important;
+          max-height: 92vh !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+        }
+
+        /* Profile modal */
+        [data-profile-modal="true"] > div {
+          border-radius: 20px 20px 0 0 !important;
+          max-height: 95vh !important;
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+
+        /* Branch dashboard sidebar */
+        .branch-sidebar {
+          position: fixed !important;
+          z-index: 200 !important;
+          transform: translateX(-100%) !important;
+          transition: transform 0.25s ease !important;
+        }
+        .branch-sidebar.open {
+          transform: translateX(0) !important;
+        }
+
+        /* Hide text labels in collapsed nav */
+        .nav-label { display: none; }
+
+        /* Full width buttons */
+        .btn-group {
+          flex-direction: column !important;
+        }
+        .btn-group button, .btn-group a {
+          width: 100% !important;
+        }
+
+        /* Vendor portal header buttons */
+        .vendor-header-btns {
+          gap: 4px !important;
+        }
+        .vendor-header-btns button {
+          padding: 4px 8px !important;
+          font-size: 11px !important;
+        }
+
+        /* Cart sticky button safe area */
+        .sticky-checkout {
+          bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+        }
+
+        /* Page content padding */
+        .page-content {
+          padding: 12px 12px calc(80px + env(safe-area-inset-bottom)) !important;
+        }
+
+        /* Filters wrap */
+        .filter-row {
+          flex-wrap: wrap !important;
+          gap: 6px !important;
+        }
+        .filter-row button {
+          font-size: 11px !important;
+          padding: 5px 10px !important;
+        }
+
+        /* Hide non-essential table columns */
+        .hide-mobile { display: none !important; }
+
+        /* Batch page barcode cards */
+        .batch-card-inner {
+          flex-direction: column !important;
+        }
+        .batch-barcode-col {
+          width: 100% !important;
+          border-right: none !important;
+          border-bottom: 1px solid #E5E7EB !important;
+          flex-direction: row !important;
+          gap: 12px !important;
+          padding: 10px 14px !important;
+        }
+      }
+
+      /* ── TABLET: 641px – 1024px ── */
+      @media (min-width: 641px) and (max-width: 1024px) {
+        .auth-left  { display: none !important; }
+        .auth-right { width: 100% !important; padding: 48px 40px !important; }
+
+        .stat-grid {
+          grid-template-columns: repeat(3, 1fr) !important;
+        }
+
+        .dash-main { padding: 18px !important; }
+      }
+
+      /* ── DESKTOP: > 1024px ── */
+      @media (min-width: 1025px) {
+        .dash-overlay { display: none !important; }
+        .dash-sidebar { transform: none !important; position: sticky !important; }
+      }
+
+      /* Safe area insets for notch phones */
+      .safe-top    { padding-top:    env(safe-area-inset-top) !important; }
+      .safe-bottom { padding-bottom: env(safe-area-inset-bottom) !important; }
     </style>
   </head>
   <body>
