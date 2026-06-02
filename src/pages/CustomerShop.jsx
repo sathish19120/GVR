@@ -377,10 +377,18 @@ export default function CustomerShop() {
               🛒 {totalItems} · ₹{totalAmount}
             </button>
           )}
-          <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: G.white }}>
-            {user?.full_name?.[0] || user?.username?.[0]?.toUpperCase() || 'U'}
-          </div>
-          <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '5px 12px', color: G.white, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={() => setShowProfile(true)} style={{ display:'flex', alignItems:'center', gap:7, background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:20, padding:'4px 12px 4px 4px', cursor:'pointer' }}>
+            <div style={{ width:26, height:26, borderRadius:'50%', background:'rgba(255,255,255,0.25)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:G.white, overflow:'hidden', flexShrink:0 }}>
+              {user?.avatar_url
+                ? <img src={user.avatar_url} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                : (user?.full_name?.[0] || user?.username?.[0]?.toUpperCase() || 'U')
+              }
+            </div>
+            <span style={{ color:G.white, fontSize:12, fontWeight:600, maxWidth:70, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {user?.full_name?.split(' ')[0] || user?.username}
+            </span>
+          </button>
+          <button onClick={handleLogout} style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:8, padding:'5px 12px', color:G.white, fontSize:12, fontWeight:600, cursor:'pointer' }}>
             Logout
           </button>
         </div>
