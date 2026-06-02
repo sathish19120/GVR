@@ -404,11 +404,12 @@ export default function AdminPage() {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, active: !active } : u))
   }
 
+  const ROLE_ORDER = { superadmin:0, admin:1, branch_executive:2, delivery:3, customer:4 }
   const filtered = users.filter(u => {
     const matchSearch = !search || u.username?.includes(search.toLowerCase()) || u.full_name?.toLowerCase().includes(search.toLowerCase())
     const matchRole = filterRole === 'all' || u.role === filterRole
     return matchSearch && matchRole
-  })
+  }).sort((a,b) => (ROLE_ORDER[a.role]??99) - (ROLE_ORDER[b.role]??99))
 
   const TABS = [
     { key:'users',   label:'👥 Manage Users' },
