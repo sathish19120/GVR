@@ -336,36 +336,8 @@ export default function Dashboard() {
 
   return (
     <div style={{ display:'flex', minHeight:'100vh', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
-      <style>{`
-        @media (max-width: 768px) {
-          .dash-sidebar {
-            position: fixed !important;
-            z-index: 100;
-            height: 100vh;
-            transform: translateX(-100%);
-            transition: transform 0.25s ease;
-            box-shadow: 4px 0 20px rgba(0,0,0,0.15);
-          }
-          .dash-sidebar.open { transform: translateX(0) !important; }
-          .dash-overlay {
-            display: block !important;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.4);
-            z-index: 99;
-          }
-          .dash-topbar { padding: 0 14px !important; }
-          .dash-topbar-center { display: none !important; }
-          .dash-main { padding: 14px !important; }
-          .dash-filter-btns span { display: none; }
-        }
-        @media (min-width: 769px) {
-          .dash-overlay { display: none !important; }
-          .dash-sidebar { transform: none !important; }
-        }
-      `}</style>
       {/* Mobile overlay — closes sidebar when tapped */}
-      <div className="dash-overlay" style={{ display:'none' }} onClick={() => setCollapsed(true)} />
+      <div className="dash-overlay" style={{ display:'none', position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:199 }} onClick={() => setCollapsed(true)} />
 
 
       {/* TOP NAV MODALS */}
@@ -542,7 +514,7 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <main className="dash-main" style={{ flex:1, padding:'24px', overflowY:'auto' }}>
+        <main className="dash-main" style={{ flex:1, padding:'24px', overflowY:'auto', minWidth:0, maxWidth:'100%' }}>
           {loading ? <div style={{ textAlign:'center', padding:80, color:G.muted }}>Loading...</div> : <>
 
           {/* DASHBOARD */}
@@ -1171,7 +1143,7 @@ export default function Dashboard() {
 
 function Table({ headers, children }) {
   return (
-    <div style={{ overflowX:'auto' }}>
+    <div className='table-scroll' style={{ overflowX:'auto' }}>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
         <thead>
           <tr style={{ background:'#F9FAF7' }}>
