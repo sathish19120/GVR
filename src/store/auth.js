@@ -6,7 +6,7 @@ const SESSION_KEY    = 'gvr_user'
 const SESSION_EXPIRY = 8 * 60 * 60 * 1000  // 8 hours
 const MAX_ATTEMPTS   = 5
 const LOCKOUT_TIME   = 15 * 60 * 1000       // 15 minutes
-const SALT           = 'gvr_salt_2026_v2'
+const SALT           = 'gvr_salt_2026'
 
 // ── Password hashing (SHA-256 + salt) ─────────────────────
 async function hashPassword(password) {
@@ -116,8 +116,13 @@ export const useAuth = create((set, get) => ({
     try {
       const clean = sanitize(username).toLowerCase()
 
-      // Check lockout
-      if (isLockedOut(clean)) {
+      // Check lockout — only applies to customer/delivery/vendor roles
+      // First do a quick role check before applying lockout
+      const { data: roleCheck } = await supabase
+        .from('profiles').select('role').eq('username', clean).single()
+      const isAdminRole = roleCheck?.role === 'superadmin' || roleCheck?.role === 'admin'
+
+      if (!isAdminRole && isLockedOut(clean)) {
         const mins = remainingLockout(clean)
         set({ error: `Too many failed attempts. Try again in ${mins} minute${mins>1?'s':''}` })
         return false
@@ -135,13 +140,17 @@ export const useAuth = create((set, get) => ({
         .single()
 
       if (error || !data) {
-        recordAttempt(clean, false)
-        const rec = attempts[clean]
-        const remaining = MAX_ATTEMPTS - (rec?.count || 0)
-        if (remaining <= 2 && remaining > 0) {
-          set({ error: `Invalid username or password. ${remaining} attempt${remaining>1?'s':''} remaining before lockout.` })
-        } else if (remaining <= 0) {
-          set({ error: `Account locked for 15 minutes due to too many failed attempts` })
+        if (!isAdminRole) {
+          recordAttempt(clean, false)
+          const rec = attempts[clean]
+          const remaining = MAX_ATTEMPTS - (rec?.count || 0)
+          if (remaining <= 2 && remaining > 0) {
+            set({ error: `Invalid username or password. ${remaining} attempt${remaining>1?'s':''} remaining before lockout.` })
+          } else if (remaining <= 0) {
+            set({ error: `Account locked for 15 minutes due to too many failed attempts.` })
+          } else {
+            set({ error: 'Invalid username or password' })
+          }
         } else {
           set({ error: 'Invalid username or password' })
         }
