@@ -16,7 +16,7 @@ async function hashPassword(password) {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
 
-const ROLES = ['superadmin','admin','branch_executive','delivery','customer']
+const ROLES = ['superadmin','admin','branch_executive','delivery','customer','vendor']
 const BRANCHES = ['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu']
 const ROLE_COLORS = {
   superadmin:       [G.purple, G.purpleLight],
@@ -24,6 +24,7 @@ const ROLE_COLORS = {
   branch_executive: ['#0891B2','#ECFEFF'],
   delivery:         [G.amber,  G.amberLight],
   customer:         [G.green,  G.greenLight],
+  vendor:           ['#0E7490','#ECFEFF'],
 }
 
 function RoleBadge({ role }) {
