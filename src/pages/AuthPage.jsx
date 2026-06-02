@@ -39,7 +39,51 @@ export default function AuthPage() {
   const { signIn, signUp, error, clearError, loading } = useAuth()
   const navigate = useNavigate()
 
+  const [forgotUsername, setForgotUsername] = useState('')
+  const [forgotMsg, setForgotMsg]           = useState('')
+  const [forgotErr, setForgotErr]           = useState('')
+  const [forgotLoading, setForgotLoading]   = useState(false)
+  const [newPwd, setNewPwd]                 = useState('')
+  const [confirmPwd, setConfirmPwd]         = useState('')
+  const [resetStep, setResetStep]           = useState(1) // 1=enter username, 2=enter new password
+  const [resetUser, setResetUser]           = useState(null)
+
   const mismatch = mode === 'signup' && confirm && password !== confirm
+
+  async function checkUsername() {
+    if (!forgotUsername.trim()) { setForgotErr('Enter your username'); return }
+    setForgotLoading(true); setForgotErr('')
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, role')
+        .eq('username', forgotUsername.trim().toLowerCase())
+        .single()
+      if (!data) { setForgotErr('Username not found. Check and try again.'); setForgotLoading(false); return }
+      setResetUser(data)
+      setResetStep(2)
+    } catch(e) { setForgotErr('Username not found') }
+    finally { setForgotLoading(false) }
+  }
+
+  async function resetPassword() {
+    if (newPwd.length < 6) { setForgotErr('Password must be at least 6 characters'); return }
+    if (newPwd !== confirmPwd) { setForgotErr('Passwords do not match'); return }
+    setForgotLoading(true); setForgotErr('')
+    try {
+      const encoder = new TextEncoder()
+      const data = encoder.encode(newPwd + 'gvr_salt_2026')
+      const hash = await crypto.subtle.digest('SHA-256', data)
+      const hashed = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('')
+      await supabase.from('profiles').update({ password_hash: hashed }).eq('id', resetUser.id)
+      setForgotMsg('Password reset successfully! You can now login.')
+      setTimeout(() => {
+        setMode('login'); setForgotUsername(''); setNewPwd(''); setConfirmPwd('')
+        setResetStep(1); setResetUser(null); setForgotMsg(''); setForgotErr('')
+      }, 2000)
+    } catch(e) { setForgotErr(e.message) }
+    finally { setForgotLoading(false) }
+  }
 
   const reset = (m) => {
     setMode(m); clearError(); setDone('')
