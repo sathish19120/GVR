@@ -334,6 +334,36 @@ export default function Dashboard() {
 
   return (
     <div style={{ display:'flex', minHeight:'100vh', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .dash-sidebar {
+            position: fixed !important;
+            z-index: 100;
+            height: 100vh;
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+          }
+          .dash-sidebar.open { transform: translateX(0) !important; }
+          .dash-overlay {
+            display: block !important;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 99;
+          }
+          .dash-topbar { padding: 0 14px !important; }
+          .dash-topbar-center { display: none !important; }
+          .dash-main { padding: 14px !important; }
+          .dash-filter-btns span { display: none; }
+        }
+        @media (min-width: 769px) {
+          .dash-overlay { display: none !important; }
+          .dash-sidebar { transform: none !important; }
+        }
+      `}</style>
+      {/* Mobile overlay — closes sidebar when tapped */}
+      <div className="dash-overlay" style={{ display:'none' }} onClick={() => setCollapsed(true)} />
 
 
       {/* TOP NAV MODALS */}
@@ -454,7 +484,7 @@ export default function Dashboard() {
       {showStock && <StockModal product={showStock} onClose={()=>setShowStock(null)} onSaved={load} />}
 
       {/* SIDEBAR */}
-      <aside style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s', position:'sticky', top:0, height:'100vh', overflow:'hidden' }}>
+      <aside className={`dash-sidebar${!collapsed?' open':''}`} style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s, transform 0.25s', position:'sticky', top:0, height:'100vh', overflow:'hidden' }}>
         <div style={{ padding:collapsed?'18px 10px':'18px 18px', borderBottom:`1px solid ${G.border}`, display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:9, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌾</div>
           {!collapsed && <div><p style={{ margin:0, fontSize:13, fontWeight:700, color:G.greenDark }}>Green Village</p><p style={{ margin:0, fontSize:10, color:G.green2, fontWeight:600 }}>Rice Admin</p></div>}
@@ -489,12 +519,12 @@ export default function Dashboard() {
       <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
 
         {/* TOPBAR */}
-        <header style={{ background:G.white, borderBottom:`1px solid ${G.border}`, height:58, padding:'0 24px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:10 }}>
+        <header className="dash-topbar" style={{ background:G.white, borderBottom:`1px solid ${G.border}`, height:58, padding:'0 24px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:10 }}>
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
             <button onClick={()=>setCollapsed(!collapsed)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:G.muted, padding:4 }}>☰</button>
             <span style={{ fontSize:15, fontWeight:700, color:G.text }}>{PAGES.find(p=>p.key===page)?.label}</span>
           </div>
-          <div style={{ display:'flex', gap:2 }}>
+          <div className="dash-topbar-center" style={{ display:'flex', gap:2 }}>
             {[['Where We Work','where'],['What We Do','what'],['About','about']].map(([label,key])=>(
               <button key={key} onClick={()=>setTopModal(key)} style={{ background:'none', border:'none', cursor:'pointer', padding:'6px 14px', borderRadius:8, fontSize:13, fontWeight:600, color:G.green, transition:'background 0.15s' }}
                 onMouseEnter={e=>e.currentTarget.style.background=G.greenLight}
@@ -510,7 +540,7 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <main style={{ flex:1, padding:'24px', overflowY:'auto' }}>
+        <main className="dash-main" style={{ flex:1, padding:'24px', overflowY:'auto' }}>
           {loading ? <div style={{ textAlign:'center', padding:80, color:G.muted }}>Loading...</div> : <>
 
           {/* DASHBOARD */}
