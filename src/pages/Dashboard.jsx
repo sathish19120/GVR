@@ -335,7 +335,7 @@ export default function Dashboard() {
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
 
   return (
-    <div style={{ display:'flex', minHeight:'100vh', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
+    <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
       {/* Mobile overlay — closes sidebar when tapped */}
       <div className="dash-overlay" style={{ display:'none', position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:199 }} onClick={() => setCollapsed(true)} />
 
@@ -458,7 +458,7 @@ export default function Dashboard() {
       {showStock && <StockModal product={showStock} onClose={()=>setShowStock(null)} onSaved={load} />}
 
       {/* SIDEBAR */}
-      <aside className={`dash-sidebar${!collapsed?' open':''}`} style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s, transform 0.25s', position:'sticky', top:0, height:'100vh', overflow:'hidden' }}>
+      <aside className={`dash-sidebar${!collapsed?' open':''}`} style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s, transform 0.25s', position:'sticky', top:0, height:'100vh', overflow:'hidden', zIndex:50 }}>
         <div style={{ padding:collapsed?'18px 10px':'18px 18px', borderBottom:`1px solid ${G.border}`, display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:9, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌾</div>
           {!collapsed && <div><p style={{ margin:0, fontSize:13, fontWeight:700, color:G.greenDark }}>Green Village</p><p style={{ margin:0, fontSize:10, color:G.green2, fontWeight:600 }}>Rice Admin</p></div>}
@@ -514,7 +514,7 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <main className="dash-main" style={{ flex:1, padding:'24px', overflowY:'auto', minWidth:0, maxWidth:'100%' }}>
+        <main className="dash-main" style={{ flex:1, padding:'24px', overflowY:'auto', minWidth:0, maxWidth:'100%', height:'100vh' }}>
           {loading ? <div style={{ textAlign:'center', padding:80, color:G.muted }}>Loading...</div> : <>
 
           {/* DASHBOARD */}
