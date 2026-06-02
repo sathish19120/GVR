@@ -130,7 +130,7 @@ export default function BranchDashboard() {
   })
 
   return (
-    <div style={{ display:'flex', minHeight:'100vh', background:G.surface, fontFamily:"'Inter', sans-serif", overflow:'hidden' }}>
+    <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
       <style>{`
         @media (max-width: 640px) {
           .branch-sidebar { position:fixed!important;z-index:200!important;height:100vh!important;transform:translateX(-100%)!important;transition:transform 0.25s ease!important; }
@@ -146,7 +146,7 @@ export default function BranchDashboard() {
       {showProfile && <ProfilePage onClose={() => setShowProfile(false)} />}
 
       {/* SIDEBAR */}
-      <aside className={`branch-sidebar${!collapsed?' open':''}`} style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s, transform 0.25s', position:'sticky', top:0, height:'100vh', overflow:'hidden', zIndex:200 }}>
+      <aside className={`branch-sidebar${!collapsed?' open':''}`} style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s, transform 0.25s', position:'sticky', top:0, height:'100vh', overflow:'hidden', zIndex:200, flexShrink:0 }}>
         <div style={{ padding:collapsed?'16px 10px':'16px 16px', borderBottom:`1px solid ${G.border}`, display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:9, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌾</div>
           {!collapsed && (
@@ -212,7 +212,7 @@ export default function BranchDashboard() {
           </div>
         </header>
 
-        <main className='branch-main' style={{ flex:1, padding:'22px', overflowY:'auto', minWidth:0 }}>
+        <main className='branch-main' style={{ flex:1, padding:'22px', overflowY:'auto', minWidth:0, height:'100%' }}>
           {loading ? <div style={{ textAlign:'center', padding:60, color:G.muted }}>Loading...</div> : <>
 
           {/* ── DASHBOARD ── */}
