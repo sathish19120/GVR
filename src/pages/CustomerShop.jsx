@@ -215,7 +215,7 @@ export default function CustomerShop() {
     </div>
   )
 
-  const upiId = '19120sathish.ss1@ybl'
+  const upiId = import.meta.env.VITE_UPI_ID || ''
   const upiUrl = `upi://pay?pa=${upiId}&pn=Green+Village+Rice&am=${grand}&cu=INR&tn=GVR+Rice+Order`
   const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiUrl)}`
 
