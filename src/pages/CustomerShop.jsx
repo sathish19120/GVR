@@ -103,7 +103,7 @@ export default function CustomerShop() {
   const [products, setProducts]   = useState([])
   const [cart, setCart]           = useState({})
   const [step, setStep]           = useState('shop')
-  const [address, setAddress]     = useState('')
+  const [address, setAddress]     = useState(user?.address || '')
   const [phone, setPhone]         = useState(user?.phone || '')
   const [payMethod, setPayMethod] = useState('cod')
   const [placing, setPlacing]     = useState(false)
