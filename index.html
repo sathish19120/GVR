@@ -2,14 +2,84 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#3B6D11" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="GVR" />
+    <meta name="description" content="Green Village Rice — Fresh Sona Masoori delivered to your door" />
     <title>Green Village Rice</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: 'Inter', sans-serif; background: #f5f5f5; }
-      input, button, select, textarea { font-family: inherit; }
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html {
+        font-size: 16px;
+        -webkit-text-size-adjust: 100%;
+        height: -webkit-fill-available;
+      }
+
+      body {
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        overflow-x: hidden;
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
+        background: #f5f5f5;
+      }
+
+      #root {
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
+      }
+
+      /* Prevent iOS auto-zoom on input focus */
+      input, select, textarea, button {
+        font-family: inherit;
+        font-size: 16px;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+      }
+
+      /* Smooth scrolling on iOS */
+      * { -webkit-overflow-scrolling: touch; }
+
+      /* Safe areas for notch phones */
+      .safe-area-top    { padding-top: env(safe-area-inset-top); }
+      .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+      /* Responsive grid helpers */
+      @media (max-width: 640px) {
+        /* Stack auth page on mobile */
+        [data-auth-left] { display: none !important; }
+        [data-auth-right] { width: 100% !important; padding: 28px 20px !important; }
+
+        /* Smaller font on cards */
+        [data-stat-value] { font-size: 20px !important; }
+
+        /* Full width modals on mobile */
+        [data-modal] {
+          border-radius: 20px 20px 0 0 !important;
+          position: fixed !important;
+          bottom: 0 !important;
+          top: auto !important;
+          max-height: 92vh !important;
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+      }
+
+      @media (max-width: 480px) {
+        /* Tighter padding on small phones */
+        [data-page-content] { padding: 12px !important; }
+        [data-card] { padding: 14px !important; }
+      }
+
+      /* Scrollbar styling */
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
     </style>
   </head>
   <body>
