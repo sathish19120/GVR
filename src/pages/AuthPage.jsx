@@ -269,7 +269,7 @@ export default function AuthPage() {
             }}>
               {loading ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Create Super Admin'}
             </button>
-          </form>
+          </form>}
 
           <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 11, marginTop: 28 }}>
             © 2026 Green Village Rice. All Rights Reserved
