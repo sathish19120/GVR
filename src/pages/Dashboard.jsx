@@ -3,6 +3,7 @@ import BatchPage from './BatchPage'
 import PickupQueue from './PickupQueue'
 import WalkInBilling from './WalkInBilling'
 import BulkOrderForm from './BulkOrderForm'
+import SupplierPage from './SupplierPage'
 import VendorPage from './VendorPage'
 import BranchStockPage from './BranchStockPage'
 import React, { useState, useEffect } from 'react'
@@ -33,6 +34,7 @@ const PAGES = [
   { key:'batches',   icon:'📦', label:'Batches' },
   { key:'pickup',    icon:'🏪', label:'Pickup Queue' },
   { key:'bulk',      icon:'🏢', label:'Bulk Orders' },
+  { key:'suppliers', icon:'🏭', label:'Suppliers' },
   { key:'branchstock',icon:'🏭', label:'Branch Stock' },
 ]
 const TOP_LINKS = ['Where We Work','What We Do','About']
@@ -1043,6 +1045,9 @@ export default function Dashboard() {
 
           {/* BULK ORDERS */}
           {page==='bulk' && <BulkOrderForm />}
+
+          {/* SUPPLIERS */}
+          {page==='suppliers' && <SupplierPage />}
 
           {/* BRANCH STOCK */}
           {page==='branchstock' && <BranchStockPage />}
