@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import ProfilePage from './ProfilePage'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
@@ -112,6 +113,7 @@ export default function CustomerShop() {
   const [error, setError]         = useState('')
   const [loading, setLoading]     = useState(true)
   const [topModal, setTopModal]   = useState(null)
+  const [showProfile, setShowProfile] = useState(false)
   const [utrRef, setUtrRef]         = useState('')
 
   useEffect(() => { loadProducts() }, [])
@@ -177,6 +179,12 @@ export default function CustomerShop() {
       setOrderNum(orderNumber); setCart({}); setAddress(''); setStep('success')
     } catch(e) { setError(e.message || 'Failed to place order. Please try again.') }
     finally { setPlacing(false) }
+  }
+
+  // Reload user from localStorage when profile updates
+  const refreshUser = () => {
+    const saved = localStorage.getItem('gvr_user')
+    if (saved) { /* auth store will re-read on next render */ }
   }
 
   const TopNav = () => (
@@ -250,8 +258,9 @@ export default function CustomerShop() {
         <div style={{ background: G.white, borderRadius: 14, padding: 18, marginBottom: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight: 700, margin: '0 0 12px', color: G.text, fontSize: 15 }}>Payment Method</p>
           {[
-            ['cod', '💵', 'Cash on Delivery', 'Pay when your order arrives'],
-            ['upi', '📱', 'UPI Payment',        'GPay, PhonePe, Paytm'],
+            ['cod',  '💵', 'Cash on Delivery',  'Pay when your order arrives'],
+            ['upi',  '📱', 'UPI Payment',        'GPay, PhonePe, Paytm'],
+            ['bank', '🏦', 'Bank Transfer',      'NEFT / IMPS / RTGS'],
           ].map(([val, icon, label, sub]) => (
             <div key={val} onClick={() => setPayMethod(val)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, marginBottom: 8, cursor: 'pointer', border: `2px solid ${payMethod === val ? G.green : G.border}`, background: payMethod === val ? G.greenLight : G.white }}>
               <span style={{ fontSize: 22 }}>{icon}</span>
@@ -303,7 +312,35 @@ export default function CustomerShop() {
             </div>
           )}
 
-
+          {/* Bank transfer details */}
+          {payMethod === 'bank' && (
+            <div style={{ marginTop: 12, padding: 16, background: '#F9FAF7', borderRadius: 12, border: `1px solid ${G.border}` }}>
+              <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: G.text }}>Step 1 — Transfer to this account</p>
+              <div style={{ background: G.white, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                {[
+                  ['Account Name', 'Green Village Rice'],
+                  ['Bank', 'State Bank of India'],
+                  ['Account No', 'XXXX XXXX XXXX'],
+                  ['IFSC Code', 'SBIN0XXXXXX'],
+                  ['Amount', `₹${grand}`],
+                ].map(([label, val]) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${G.border}`, fontSize: 13 }}>
+                    <span style={{ color: G.muted }}>{label}</span>
+                    <span style={{ fontWeight: 600, color: G.text }}>{val}</span>
+                  </div>
+                ))}
+              </div>
+              <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: G.text }}>Step 2 — Enter Transaction Reference</p>
+              <input
+                type="text" value={utrRef} onChange={e => setUtrRef(e.target.value.trim())}
+                placeholder="Enter NEFT/IMPS/RTGS reference number"
+                style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: `1.5px solid ${utrRef.trim().length > 0 ? G.green : G.border}`, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: G.white }}
+              />
+              {utrRef.trim().length > 0 && (
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: G.green }}>✓ Reference saved — your order will be confirmed</p>
+              )}
+            </div>
+          )}
 
           {/* COD confirmation note */}
           {payMethod === 'cod' && (
