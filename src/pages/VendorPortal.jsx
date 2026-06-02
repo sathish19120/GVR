@@ -85,7 +85,6 @@ export default function VendorPortal() {
   const [placing, setPlacing]     = useState(false)
   const [orderNum, setOrderNum]   = useState('')
   const [loading, setLoading]     = useState(true)
-  const cache = React.useRef({ products: null, orders: null })
   const [ordersLoading, setOL]    = useState(false)
   const [error, setError]         = useState('')
   const [topModal, setTopModal]   = useState(null)
@@ -95,35 +94,20 @@ export default function VendorPortal() {
   useEffect(() => { if (tab === 'orders') loadMyOrders() }, [tab])
 
   async function loadProducts() {
-    if (cache.current.products) {
-      setProducts(cache.current.products)
-      setLoading(false)
-      return
-    }
     setLoading(true)
-    const { data } = await supabase
-      .from('products')
-      .select('id,name,name_telugu,weight_kg,price_per_bag,stock_bags,low_stock_threshold,sku,packing_date,best_before_date')
-      .eq('active', true)
-      .order('weight_kg')
-    cache.current.products = data || []
+    const { data } = await supabase.from('products').select('*').eq('active', true).order('weight_kg')
     setProducts(data || [])
     setLoading(false)
   }
 
-  async function loadMyOrders(force = false) {
+  async function loadMyOrders() {
     if (!user) return
-    if (!force && cache.current.orders) {
-      setMyOrders(cache.current.orders)
-      return
-    }
     setOL(true)
     const { data } = await supabase
       .from('orders')
-      .select('id,order_number,customer_name,delivery_address,total_amount,status,payment_status,payment_method,notes,created_at,order_items(name,weight_kg,quantity,price_per_unit)')
+      .select('*, order_items(name, weight_kg, quantity, price_per_unit)')
       .eq('customer_id', user.id)
       .order('created_at', { ascending: false })
-    cache.current.orders = data || []
     setMyOrders(data || [])
     setOL(false)
   }
@@ -436,7 +420,7 @@ export default function VendorPortal() {
         <div style={{ maxWidth:700, margin:'0 auto', padding:16 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'4px 0 16px' }}>
             <p style={{ margin:0, fontSize:15, fontWeight:700 }}>My B2B Orders</p>
-            <button onClick={()=>loadMyOrders(true)} style={{ background:G.greenLight, border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:600, color:G.green, cursor:'pointer' }}>↻ Refresh</button>
+            <button onClick={loadMyOrders} style={{ background:G.greenLight, border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:600, color:G.green, cursor:'pointer' }}>↻ Refresh</button>
           </div>
           {ordersLoading && <p style={{ textAlign:'center', color:G.muted, padding:40 }}>Loading...</p>}
           {!ordersLoading && myOrders.length === 0 && (
