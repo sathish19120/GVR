@@ -226,7 +226,7 @@ export default function CustomerShop() {
         <span style={{ color: G.white, fontWeight: 700, fontSize: 16 }}>Checkout</span>
       </header>
       <TopNav />
-      <div style={{ maxWidth: 500, margin: '0 auto', padding: '16px 16px 100px' }}>
+      <div style={{ maxWidth: 500, margin: '0 auto', padding: `16px 16px calc(100px + env(safe-area-inset-bottom))` }}>
         {error && <div style={{ background: G.redLight, border: `1px solid #FECACA`, borderRadius: 10, padding: '10px 14px', marginBottom: 16, color: G.red, fontSize: 13 }}>{error}</div>}
 
         {/* Cart summary */}
@@ -398,7 +398,7 @@ export default function CustomerShop() {
 
       <div style={{ background: G.white, borderBottom: `1px solid ${G.border}`, display: 'flex' }}>
         {[['shop', '🌾 Order Rice'], ['myorders', '📋 My Orders']].map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)} style={{ padding: '12px 24px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, borderBottom: `3px solid ${tab === key ? G.green : 'transparent'}`, color: tab === key ? G.green : G.muted }}>
+          <button key={key} onClick={() => setTab(key)} style={{ padding: '10px 20px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, borderBottom: `3px solid ${tab === key ? G.green : 'transparent'}`, color: tab === key ? G.green : G.muted, flex: 1, textAlign: 'center' }}>
             {label}
           </button>
         ))}
