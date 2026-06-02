@@ -19,7 +19,7 @@ const STATUS_BG = {
   dispatched:'#EDE9FE', delivered:G.greenLight, cancelled:G.redLight
 }
 
-const UPI_ID = '19120sathish.ss1@ybl'
+const UPI_ID = import.meta.env.VITE_UPI_ID || ''
 
 function TopNavModal({ modal, onClose }) {
   if (!modal) return null
