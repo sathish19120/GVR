@@ -329,6 +329,134 @@ function EditVendorModal({ vendor, onClose, onSaved }) {
   )
 }
 
+// ── Payment Modal ─────────────────────────────────────────
+function PaymentModal({ purchase, onClose, onSaved }) {
+  const alreadyPaid = Number(purchase.paid_amount || 0)
+  const total       = Number(purchase.total_amount || 0)
+  const remaining   = total - alreadyPaid
+
+  const [amount, setAmount]   = useState('')
+  const [notes, setNotes]     = useState('')
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState('')
+
+  async function save() {
+    const paid = parseFloat(amount)
+    if (!paid || paid <= 0) { setError('Enter a valid payment amount'); return }
+    if (paid > remaining + 0.01) { setError(`Amount exceeds remaining balance of ₹${remaining.toFixed(2)}`); return }
+    setSaving(true); setError('')
+    try {
+      const newPaid   = alreadyPaid + paid
+      const newStatus = newPaid >= total - 0.01 ? 'paid' : 'partial'
+      const { error: err } = await supabase.from('vendor_purchases').update({
+        paid_amount:    newPaid,
+        payment_status: newStatus,
+        payment_notes:  notes || null,
+      }).eq('id', purchase.id)
+      if (err) throw err
+      onSaved(); onClose()
+    } catch(e) { setError(e.message) }
+    finally { setSaving(false) }
+  }
+
+  const payPct = total > 0 ? Math.round(alreadyPaid / total * 100) : 0
+
+  return (
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:150,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
+      <div style={{ background:G.white,borderRadius:20,width:'100%',maxWidth:420,padding:26 }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18 }}>
+          <h3 style={{ margin:0,fontSize:17,fontWeight:700 }}>Record Payment</h3>
+          <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:G.muted }}>✕</button>
+        </div>
+
+        {/* Purchase summary */}
+        <div style={{ background:'#F9FAF7',borderRadius:12,padding:'12px 14px',marginBottom:16 }}>
+          <p style={{ margin:'0 0 4px',fontSize:13,fontWeight:600,color:G.text }}>{purchase.product_name} — {purchase.quantity_bags} bags</p>
+          <p style={{ margin:'0 0 10px',fontSize:12,color:G.muted }}>Invoice: {purchase.invoice_number || '—'} · {new Date(purchase.purchase_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10 }}>
+            {[
+              ['Total Amount',  `₹${total.toLocaleString('en-IN')}`,     G.text],
+              ['Paid So Far',   `₹${alreadyPaid.toLocaleString('en-IN')}`, G.green],
+              ['Remaining',     `₹${remaining.toLocaleString('en-IN')}`,  remaining>0?G.red:G.green],
+            ].map(([label,val,color])=>(
+              <div key={label} style={{ background:G.white,borderRadius:8,padding:'8px 10px',textAlign:'center' }}>
+                <p style={{ margin:'0 0 3px',fontSize:9,color:G.muted,textTransform:'uppercase',letterSpacing:'0.3px' }}>{label}</p>
+                <p style={{ margin:0,fontSize:13,fontWeight:700,color }}>{val}</p>
+              </div>
+            ))}
+          </div>
+          {/* Progress bar */}
+          <div style={{ height:6,background:'#E5E7EB',borderRadius:3,overflow:'hidden' }}>
+            <div style={{ height:'100%',width:`${payPct}%`,background:payPct===100?G.green:G.amber,borderRadius:3,transition:'width 0.3s' }} />
+          </div>
+          <p style={{ margin:'4px 0 0',fontSize:11,color:G.muted,textAlign:'right' }}>{payPct}% paid</p>
+        </div>
+
+        {remaining <= 0 ? (
+          <div style={{ background:G.greenLight,borderRadius:10,padding:'12px 14px',textAlign:'center' }}>
+            <p style={{ margin:0,fontSize:14,fontWeight:700,color:G.green }}>✅ Fully Paid</p>
+            <p style={{ margin:'4px 0 0',fontSize:12,color:G.green2 }}>No outstanding balance</p>
+          </div>
+        ) : (
+          <>
+            {error && <div style={{ background:G.redLight,border:`1px solid #FECACA`,borderRadius:8,padding:'8px 12px',marginBottom:12,color:G.red,fontSize:13 }}>{error}</div>}
+
+            {/* Quick fill buttons */}
+            <div style={{ marginBottom:12 }}>
+              <p style={{ margin:'0 0 8px',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px' }}>Quick Fill</p>
+              <div style={{ display:'flex',gap:8 }}>
+                {[
+                  ['Full',    remaining.toFixed(0)],
+                  ['Half',    (remaining/2).toFixed(0)],
+                  ['25%',     (remaining*0.25).toFixed(0)],
+                ].map(([label, val]) => (
+                  <button key={label} type="button" onClick={()=>setAmount(val)} style={{
+                    flex:1,padding:'8px',borderRadius:8,
+                    border:`1.5px solid ${amount===val?G.green:G.border}`,
+                    background:amount===val?G.greenLight:G.white,
+                    cursor:'pointer',fontSize:12,fontWeight:600,
+                    color:amount===val?G.green:G.muted
+                  }}>
+                    {label}<br/><span style={{ fontSize:11,fontWeight:500 }}>₹{Number(val).toLocaleString('en-IN')}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom:12 }}>
+              <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Payment Amount (₹) *</label>
+              <input type="number" min={1} max={remaining} value={amount} onChange={e=>setAmount(e.target.value)}
+                placeholder={`Max ₹${remaining.toLocaleString('en-IN')}`} style={inp}
+                onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+              {amount && parseFloat(amount) > 0 && (
+                <p style={{ margin:'4px 0 0',fontSize:11,color:G.green }}>
+                  Remaining after this payment: ₹{Math.max(0, remaining - parseFloat(amount)).toLocaleString('en-IN')}
+                </p>
+              )}
+            </div>
+
+            <div style={{ marginBottom:16 }}>
+              <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Payment Notes</label>
+              <input type="text" value={notes} onChange={e=>setNotes(e.target.value)}
+                placeholder="e.g. Paid via UPI, cheque no., etc." style={inp}
+                onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+            </div>
+
+            <button type="button" onClick={save} disabled={saving||!amount} style={{
+              width:'100%',padding:13,
+              background:saving||!amount?'#9CA3AF':G.green,
+              color:G.white,border:'none',borderRadius:12,
+              fontSize:15,fontWeight:700,cursor:'pointer'
+            }}>
+              {saving ? 'Saving...' : `✓ Record Payment — ₹${parseFloat(amount||0).toLocaleString('en-IN')}`}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main VendorPage ───────────────────────────────────────
 export default function VendorPage() {
   const [tab, setTab]           = useState('overview')
@@ -340,6 +468,7 @@ export default function VendorPage() {
   const [showAddPurchase, setShowAddPurchase] = useState(false)
   const [editVendor, setEditVendor] = useState(null)
   const [search, setSearch]     = useState('')
+  const [paymentModal, setPaymentModal] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -382,6 +511,7 @@ export default function VendorPage() {
     <div style={{ fontFamily:"'Inter', sans-serif" }}>
       {showAddVendor && <AddVendorModal onClose={() => setShowAddVendor(false)} onSaved={load} />}
       {editVendor && <EditVendorModal vendor={editVendor} onClose={() => setEditVendor(null)} onSaved={load} />}
+      {paymentModal && <PaymentModal purchase={paymentModal} onClose={() => setPaymentModal(null)} onSaved={load} />}
       {showAddPurchase && <AddPurchaseModal vendors={vendors} products={products} onClose={() => setShowAddPurchase(false)} onSaved={load} />}
 
       {/* Tab bar */}
@@ -434,6 +564,21 @@ export default function VendorPage() {
 
           {/* Recent purchases */}
           <div style={{ background:G.white,borderRadius:16,padding:'20px 22px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',marginBottom:20 }}>
+            {/* Payment summary cards */}
+            <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:16 }}>
+              {[
+                { label:'Fully Paid',    value:purchases.filter(p=>p.payment_status==='paid').length,    color:G.green,  bg:G.greenLight },
+                { label:'Partial',       value:purchases.filter(p=>p.payment_status==='partial').length,  color:G.amber,  bg:G.amberLight },
+                { label:'Unpaid',        value:purchases.filter(p=>!p.payment_status||p.payment_status==='unpaid').length, color:G.red, bg:G.redLight },
+                { label:'Outstanding',   value:`₹${purchases.reduce((s,p)=>s+(Number(p.total_amount||0)-Number(p.paid_amount||0)),0).toLocaleString('en-IN')}`, color:G.red, bg:G.redLight },
+              ].map((s,i)=>(
+                <div key={i} style={{ background:G.white,borderRadius:12,padding:'12px 14px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',borderLeft:`3px solid ${s.color}` }}>
+                  <p style={{ margin:'0 0 4px',fontSize:11,color:G.muted }}>{s.label}</p>
+                  <p style={{ margin:0,fontSize:18,fontWeight:800,color:s.color }}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+
             <p style={{ margin:'0 0 14px',fontSize:13,fontWeight:700,color:G.text }}>Recent Purchases</p>
             {purchases.slice(0,5).map((p,i)=>(
               <div key={p.id} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:i<4?`1px solid ${G.border}`:'none' }}>
@@ -447,6 +592,12 @@ export default function VendorPage() {
                 <div style={{ textAlign:'right' }}>
                   <p style={{ margin:'0 0 2px',fontWeight:700,fontSize:14,color:G.text }}>{p.quantity_bags} bags</p>
                   <p style={{ margin:0,fontSize:12,color:G.green,fontWeight:600 }}>{fmtRs(p.total_amount)}</p>
+                  {p.payment_status !== 'paid' && (
+                    <p style={{ margin:'2px 0 0',fontSize:11,color:G.red,fontWeight:600 }}>
+                      Due: {fmtRs(Number(p.total_amount||0)-Number(p.paid_amount||0))}
+                    </p>
+                  )}
+                  {p.payment_status === 'paid' && <p style={{ margin:'2px 0 0',fontSize:11,color:G.green }}>✓ Paid</p>}
                 </div>
               </div>
             ))}
@@ -577,7 +728,7 @@ export default function VendorPage() {
               <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
                 <thead>
                   <tr style={{ background:'#F9FAF7' }}>
-                    {['Date','Vendor','Type','Product','Qty (Bags)','Price/Bag','Total Paid','Invoice','Notes'].map(h=>(
+                    {['Date','Vendor','Type','Product','Qty (Bags)','Price/Bag','Total','Invoice','Notes','Payment'].map(h=>(
                       <th key={h} style={{ padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:700,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.5px',whiteSpace:'nowrap' }}>{h}</th>
                     ))}
                   </tr>
