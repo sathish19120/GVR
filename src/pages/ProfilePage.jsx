@@ -30,6 +30,7 @@ export default function ProfilePage({ onClose }) {
   const [fullName, setFullName]   = useState(user?.full_name || '')
   const [phone, setPhone]         = useState(user?.phone || '')
   const [area, setArea]           = useState(user?.area || '')
+  const [address, setAddress]     = useState(user?.address || '')
   const [avatar, setAvatar]       = useState(user?.avatar_url || null)
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving]       = useState(false)
@@ -94,10 +95,10 @@ export default function ProfilePage({ onClose }) {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ full_name: fullName.trim(), phone: phone.trim(), area: area.trim() })
+        .update({ full_name: fullName.trim(), phone: phone.trim(), area: area.trim(), address: address.trim() })
         .eq('username', user.username)
       if (error) throw error
-      updateLocalUser({ full_name: fullName.trim(), phone: phone.trim(), area: area.trim() })
+      updateLocalUser({ full_name: fullName.trim(), phone: phone.trim(), area: area.trim(), address: address.trim() })
       setMsg('Profile updated successfully!')
       setTimeout(() => setMsg(''), 3000)
     } catch(e) { setErr(e.message) }
@@ -214,24 +215,41 @@ export default function ProfilePage({ onClose }) {
               <Field label="Full Name">
                 <input type="text" value={fullName}
                   onChange={e => !isReadOnly && setFullName(e.target.value)}
-                  readOnly={isReadOnly} placeholder="Your full name" style={inp(isReadOnly)} />
+                  readOnly={isReadOnly} placeholder="Your full name" style={inp(isReadOnly)}
+                  onFocus={e=>!isReadOnly&&(e.target.style.borderColor=G.green)}
+                  onBlur={e=>e.target.style.borderColor=G.border} />
               </Field>
               <Field label="Username">
                 <input type="text" value={user?.username || ''} readOnly disabled style={inp(true)} />
               </Field>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                <Field label="Phone">
+                <Field label="Phone Number">
                   <input type="tel" value={phone}
                     onChange={e => !isReadOnly && setPhone(e.target.value)}
-                    readOnly={isReadOnly} placeholder="Mobile number" style={inp(isReadOnly)} />
+                    readOnly={isReadOnly} placeholder="Mobile number" style={inp(isReadOnly)}
+                    onFocus={e=>!isReadOnly&&(e.target.style.borderColor=G.green)}
+                    onBlur={e=>e.target.style.borderColor=G.border} />
                 </Field>
-                <Field label={user?.role === 'branch_executive' ? 'Branch' : 'Area'}>
+                <Field label={user?.role === 'branch_executive' ? 'Branch' : 'Area / Locality'}>
                   <input type="text"
                     value={user?.role === 'branch_executive' ? (user?.branch || '—') : area}
                     onChange={e => !isReadOnly && setArea(e.target.value)}
-                    readOnly={isReadOnly} placeholder="Area" style={inp(isReadOnly)} />
+                    readOnly={isReadOnly} placeholder="e.g. Kukatpally" style={inp(isReadOnly)}
+                    onFocus={e=>!isReadOnly&&(e.target.style.borderColor=G.green)}
+                    onBlur={e=>e.target.style.borderColor=G.border} />
                 </Field>
               </div>
+              {!isReadOnly && (
+                <Field label="Delivery Address">
+                  <textarea value={address} onChange={e => setAddress(e.target.value)}
+                    placeholder="House/flat no, street, landmark, city — used as default delivery address"
+                    rows={3}
+                    style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, color:G.text, outline:'none', background:'#FAFAFA', boxSizing:'border-box', resize:'none', fontFamily:'inherit', lineHeight:1.5 }}
+                    onFocus={e=>e.target.style.borderColor=G.green}
+                    onBlur={e=>e.target.style.borderColor=G.border} />
+                  <p style={{ margin:'4px 0 0', fontSize:11, color:G.muted }}>💡 This address will be auto-filled at checkout</p>
+                </Field>
+              )}
             </div>
             {!isReadOnly && (
               <button type="button" onClick={saveProfile} disabled={saving} style={{ width:'100%', marginTop:14, padding:11, background:saving?'#9CA3AF':G.green, color:G.white, border:'none', borderRadius:10, fontSize:14, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
