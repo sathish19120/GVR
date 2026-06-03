@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import ProfilePage from './ProfilePage'
+import ReferralPage from './ReferralPage'
+import SubscriptionPage from './SubscriptionPage'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
@@ -478,13 +480,15 @@ export default function CustomerShop() {
       <TopNav />
 
       <div style={{ background: G.white, borderBottom: `1px solid ${G.border}`, display: 'flex' }}>
-        {[['shop', '🌾 Order Rice'], ['myorders', '📋 My Orders']].map(([key, label]) => (
+        {[['shop','🌾 Order Rice'],['myorders','📋 My Orders'],['subscribe','🔄 Subscribe'],['referral','🎁 Refer & Earn']].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} style={{ padding: '10px 20px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, borderBottom: `3px solid ${tab === key ? G.green : 'transparent'}`, color: tab === key ? G.green : G.muted, flex: 1, textAlign: 'center' }}>
             {label}
           </button>
         ))}
       </div>
 
+      {tab === 'subscribe' && <div style={{ maxWidth:600,margin:'0 auto',padding:16 }}><SubscriptionPage /></div>}
+      {tab === 'referral' && <div style={{ maxWidth:600,margin:'0 auto',padding:16 }}><ReferralPage /></div>}
       {tab === 'myorders' && (
         <div className='page-content' style={{ maxWidth: 600, margin: '0 auto', padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 16px' }}>
