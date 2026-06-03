@@ -81,7 +81,7 @@ export const useAuth = create((set, get) => ({
     if (user) saveSession(user)
   },
 
-  signUp: async (username, password, fullName, phone, role) => {
+  signUp: async (username, password, fullName, phone, role, referralCode) => {
     set({ error: null })
     try {
       const clean = sanitize(username).toLowerCase()
@@ -101,12 +101,37 @@ export const useAuth = create((set, get) => ({
       const { count } = await supabase
         .from('profiles').select('*', { count:'exact', head:true })
       const assignedRole = count === 0 ? 'superadmin' : (role || 'customer')
+      // Generate unique referral code
+      const newRefCode = (clean.slice(0,4) + Math.random().toString(36).slice(2,6)).toUpperCase()
       const { data, error } = await supabase.from('profiles').insert({
         username: clean, full_name: sanitize(fullName),
         password_hash: hashed, role: assignedRole,
-        phone: sanitize(phone), created_at: new Date().toISOString()
+        phone: sanitize(phone),
+        referral_code: newRefCode,
+        referred_by: referralCode ? referralCode.trim().toUpperCase() : null,
+        wallet_balance: referralCode ? 20 : 0,
+        created_at: new Date().toISOString()
       }).select().single()
       if (error) { set({ error: error.message }); return false }
+      // Credit referrer ₹20 if referral code used
+      if (referralCode && data) {
+        const { data: referrer } = await supabase
+          .from('profiles').select('id,wallet_balance').eq('referral_code', referralCode.trim().toUpperCase()).single()
+        if (referrer) {
+          await supabase.from('profiles').update({ wallet_balance: (referrer.wallet_balance||0) + 20 }).eq('id', referrer.id)
+          await supabase.from('wallet_transactions').insert({
+            user_id: referrer.id, type: 'credit', amount: 20,
+            reason: `Referral bonus — ${clean} joined using your code`,
+            created_at: new Date().toISOString()
+          })
+          // Also log wallet transaction for new user
+          await supabase.from('wallet_transactions').insert({
+            user_id: data.id, type: 'credit', amount: 20,
+            reason: 'Welcome bonus — joined via referral code',
+            created_at: new Date().toISOString()
+          })
+        }
+      }
       return true
     } catch(e) { set({ error: e.message }); return false }
   },
