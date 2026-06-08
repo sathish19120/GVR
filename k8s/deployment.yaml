@@ -1,0 +1,47 @@
+@"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gvr-app
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gvr-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: gvr-app
+    spec:
+      containers:
+      - name: gvr-app
+        image: gvr-app:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+"@ | Out-File -Encoding utf8 -NoNewline k8s/deployment.yaml
