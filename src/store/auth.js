@@ -1,14 +1,12 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 
-// ── Constants ─────────────────────────────────────────────
 const SESSION_KEY    = 'gvr_user'
-const SESSION_EXPIRY = 8 * 60 * 60 * 1000  // 8 hours
+const SESSION_EXPIRY = 8 * 60 * 60 * 1000
 const MAX_ATTEMPTS   = 5
-const LOCKOUT_TIME   = 15 * 60 * 1000       // 15 minutes
+const LOCKOUT_TIME   = 15 * 60 * 1000
 const SALT           = 'gvr_salt_2026'
 
-// ── Password hashing (SHA-256 + salt) ─────────────────────
 async function hashPassword(password) {
   const encoder = new TextEncoder()
   const data    = encoder.encode(password + SALT)
@@ -17,15 +15,13 @@ async function hashPassword(password) {
     .map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-// ── Rate limiter (in-memory, per browser) ─────────────────
 const attempts = {}
 function isLockedOut(username) {
   const rec = attempts[username]
   if (!rec) return false
   if (rec.count >= MAX_ATTEMPTS) {
-    const elapsed = Date.now() - rec.lastAttempt
-    if (elapsed < LOCKOUT_TIME) return true
-    delete attempts[username] // lockout expired
+    if (Date.now() - rec.lastAttempt < LOCKOUT_TIME) return true
+    delete attempts[username]
   }
   return false
 }
@@ -40,16 +36,9 @@ function remainingLockout(username) {
   if (!rec) return 0
   return Math.ceil((LOCKOUT_TIME - (Date.now() - rec.lastAttempt)) / 60000)
 }
-
-// ── Input sanitizer ───────────────────────────────────────
 function sanitize(str) {
-  return String(str || '')
-    .trim()
-    .replace(/[<>'"`;]/g, '') // strip XSS chars
-    .slice(0, 100)            // max length
+  return String(str || '').trim().replace(/[<>'"`;]/g, '').slice(0, 100)
 }
-
-// ── Session helpers ───────────────────────────────────────
 function saveSession(user) {
   const session = { user, expiresAt: Date.now() + SESSION_EXPIRY }
   localStorage.setItem(SESSION_KEY, JSON.stringify(session))
@@ -58,27 +47,36 @@ function loadSession() {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return null
-    const session = JSON.parse(raw)
-    // Check expiry
-    if (session.expiresAt && Date.now() > session.expiresAt) {
-      localStorage.removeItem(SESSION_KEY)
-      return null
+    // Support old format (plain user object) and new format (with expiresAt)
+    const parsed = JSON.parse(raw)
+    if (parsed && parsed.user) {
+      // New format with expiry
+      if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+        localStorage.removeItem(SESSION_KEY)
+        return null
+      }
+      return parsed.user
     }
-    return session.user || null
+    // Old format — plain user object saved directly
+    if (parsed && parsed.username) return parsed
+    return null
   } catch { return null }
 }
 
-// ── Auth store ────────────────────────────────────────────
 export const useAuth = create((set, get) => ({
   user:    null,
   loading: true,
   error:   null,
 
   init: async () => {
-    const user = loadSession()
-    set({ user, loading: false })
-    // Refresh session expiry on activity
-    if (user) saveSession(user)
+    try {
+      const user = loadSession()
+      set({ user, loading: false })
+      if (user) saveSession(user)
+    } catch(e) {
+      localStorage.removeItem(SESSION_KEY)
+      set({ user: null, loading: false })
+    }
   },
 
   signUp: async (username, password, fullName, phone, role, referralCode) => {
@@ -91,7 +89,6 @@ export const useAuth = create((set, get) => ({
       if (!password || password.length < 6) {
         set({ error: 'Password must be at least 6 characters' }); return false
       }
-      // Check if username exists
       const { data: existing } = await supabase
         .from('profiles').select('id').eq('username', clean).single()
       if (existing) {
@@ -99,39 +96,50 @@ export const useAuth = create((set, get) => ({
       }
       const hashed = await hashPassword(password)
       const { count } = await supabase
-        .from('profiles').select('*', { count:'exact', head:true })
+        .from('profiles').select('*', { count: 'exact', head: true })
       const assignedRole = count === 0 ? 'superadmin' : (role || 'customer')
-      // Generate unique referral code
-      const newRefCode = (clean.slice(0,4) + Math.random().toString(36).slice(2,6)).toUpperCase()
-      const { data, error } = await supabase.from('profiles').insert({
-        username: clean, full_name: sanitize(fullName),
-        password_hash: hashed, role: assignedRole,
+      const newRefCode   = (clean.slice(0,4) + Math.random().toString(36).slice(2,6)).toUpperCase()
+
+      const insertData = {
+        username: clean,
+        full_name: sanitize(fullName),
+        password_hash: hashed,
+        role: assignedRole,
         phone: sanitize(phone),
-        referral_code: newRefCode,
-        referred_by: referralCode ? referralCode.trim().toUpperCase() : null,
-        wallet_balance: referralCode ? 20 : 0,
         created_at: new Date().toISOString()
-      }).select().single()
-      if (error) { set({ error: error.message }); return false }
-      // Credit referrer ₹20 if referral code used
-      if (referralCode && data) {
-        const { data: referrer } = await supabase
-          .from('profiles').select('id,wallet_balance').eq('referral_code', referralCode.trim().toUpperCase()).single()
-        if (referrer) {
-          await supabase.from('profiles').update({ wallet_balance: (referrer.wallet_balance||0) + 20 }).eq('id', referrer.id)
-          await supabase.from('wallet_transactions').insert({
-            user_id: referrer.id, type: 'credit', amount: 20,
-            reason: `Referral bonus — ${clean} joined using your code`,
-            created_at: new Date().toISOString()
-          })
-          // Also log wallet transaction for new user
-          await supabase.from('wallet_transactions').insert({
-            user_id: data.id, type: 'credit', amount: 20,
-            reason: 'Welcome bonus — joined via referral code',
-            created_at: new Date().toISOString()
-          })
-        }
       }
+
+      // Add referral fields only if columns exist
+      try {
+        insertData.referral_code  = newRefCode
+        insertData.referred_by    = referralCode ? referralCode.trim().toUpperCase() : null
+        insertData.wallet_balance = 0
+      } catch(e) { /* columns may not exist yet */ }
+
+      const { data, error } = await supabase
+        .from('profiles').insert(insertData).select().single()
+      if (error) { set({ error: error.message }); return false }
+
+      // Referral credit — non-critical, wrapped in try/catch
+      try {
+        if (referralCode && data) {
+          const { data: referrer } = await supabase
+            .from('profiles').select('id,wallet_balance')
+            .eq('referral_code', referralCode.trim().toUpperCase()).single()
+          if (referrer) {
+            await supabase.from('profiles')
+              .update({ wallet_balance: (referrer.wallet_balance || 0) + 20 })
+              .eq('id', referrer.id)
+            await supabase.from('wallet_transactions').insert([
+              { user_id: referrer.id, type:'credit', amount:20, reason:`Referral bonus — ${clean} joined using your code`, created_at: new Date().toISOString() },
+              { user_id: data.id,     type:'credit', amount:20, reason:'Welcome bonus — joined via referral code',          created_at: new Date().toISOString() }
+            ])
+          }
+        }
+      } catch(refErr) {
+        console.warn('Referral processing skipped:', refErr.message)
+      }
+
       return true
     } catch(e) { set({ error: e.message }); return false }
   },
@@ -140,21 +148,22 @@ export const useAuth = create((set, get) => ({
     set({ error: null })
     try {
       const clean = sanitize(username).toLowerCase()
+      if (!clean || !password) {
+        set({ error: 'Enter username and password' }); return false
+      }
 
-      // Check lockout — only applies to customer/delivery/vendor roles
-      // First do a quick role check before applying lockout
-      const { data: roleCheck } = await supabase
-        .from('profiles').select('role').eq('username', clean).single()
-      const isAdminRole = roleCheck?.role === 'superadmin' || roleCheck?.role === 'admin'
+      // Check if admin before applying lockout
+      let isAdminRole = false
+      try {
+        const { data: roleCheck } = await supabase
+          .from('profiles').select('role').eq('username', clean).single()
+        isAdminRole = roleCheck?.role === 'superadmin' || roleCheck?.role === 'admin'
+      } catch(e) { /* ignore */ }
 
       if (!isAdminRole && isLockedOut(clean)) {
         const mins = remainingLockout(clean)
         set({ error: `Too many failed attempts. Try again in ${mins} minute${mins>1?'s':''}` })
         return false
-      }
-
-      if (!clean || !password) {
-        set({ error: 'Enter username and password' }); return false
       }
 
       const hashed = await hashPassword(password)
@@ -167,12 +176,12 @@ export const useAuth = create((set, get) => ({
       if (error || !data) {
         if (!isAdminRole) {
           recordAttempt(clean, false)
-          const rec = attempts[clean]
+          const rec       = attempts[clean]
           const remaining = MAX_ATTEMPTS - (rec?.count || 0)
           if (remaining <= 2 && remaining > 0) {
-            set({ error: `Invalid username or password. ${remaining} attempt${remaining>1?'s':''} remaining before lockout.` })
+            set({ error: `Invalid credentials. ${remaining} attempt${remaining>1?'s':''} left before lockout.` })
           } else if (remaining <= 0) {
-            set({ error: `Account locked for 15 minutes due to too many failed attempts.` })
+            set({ error: 'Account locked for 15 minutes — too many failed attempts' })
           } else {
             set({ error: 'Invalid username or password' })
           }
