@@ -4,6 +4,7 @@ import PickupQueue from './PickupQueue'
 import WalkInBilling from './WalkInBilling'
 import BulkOrderForm from './BulkOrderForm'
 import SupplierPage from './SupplierPage'
+import HomePage from './HomePage'
 import VendorPage from './VendorPage'
 import BranchStockPage from './BranchStockPage'
 import React, { useState, useEffect } from 'react'
@@ -1045,6 +1046,9 @@ export default function Dashboard() {
 
           {/* BULK ORDERS */}
           {page==='bulk' && <BulkOrderForm />}
+
+          {/* HOME */}
+          {page==='home' && <HomePage />}
 
           {/* SUPPLIERS */}
           {page==='suppliers' && <SupplierPage />}
