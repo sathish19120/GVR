@@ -353,7 +353,7 @@ export default function CustomerShop() {
     finally { setPlacing(false) }
   }
 
-  const UPI_ID = import.meta.env.VITE_UPI_ID || ''
+  const UPI_ID = import.meta.env.VITE_UPI_ID || '19120sathish.ss1@ybl'
   const upiUrl = `upi://pay?pa=${UPI_ID}&pn=Green+Village+Rice&am=${grand}&cu=INR&tn=GVR+Order`
   const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiUrl)}`
 
