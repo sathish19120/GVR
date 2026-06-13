@@ -174,6 +174,9 @@ function NewOrderModal({ products, onClose, onSaved }) {
                 <p style={{ margin:0, fontSize:12, color:G.muted }}>₹{p.price_per_bag}/bag · {p.stock_bags} left</p>
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <button onClick={async()=>{ await signOut(); navigate('/login') }} style={{ padding:'6px 14px', background:G.redLight, border:`1px solid ${G.red}40`, borderRadius:8, fontSize:12, fontWeight:700, color:G.red, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+              <span>↩</span> Logout
+            </button>
                 <button onClick={()=>updateCart(p.id,-1)} style={{ width:28, height:28, borderRadius:'50%', border:`1px solid ${G.border}`, background:'none', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', color:G.green }}>−</button>
                 <span style={{ fontWeight:700, minWidth:20, textAlign:'center', color:G.text }}>{cart[p.id]||0}</span>
                 <button onClick={()=>updateCart(p.id,1)} style={{ width:28, height:28, borderRadius:'50%', border:`1px solid ${G.border}`, background:'none', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', color:G.green }}>+</button>
@@ -491,8 +494,8 @@ export default function Dashboard() {
               </div>
             </div>
           )}
-          <button onClick={async()=>{ await signOut(); navigate('/login') }} style={{ width:'100%', padding:collapsed?'8px':'8px 12px', borderRadius:10, border:'none', background:'transparent', color:G.red, fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:6 }}>
-            <span>↩</span>{!collapsed && 'Logout'}
+          <button onClick={async()=>{ await signOut(); navigate('/login') }} style={{ width:'100%', padding:collapsed?'8px':'10px 12px', borderRadius:10, border:`1px solid ${G.red}40`, background:G.redLight, color:G.red, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:8 }}>
+            <span style={{ fontSize:16 }}>↩</span>{!collapsed && 'Logout'}
           </button>
         </div>
       </aside>
