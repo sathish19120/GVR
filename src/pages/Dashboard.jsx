@@ -482,20 +482,29 @@ export default function Dashboard() {
             </button>
           ))}
         </nav>
-        <div style={{ padding:'10px 6px', borderTop:`1px solid ${G.border}` }}>
+        <div style={{ padding:'8px 6px', borderTop:`1px solid ${G.border}`, flexShrink:0 }}>
+          {/* User info row */}
           {!collapsed && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', marginBottom:4 }}>
-              <div style={{ width:28, height:28, borderRadius:'50%', background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:G.greenDark, flexShrink:0 }}>
-                {profile?.full_name?.[0] || profile?.username?.[0]?.toUpperCase() || 'A'}
+            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', marginBottom:6, background:'#F9FAF7', borderRadius:10 }}>
+              <div style={{ width:30, height:30, borderRadius:'50%', background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:G.greenDark, flexShrink:0, overflow:'hidden' }}>
+                {profile?.avatar_url
+                  ? <img src={profile.avatar_url} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                  : (profile?.full_name?.[0] || profile?.username?.[0]?.toUpperCase() || 'A')
+                }
               </div>
-              <div style={{ minWidth:0 }}>
+              <div style={{ minWidth:0, flex:1 }}>
                 <p style={{ margin:0, fontSize:12, fontWeight:600, color:G.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile?.full_name || profile?.username}</p>
-                <p style={{ margin:0, fontSize:10, color:G.muted }}>{profile?.role}</p>
+                <p style={{ margin:0, fontSize:10, color:G.muted, textTransform:'capitalize' }}>{profile?.role}</p>
               </div>
             </div>
           )}
-          <button onClick={async()=>{ await signOut(); navigate('/login') }} style={{ width:'100%', padding:collapsed?'8px':'10px 12px', borderRadius:10, border:`1px solid ${G.red}40`, background:G.redLight, color:G.red, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:8 }}>
-            <span style={{ fontSize:16 }}>↩</span>{!collapsed && 'Logout'}
+          {/* Logout button */}
+          <button onClick={async()=>{ await signOut(); navigate('/login') }}
+            style={{ width:'100%', padding:collapsed?'9px 0':'9px 12px', borderRadius:10, border:'none', background:G.redLight, color:G.red, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:8, transition:'background 0.15s' }}
+            onMouseEnter={e=>e.currentTarget.style.background='#FECACA'}
+            onMouseLeave={e=>e.currentTarget.style.background=G.redLight}>
+            <span style={{ fontSize:16, flexShrink:0 }}>↩</span>
+            {!collapsed && <span>Logout</span>}
           </button>
         </div>
       </aside>
