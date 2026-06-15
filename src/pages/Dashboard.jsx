@@ -820,10 +820,10 @@ export default function Dashboard() {
                       <div>
                         <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p>
                         <p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
-                        <span style={{ fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:10,
-                          background: o.payment_status==='paid' ? G.greenLight : G.amberLight,
-                          color: o.payment_status==='paid' ? G.green : G.amber }}>
-                          {o.payment_status==='paid' ? '✓ Paid' : '⏳ Pending'}
+                        <span style={{ fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:10,
+                          background: o.payment_status==='paid' ? G.greenLight : o.payment_method==='cod' ? G.amberLight : G.redLight,
+                          color: o.payment_status==='paid' ? G.green : o.payment_method==='cod' ? G.amber : G.red }}>
+                          {o.payment_status==='paid' ? '✅ Paid' : o.payment_method==='cod' ? '💵 COD Pending' : '⏳ Unpaid'}
                         </span>
                       </div>
                       <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Address</p><p style={{ margin:0, fontSize:13, color:G.text }}>{o.delivery_address||'—'}</p></div>
@@ -840,6 +840,19 @@ export default function Dashboard() {
                           style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
                           💰 Mark Paid
                         </button>
+                      )}
+                      {o.payment_method==='cod' && o.payment_status==='pending' && (
+                        <button onClick={async()=>{
+                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes?o.notes+' · ':'')+'Cash collected by admin' }).eq('id',o.id)
+                          load()
+                        }} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
+                          💵 Mark Cash Collected
+                        </button>
+                      )}
+                      {o.payment_method==='cod' && o.payment_status==='paid' && (
+                        <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.green }}>
+                          ✅ Cash Collected
+                        </span>
                       )}
                       {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
                       {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
@@ -914,6 +927,19 @@ export default function Dashboard() {
                           style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
                           💰 Mark Paid
                         </button>
+                      )}
+                      {o.payment_method==='cod' && o.payment_status==='pending' && (
+                        <button onClick={async()=>{
+                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes?o.notes+' · ':'')+'Cash collected by admin' }).eq('id',o.id)
+                          load()
+                        }} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
+                          💵 Mark Cash Collected
+                        </button>
+                      )}
+                      {o.payment_method==='cod' && o.payment_status==='paid' && (
+                        <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.green }}>
+                          ✅ Cash Collected
+                        </span>
                       )}
                       {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
                         {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
