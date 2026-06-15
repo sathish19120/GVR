@@ -306,6 +306,14 @@ export default function CustomerShop() {
     finally { setOL(false) }
   }
 
+  // Auto-refresh orders every 30 seconds when on myorders tab
+  // This detects when admin marks payment as paid
+  useEffect(() => {
+    if (tab !== 'myorders') return
+    const interval = setInterval(() => { loadMyOrders() }, 30000)
+    return () => clearInterval(interval)
+  }, [tab])
+
   const handleLogout = async () => { await signOut(); navigate('/login') }
 
   const totalItems  = Object.values(cart).reduce((s,q) => s+q, 0)
