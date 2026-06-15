@@ -858,6 +858,14 @@ export default function Dashboard() {
                       {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
                       {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
                       {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
+                      {o.status==='dispatched' && o.payment_status!=='paid' && (
+                        <button onClick={async()=>{
+                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes||'')+' · UPI paid on delivery' }).eq('id',o.id)
+                          load()
+                        }} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>
+                          📱 UPI Paid
+                        </button>
+                      )}
                       {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
                       <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
                     </div>
@@ -945,6 +953,14 @@ export default function Dashboard() {
                         {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
                         {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
                         {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
+                      {o.status==='dispatched' && o.payment_status!=='paid' && (
+                        <button onClick={async()=>{
+                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes||'')+' · UPI paid on delivery' }).eq('id',o.id)
+                          load()
+                        }} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>
+                          📱 UPI Paid
+                        </button>
+                      )}
                         {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
                         <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
                       </div>
