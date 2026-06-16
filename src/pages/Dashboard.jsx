@@ -404,7 +404,7 @@ export default function Dashboard() {
                   { icon:'⚙️', title:'Fresh Milling', desc:'Rice is milled in small batches to preserve freshness. Every pack carries the milling date — you always know how fresh your rice is.' },
                   { icon:'📦', title:'Quality Packing', desc:'Available in 1 kg, 5 kg and 25 kg packs (25 kg coming soon). FSSAI-compliant packaging with best-before dates.' },
                   { icon:'🚪', title:'Doorstep Delivery', desc:'Orders placed through our app are delivered to your home within hours. Track your delivery in real time.' },
-                  { icon:'💰', title:'Fair Pricing', desc:'By cutting out wholesalers and retailers, we offer premium rice at transparent prices — ₹68/kg for 1 kg packs, ₹320/kg for 5 kg packs.' },
+                  { icon:'💰', title:'Fair Pricing', desc:'Transparent pricing for every pack — Sona Masoori 1kg ₹68, Sona Masoori 5kg ₹320, Basmati 1kg ₹95, and Basmati 5kg ₹440.' },
                 ].map(item => (
                   <div key={item.title} style={{ display:'flex', gap:14, padding:'14px 16px', background:'#F9FAF7', borderRadius:12, borderLeft:'3px solid #3B6D11' }}>
                     <span style={{ fontSize:24, flexShrink:0 }}>{item.icon}</span>
