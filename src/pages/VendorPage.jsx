@@ -463,6 +463,7 @@ export default function VendorPage() {
   const [vendors, setVendors]   = useState([])
   const [products, setProducts] = useState([])
   const [purchases, setPurchases] = useState([])
+  const [vendorOrders, setVendorOrders] = useState([])
   const [loading, setLoading]   = useState(true)
   const [showAddVendor, setShowAddVendor] = useState(false)
   const [showAddPurchase, setShowAddPurchase] = useState(false)
@@ -472,18 +473,42 @@ export default function VendorPage() {
 
   useEffect(() => { load() }, [])
 
-  async function load() {
-    setLoading(true)
-    const [vRes, pRes, purRes] = await Promise.all([
-      supabase.from('vendors').select('*').order('created_at', { ascending: false }),
-      supabase.from('products').select('*').order('weight_kg'),
-      supabase.from('vendor_purchases').select('*, vendors(name, type, location)').order('purchase_date', { ascending: false }),
-    ])
-    setVendors(vRes.data || [])
-    setProducts(pRes.data || [])
-    setPurchases(purRes.data || [])
-    setLoading(false)
-  }
+async function load() {
+  setLoading(true)
+
+  const [vRes, pRes, purRes, orderRes] = await Promise.all([
+    supabase
+      .from('vendors')
+      .select('*')
+      .order('created_at', { ascending: false }),
+
+    supabase
+      .from('products')
+      .select('*')
+      .order('weight_kg'),
+
+    supabase
+      .from('vendor_purchases')
+      .select('*, vendors(name, type, location)')
+      .order('purchase_date', { ascending: false }),
+
+    supabase
+      .from('orders')
+      .select(`
+        *,
+        order_items(name, weight_kg, quantity, price_per_unit)
+      `)
+      .ilike('order_number', 'GVR-B2B-%')
+      .order('created_at', { ascending: false }),
+  ])
+
+  setVendors(vRes.data || [])
+  setProducts(pRes.data || [])
+  setPurchases(purRes.data || [])
+  setVendorOrders(orderRes.data || [])
+
+  setLoading(false)
+}
 
   const totalPurchased  = purchases.reduce((s, p) => s + (p.quantity_bags || 0), 0)
   const totalSpent      = purchases.reduce((s, p) => s + (p.total_amount || 0), 0)
@@ -500,13 +525,13 @@ export default function VendorPage() {
     p.invoice_number?.toLowerCase().includes(search.toLowerCase())
   )
 
-  const TABS = [
-    { key:'overview',  label:'📊 Overview' },
-    { key:'vendors',   label:'👨‍🌾 Vendors' },
-    { key:'purchases', label:'🛒 Purchases' },
-    { key:'godown',    label:'🏭 Godown Stock' },
-  ]
-
+ const TABS = [
+  { key:'overview', label:' Overview' },
+  { key:'vendors', label:'‍ Vendors' },
+  { key:'purchases', label:' Purchases' },
+  { key:'vendor_orders', label:' Vendor Orders' },
+  { key:'godown', label:' Godown Stock' },
+]
   return (
     <div style={{ fontFamily:"'Inter', sans-serif" }}>
       {showAddVendor && <AddVendorModal onClose={() => setShowAddVendor(false)} onSaved={load} />}
@@ -762,6 +787,76 @@ export default function VendorPage() {
         </div>
       )}
 
+      {!loading && tab === 'vendor_orders' && (
+  <div style={{ background:G.white, borderRadius:16, padding:18, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+    <h3 style={{ margin:'0 0 16px', color:G.text }}>Vendor Orders</h3>
+
+    {vendorOrders.length === 0 && (
+      <p style={{ color:G.muted }}>No vendor orders found.</p>
+    )}
+
+    {vendorOrders.map(order => (
+      <div
+        key={order.id}
+        style={{
+          border:`1px solid ${G.border}`,
+          borderRadius:12,
+          padding:14,
+          marginBottom:12,
+          background:'#FAFAFA'
+        }}
+      >
+        <div style={{ display:'flex', justifyContent:'space-between', gap:12 }}>
+          <div>
+            <p style={{ margin:'0 0 4px', fontWeight:700, color:G.text }}>
+              {order.order_number}
+            </p>
+
+            <p style={{ margin:'0 0 4px', fontSize:13, color:G.muted }}>
+              Vendor: {order.customer_name || '—'}
+            </p>
+
+            <p style={{ margin:'0 0 4px', fontSize:13, color:G.muted }}>
+              Address: {order.delivery_address || '—'}
+            </p>
+
+            <p style={{ margin:'0 0 4px', fontSize:13, color:G.muted }}>
+              Date: {new Date(order.created_at).toLocaleDateString('en-IN')}
+            </p>
+          </div>
+
+          <div style={{ textAlign:'right' }}>
+            <p style={{ margin:'0 0 6px', fontWeight:700, color:G.green }}>
+              ₹{Number(order.total_amount || 0).toLocaleString('en-IN')}
+            </p>
+
+            <p style={{ margin:'0 0 4px', fontSize:12 }}>
+              Status: <strong>{order.status}</strong>
+            </p>
+
+            <p style={{ margin:0, fontSize:12 }}>
+              Payment: <strong>{order.payment_status}</strong>
+            </p>
+          </div>
+        </div>
+
+        <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${G.border}` }}>
+          {(order.order_items || []).map((item, index) => (
+            <p key={index} style={{ margin:'3px 0', fontSize:13, color:G.text }}>
+              {item.name} — {item.weight_kg}kg × {item.quantity} bags @ ₹{item.price_per_unit}
+            </p>
+          ))}
+        </div>
+
+        {order.notes && (
+          <p style={{ margin:'8px 0 0', fontSize:12, color:G.muted }}>
+            Notes: {order.notes}
+          </p>
+        )}
+      </div>
+    ))}
+  </div>
+)}
       {/* ── GODOWN STOCK TAB ── */}
       {!loading && tab === 'godown' && (
         <div>
