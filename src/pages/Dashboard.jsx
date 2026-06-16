@@ -396,7 +396,7 @@ export default function Dashboard() {
                 <button onClick={()=>setTopModal(null)} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:'#6B7280' }}>✕</button>
               </div>
               <p style={{ color:'#6B7280', fontSize:14, lineHeight:1.7, marginBottom:24 }}>
-                We are a <strong style={{color:'#3B6D11'}}>direct-to-consumer rice brand</strong> that sources premium Sona Masoori paddy from trusted farms in Telangana, mills it fresh, and delivers it straight to your kitchen — eliminating middlemen and ensuring maximum freshness.
+                We are a <strong style={{color:'#3B6D11'}}>direct-to-consumer rice brand</strong> that sources premium  paddy from trusted farms in Telangana, mills it fresh, and delivers it straight to your kitchen — eliminating middlemen and ensuring maximum freshness.
               </p>
               <div style={{ display:'grid', gap:14, marginBottom:24 }}>
                 {[
@@ -454,7 +454,7 @@ export default function Dashboard() {
               <div style={{ background:'#EAF3DE', borderRadius:12, padding:'14px 18px' }}>
                 <p style={{ margin:'0 0 8px', fontWeight:700, fontSize:13, color:'#27500A' }}>Product Range</p>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  {[['Sona Masoori 1kg','₹60'],['Sona Masoori 5kg','₹250'],['Sona Masoori 25kg','Coming Soon']].map(([name,price])=>(
+                  {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Sona Masoori 25kg','440']].map(([name,price])=>(
                     <span key={name} style={{ fontSize:12, padding:'4px 12px', borderRadius:20, background:'#fff', color:'#3B6D11', fontWeight:600 }}>{name} — {price}</span>
                   ))}
                 </div>
