@@ -454,7 +454,7 @@ export default function Dashboard() {
               <div style={{ background:'#EAF3DE', borderRadius:12, padding:'14px 18px' }}>
                 <p style={{ margin:'0 0 8px', fontWeight:700, fontSize:13, color:'#27500A' }}>Product Range</p>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Sona Masoori 25kg','440']].map(([name,price])=>(
+                  {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Sona Masoori 25kg','1240']].map(([name,price])=>(
                     <span key={name} style={{ fontSize:12, padding:'4px 12px', borderRadius:20, background:'#fff', color:'#3B6D11', fontWeight:600 }}>{name} — {price}</span>
                   ))}
                 </div>
