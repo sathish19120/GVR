@@ -473,7 +473,7 @@ export default function VendorPage() {
 
   useEffect(() => { load() }, [])
 
-async function load() {
+  async function load() {
   setLoading(true)
 
   const [vRes, pRes, purRes, orderRes] = await Promise.all([
@@ -510,6 +510,41 @@ async function load() {
   setLoading(false)
 }
 
+  async function updateVendorOrderPayment(orderId, paymentStatus) {
+    const confirmMessage =
+      paymentStatus === 'paid'
+        ? 'Are you sure you want to verify this payment?'
+        : 'Are you sure you want to reject this payment?'
+
+    if (!window.confirm(confirmMessage)) return
+
+    const updateData = {
+      payment_status: paymentStatus,
+    }
+
+    if (paymentStatus === 'paid') {
+      updateData.status = 'confirmed'
+    }
+
+    const { error } = await supabase
+      .from('orders')
+      .update(updateData)
+      .eq('id', orderId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    alert(
+      paymentStatus === 'paid'
+        ? 'Payment verified successfully'
+        : 'Payment rejected'
+    )
+
+    load()
+  }
+
   const totalPurchased  = purchases.reduce((s, p) => s + (p.quantity_bags || 0), 0)
   const totalSpent      = purchases.reduce((s, p) => s + (p.total_amount || 0), 0)
   const avgPrice        = totalPurchased > 0 ? (totalSpent / totalPurchased).toFixed(1) : 0
@@ -525,7 +560,7 @@ async function load() {
     p.invoice_number?.toLowerCase().includes(search.toLowerCase())
   )
 
- const TABS = [
+  const TABS = [
   { key:'overview', label:' Overview' },
   { key:'vendors', label:'‍ Vendors' },
   { key:'purchases', label:' Purchases' },
@@ -775,10 +810,42 @@ async function load() {
                       <td style={{ padding:'11px 14px',fontWeight:700,color:G.green }}>{fmtRs(p.total_amount)}</td>
                       <td style={{ padding:'11px 14px',color:G.muted,fontSize:12 }}>{p.invoice_number||'—'}</td>
                       <td style={{ padding:'11px 14px',color:G.muted,fontSize:12,maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{p.notes||'—'}</td>
+                      <td style={{ padding:'11px 14px',whiteSpace:'nowrap' }}>
+                        <span style={{
+                          fontSize:11,
+                          fontWeight:700,
+                          padding:'3px 8px',
+                          borderRadius:20,
+                          background:p.payment_status==='paid'?G.greenLight:p.payment_status==='partial'?G.amberLight:G.redLight,
+                          color:p.payment_status==='paid'?G.green:p.payment_status==='partial'?G.amber:G.red
+                        }}>
+                          {p.payment_status === 'paid' ? 'Paid' : p.payment_status === 'partial' ? 'Partial' : 'Unpaid'}
+                        </span>
+
+                        {p.payment_status !== 'paid' && (
+                          <button
+                            type="button"
+                            onClick={() => setPaymentModal(p)}
+                            style={{
+                              marginLeft:8,
+                              padding:'4px 8px',
+                              border:'none',
+                              borderRadius:8,
+                              background:G.greenLight,
+                              color:G.green,
+                              fontSize:11,
+                              fontWeight:700,
+                              cursor:'pointer'
+                            }}
+                          >
+                            Record
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {filteredPurchases.length===0 && (
-                    <tr><td colSpan={9} style={{ padding:40,textAlign:'center',color:G.muted }}>No purchase records found</td></tr>
+                    <tr><td colSpan={10} style={{ padding:40,textAlign:'center',color:G.muted }}>No purchase records found</td></tr>
                   )}
                 </tbody>
               </table>
@@ -835,8 +902,54 @@ async function load() {
             </p>
 
             <p style={{ margin:0, fontSize:12 }}>
-              Payment: <strong>{order.payment_status}</strong>
+              Payment: <strong>{order.payment_status || 'pending'}</strong>
             </p>
+
+            {order.payment_status === 'verification_pending' && (
+              <div
+                style={{
+                  display:'flex',
+                  gap:8,
+                  marginTop:10,
+                  justifyContent:'flex-end',
+                  flexWrap:'wrap'
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => updateVendorOrderPayment(order.id, 'paid')}
+                  style={{
+                    padding:'7px 12px',
+                    border:'none',
+                    borderRadius:8,
+                    background:G.green,
+                    color:G.white,
+                    fontSize:12,
+                    fontWeight:700,
+                    cursor:'pointer'
+                  }}
+                >
+                  Verify Payment
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => updateVendorOrderPayment(order.id, 'rejected')}
+                  style={{
+                    padding:'7px 12px',
+                    border:'none',
+                    borderRadius:8,
+                    background:G.red,
+                    color:G.white,
+                    fontSize:12,
+                    fontWeight:700,
+                    cursor:'pointer'
+                  }}
+                >
+                  Reject
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
