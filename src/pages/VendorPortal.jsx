@@ -139,7 +139,7 @@ export default function VendorPortal() {
         delivery_address: address,
         total_amount: grand,
         status: 'pending',
-        payment_status: utrRef.trim() ? 'paid' : 'pending',
+        payment_status: utrRef.trim() ? 'verification_pending' : 'pending',
         payment_method: payMethod,
         notes: `B2B Vendor Order${utrRef ? ` · Payment Ref: ${utrRef}` : ' · Payment Pending'}`,
         created_at: new Date().toISOString()
@@ -272,7 +272,11 @@ export default function VendorPortal() {
                 <input type="text" value={utrRef} onChange={e=>setUtrRef(e.target.value.trim())}
                   placeholder="12-digit UTR / Transaction ID"
                   style={{ width:'100%', padding:'10px 12px', borderRadius:9, border:`1.5px solid ${utrRef?G.green:G.border}`, fontSize:13, outline:'none', boxSizing:'border-box' }} />
-                {utrRef && <p style={{ margin:'4px 0 0', fontSize:11, color:G.green }}>✓ Payment reference saved</p>}
+                {utrRef && (
+  <p style={{ margin:'4px 0 0', fontSize:11, color:G.green }}>
+    ✓ Payment reference submitted for admin verification
+  </p>
+)}
               </div>
             </div>
           )}
