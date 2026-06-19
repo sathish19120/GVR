@@ -28,6 +28,10 @@ nav.scrolled{background:rgba(39,80,10,0.97)}
 .nav-links{display:flex;gap:28px;list-style:none}
 .nav-links a{color:rgba(255,255,255,0.85);font-size:13px;font-weight:500;transition:color 0.2s}
 .nav-links a:hover{color:#fff}
+.nav-login{color:rgba(255,255,255,0.85);font-size:13px;font-weight:600;padding:7px 16px;border-radius:20px;border:1px solid rgba(255,255,255,0.35);transition:all 0.2s}
+.nav-login:hover{background:rgba(255,255,255,0.12);color:#fff}
+.nav-signup{background:rgba(255,255,255,0.15);color:#fff;padding:7px 16px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.3);transition:all 0.2s}
+.nav-signup:hover{background:rgba(255,255,255,0.25)}
 .nav-cta{background:#fff;color:#3B6D11;padding:8px 20px;border-radius:20px;font-size:13px;font-weight:700;transition:all 0.2s}
 .nav-cta:hover{background:#EAF3DE}
 .hamburger{display:none;background:none;border:none;cursor:pointer;color:#fff;font-size:22px}
@@ -204,7 +208,7 @@ footer{background:#111827;color:#fff;padding:60px 5% 30px}
 
 /* RESPONSIVE */
 @media(max-width:768px){
-  .nav-links,.nav-cta{display:none}
+  .nav-links,.nav-cta,.nav-login,.nav-signup{display:none}
   .hamburger{display:block}
   .about-inner,.contact-inner,.footer-inner{grid-template-columns:1fr}
   .about-img-main{height:240px}
@@ -250,7 +254,11 @@ footer{background:#111827;color:#fff;padding:60px 5% 30px}
       <li><a href="#branches">Branches</a></li>
       <li><a href="#contact">Contact</a></li>
     </ul>
-    <a href="https://gvr-lemon.vercel.app" class="nav-cta">Order Now</a>
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="https://gvr-lemon.vercel.app/login" class="nav-login">Login</a>
+      <a href="https://gvr-lemon.vercel.app/login" class="nav-signup">Sign Up</a>
+      <a href="https://gvr-lemon.vercel.app" class="nav-cta">Order Now</a>
+    </div>
     <button class="hamburger" id="ham">☰</button>
   </div>
 </nav>
@@ -700,7 +708,8 @@ const observer = new IntersectionObserver((entries) => {
 document.querySelectorAll('.reveal').forEach(el => observer.observe(el))
 
 document.getElementById('ham').addEventListener('click', () => {
-  alert('Menu: About | Products | Journey | Branches | Contact\n\nOrder at: gvr-lemon.vercel.app')
+  const choice = confirm('Green Village Rice\n\nTap OK to Login / Sign Up\nTap Cancel to continue browsing')
+  if (choice) window.location.href = 'https://gvr-lemon.vercel.app/login'
 })
 
 document.querySelectorAll('a[href^="#"]').forEach(a => {
