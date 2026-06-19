@@ -255,9 +255,9 @@ footer{background:#111827;color:#fff;padding:60px 5% 30px}
       <li><a href="#contact">Contact</a></li>
     </ul>
     <div style="display:flex;align-items:center;gap:10px">
-      <a href="https://gvr-lemon.vercel.app/login" class="nav-login">Login</a>
-      <a href="https://gvr-lemon.vercel.app/login" class="nav-signup">Sign Up</a>
-      <a href="https://gvr-lemon.vercel.app" class="nav-cta">Order Now</a>
+      <a href="https://gvr-lemon.vercel.app/login" class="nav-login" target="_blank">Login</a>
+      <a href="https://gvr-lemon.vercel.app/login" class="nav-signup" target="_blank">Sign Up</a>
+      <a href="https://gvr-lemon.vercel.app/login" class="nav-cta" target="_blank">Order Now</a>
     </div>
     <button class="hamburger" id="ham">☰</button>
   </div>
@@ -278,7 +278,7 @@ footer{background:#111827;color:#fff;padding:60px 5% 30px}
     <p class="hero-sub">Small batch milled Sona Masoori — packed fresh with a QR code. Scan to know exactly where your rice came from.</p>
     <p class="hero-telugu">గ్రీన్ విలేజ్ రైస్ · నల్గొండ నుండి మీ వంటింటికి</p>
     <div class="hero-btns">
-      <a href="https://gvr-lemon.vercel.app" class="btn-primary">Order Fresh Rice</a>
+      <a href="https://gvr-lemon.vercel.app/login" class="btn-primary" target="_blank">Order Fresh Rice</a>
       <a href="#about" class="btn-outline">Our Story</a>
     </div>
   </div>
@@ -393,7 +393,7 @@ footer{background:#111827;color:#fff;padding:60px 5% 30px}
           <div class="product-sku">SKU: GVR-SM-1KG</div>
           <div class="product-desc">Daily cooking rice. Soft, aromatic, perfect for all dishes. Light on stomach.</div>
           <div class="product-price">₹68 <span>per bag</span></div>
-          <a href="https://gvr-lemon.vercel.app" class="product-btn">Order Now →</a>
+          <a href="https://gvr-lemon.vercel.app/login" class="product-btn" target="_blank">Order Now →</a>
         </div>
       </div>
       <div class="product-card">
@@ -403,7 +403,7 @@ footer{background:#111827;color:#fff;padding:60px 5% 30px}
           <div class="product-sku">SKU: GVR-SM-5KG</div>
           <div class="product-desc">Family pack. Same fresh quality. Save ₹20 vs buying 5 individual bags.</div>
           <div class="product-price">₹320 <span>per bag</span></div>
-          <a href="https://gvr-lemon.vercel.app" class="product-btn">Order Now →</a>
+          <a href="https://gvr-lemon.vercel.app/login" class="product-btn" target="_blank">Order Now →</a>
         </div>
       </div>
       <div class="product-card">
@@ -413,7 +413,7 @@ footer{background:#111827;color:#fff;padding:60px 5% 30px}
           <div class="product-sku">SKU: GVR-BAS-1KG</div>
           <div class="product-desc">Long grain, fragrant. Perfect for biryani, pulao and special occasions.</div>
           <div class="product-price">₹95 <span>per bag</span></div>
-          <a href="https://gvr-lemon.vercel.app" class="product-btn">Order Now →</a>
+          <a href="https://gvr-lemon.vercel.app/login" class="product-btn" target="_blank">Order Now →</a>
         </div>
       </div>
       <div class="product-card">
@@ -423,7 +423,7 @@ footer{background:#111827;color:#fff;padding:60px 5% 30px}
           <div class="product-sku">SKU: GVR-BAS-5KG</div>
           <div class="product-desc">Bulk basmati for restaurants, hotels and large families. Best value.</div>
           <div class="product-price">₹440 <span>per bag</span></div>
-          <a href="https://gvr-lemon.vercel.app" class="product-btn">Order Now →</a>
+          <a href="https://gvr-lemon.vercel.app/login" class="product-btn" target="_blank">Order Now →</a>
         </div>
       </div>
     </div>
@@ -647,11 +647,11 @@ footer{background:#111827;color:#fff;padding:60px 5% 30px}
       <div>
         <div class="footer-col-title">Products</div>
         <ul class="footer-links">
-          <li><a href="https://gvr-lemon.vercel.app">Sona Masoori 1kg</a></li>
-          <li><a href="https://gvr-lemon.vercel.app">Sona Masoori 5kg</a></li>
-          <li><a href="https://gvr-lemon.vercel.app">Basmati 1kg</a></li>
-          <li><a href="https://gvr-lemon.vercel.app">Basmati 5kg</a></li>
-          <li><a href="https://gvr-lemon.vercel.app">Bulk Orders</a></li>
+          <li><a href="https://gvr-lemon.vercel.app/login" target="_blank">Sona Masoori 1kg</a></li>
+          <li><a href="https://gvr-lemon.vercel.app/login" target="_blank">Sona Masoori 5kg</a></li>
+          <li><a href="https://gvr-lemon.vercel.app/login" target="_blank">Basmati 1kg</a></li>
+          <li><a href="https://gvr-lemon.vercel.app/login" target="_blank">Basmati 5kg</a></li>
+          <li><a href="https://gvr-lemon.vercel.app/login" target="_blank">Bulk Orders</a></li>
         </ul>
       </div>
       <div>
@@ -709,7 +709,7 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el))
 
 document.getElementById('ham').addEventListener('click', () => {
   const choice = confirm('Green Village Rice\n\nTap OK to Login / Sign Up\nTap Cancel to continue browsing')
-  if (choice) window.location.href = 'https://gvr-lemon.vercel.app/login'
+  if (choice) window.open('https://gvr-lemon.vercel.app/login', '_blank')
 })
 
 document.querySelectorAll('a[href^="#"]').forEach(a => {
