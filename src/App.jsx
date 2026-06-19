@@ -41,7 +41,14 @@ function RoleRouter() {
 function AuthGuard({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <Loading />
-  if (user) return <Navigate to="/" replace />
+  if (user) {
+    // Already logged in — redirect to correct page based on role
+    if (user.role === 'customer')          return <Navigate to="/shop"      replace />
+    if (user.role === 'delivery')          return <Navigate to="/delivery"  replace />
+    if (user.role === 'branch_executive')  return <Navigate to="/branch"    replace />
+    if (user.role === 'vendor')            return <Navigate to="/vendor"    replace />
+    return <Navigate to="/dashboard" replace />
+  }
   return children
 }
 
