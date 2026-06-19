@@ -1,3 +1,4 @@
+import HomePage from './pages/HomePage'
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './store/auth'
@@ -57,17 +58,68 @@ export default function App() {
   useEffect(() => { init() }, [])
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login"      element={<AuthGuard><AuthPage /></AuthGuard>} />
-        <Route path="/"           element={<RoleRouter />} />
-        <Route path="/dashboard/*" element={<Protected roles={['superadmin','admin']}><Dashboard /></Protected>} />
-        <Route path="/shop"       element={<Protected><CustomerShop /></Protected>} />
-        <Route path="/delivery"   element={<Protected roles={['delivery','superadmin','admin']}><DeliveryPage /></Protected>} />
-        <Route path="/branch/*"   element={<Protected roles={['branch_executive','superadmin','admin']}><BranchDashboard /></Protected>} />
-        <Route path="/vendor/*"   element={<Protected roles={['vendor','superadmin','admin']}><VendorPortal /></Protected>} />
-        <Route path="*"           element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+  <BrowserRouter>
+  <Routes>
+    <Route path="/" element={<HomePage />} />
+
+    <Route
+      path="/login"
+      element={
+        <AuthGuard>
+          <AuthPage />
+        </AuthGuard>
+      }
+    />
+
+    <Route path="/app" element={<RoleRouter />} />
+
+    <Route
+      path="/dashboard/*"
+      element={
+        <Protected roles={['superadmin', 'admin']}>
+          <Dashboard />
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/shop"
+      element={
+        <Protected>
+          <CustomerShop />
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/delivery"
+      element={
+        <Protected roles={['delivery', 'superadmin', 'admin']}>
+          <DeliveryPage />
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/branch/*"
+      element={
+        <Protected roles={['branch_executive', 'superadmin', 'admin']}>
+          <BranchDashboard />
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/vendor/*"
+      element={
+        <Protected roles={['vendor', 'superadmin', 'admin']}>
+          <VendorPortal />
+        </Protected>
+      }
+    />
+
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Routes>
+</BrowserRouter>
   )
 }
