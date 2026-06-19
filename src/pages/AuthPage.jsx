@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
+import { trackSignup, trackLogin, trackPage } from '../lib/analytics'
 
 const G = {
   green:      '#3B6D11',
@@ -102,7 +103,7 @@ export default function AuthPage() {
       }
     } else {
       const ok = await signIn(username, password)
-      if (ok) navigate('/')
+      if (ok) { trackLogin(ok?.role || 'customer'); navigate('/') }
     }
   }
 
