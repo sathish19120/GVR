@@ -283,9 +283,16 @@ export default function CustomerShop() {
   const [tab, setTab]             = useState('shop')
   const switchTab = (t) => { setTab(t) }
   const [products, setProducts]   = useState([])
-  const [cart, setCart]           = useState({})
+  const [cart, setCart]           = useState(() => {
+    try {
+      const saved = localStorage.getItem('gvr_cart')
+      return saved ? JSON.parse(saved) : {}
+    } catch { return {} }
+  })
   const [step, setStep]           = useState('shop')
-  const [address, setAddress]     = useState(user?.address || '')
+  const [address, setAddress]     = useState(() => {
+    return user?.address || localStorage.getItem('gvr_address') || ''
+  })
   const [phone, setPhone]         = useState(user?.phone || '')
   const [payMethod, setPayMethod] = useState('cod')
   const [orderType, setOrderType] = useState('delivery')
@@ -303,6 +310,18 @@ export default function CustomerShop() {
   const [autoPlacing, setAutoPlacing] = useState(false)
 
   useEffect(() => { loadProducts() }, [])
+
+  // Persist cart to localStorage
+  useEffect(() => {
+    try { localStorage.setItem('gvr_cart', JSON.stringify(cart)) } catch {}
+  }, [cart])
+
+  // Persist delivery address
+  useEffect(() => {
+    if (address.trim()) {
+      try { localStorage.setItem('gvr_address', address) } catch {}
+    }
+  }, [address])
   useEffect(() => { if (tab === 'myorders') loadMyOrders() }, [tab])
 
   useEffect(() => {
@@ -389,6 +408,7 @@ export default function CustomerShop() {
         await supabase.from('order_items').insert({ order_id:order.id, product_id:p.id, name:p.name, weight_kg:p.weight_kg, quantity:cart[p.id], price_per_unit:p.price_per_bag })
         await supabase.from('products').update({ stock_bags: Math.max(0, p.stock_bags - cart[p.id]) }).eq('id', p.id)
       }
+      localStorage.removeItem('gvr_cart')
       setOrderNum(orderNumber); setCart({}); setAddress(''); setStep('success')
     } catch(e) { setError(e.message || 'Failed to place order') }
     finally { setPlacing(false) }
@@ -463,8 +483,14 @@ export default function CustomerShop() {
           </div>
           {orderType==='delivery' && (
             <>
+              {localStorage.getItem('gvr_address') && address === localStorage.getItem('gvr_address') && (
+                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6 }}>
+                  <span style={{ fontSize:12,color:G.green }}>✓ Using saved address</span>
+                  <button type="button" onClick={()=>setAddress('')} style={{ background:'none',border:'none',fontSize:11,color:G.muted,cursor:'pointer',textDecoration:'underline' }}>Change</button>
+                </div>
+              )}
               <textarea value={address} onChange={e=>setAddress(e.target.value)} placeholder="House/flat number, street, area, landmark..." rows={3}
-                style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,resize:'none',outline:'none',boxSizing:'border-box',fontFamily:'inherit',marginBottom:8 }} />
+                style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${address?G.green:G.border}`,fontSize:14,resize:'none',outline:'none',boxSizing:'border-box',fontFamily:'inherit',marginBottom:8 }} />
               <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone number for delivery" type="tel"
                 style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box' }} />
             </>
