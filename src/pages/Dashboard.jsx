@@ -396,7 +396,7 @@ export default function Dashboard() {
                 <button onClick={()=>setTopModal(null)} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:'#6B7280' }}>✕</button>
               </div>
               <p style={{ color:'#6B7280', fontSize:14, lineHeight:1.7, marginBottom:24 }}>
-                We are a <strong style={{color:'#3B6D11'}}>direct-to-consumer rice brand</strong> that sources premium  paddy from trusted farms in Telangana, mills it fresh, and delivers it straight to your kitchen — eliminating middlemen and ensuring maximum freshness.
+                We are a <strong style={{color:'#3B6D11'}}>direct-to-consumer rice brand</strong> that sources premium Sona Masoori paddy from trusted farms in Telangana, mills it fresh, and delivers it straight to your kitchen — eliminating middlemen and ensuring maximum freshness.
               </p>
               <div style={{ display:'grid', gap:14, marginBottom:24 }}>
                 {[
@@ -404,7 +404,7 @@ export default function Dashboard() {
                   { icon:'⚙️', title:'Fresh Milling', desc:'Rice is milled in small batches to preserve freshness. Every pack carries the milling date — you always know how fresh your rice is.' },
                   { icon:'📦', title:'Quality Packing', desc:'Available in 1 kg, 5 kg and 25 kg packs (25 kg coming soon). FSSAI-compliant packaging with best-before dates.' },
                   { icon:'🚪', title:'Doorstep Delivery', desc:'Orders placed through our app are delivered to your home within hours. Track your delivery in real time.' },
-                  { icon:'💰', title:'Fair Pricing', desc:'Transparent pricing for every pack — Sona Masoori 1kg ₹68, Sona Masoori 5kg ₹320, Basmati 1kg ₹95, and Basmati 5kg ₹440.' },
+                  { icon:'💰', title:'Fair Pricing', desc:'By cutting out wholesalers and retailers, we offer premium rice at transparent prices — ₹60/kg for 1 kg packs, ₹50/kg for 5 kg packs.' },
                 ].map(item => (
                   <div key={item.title} style={{ display:'flex', gap:14, padding:'14px 16px', background:'#F9FAF7', borderRadius:12, borderLeft:'3px solid #3B6D11' }}>
                     <span style={{ fontSize:24, flexShrink:0 }}>{item.icon}</span>
@@ -454,12 +454,7 @@ export default function Dashboard() {
               <div style={{ background:'#EAF3DE', borderRadius:12, padding:'14px 18px' }}>
                 <p style={{ margin:'0 0 8px', fontWeight:700, fontSize:13, color:'#27500A' }}>Product Range</p>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  {[
-  ['Sona Masoori 1kg', '₹68'],
-  ['Sona Masoori 5kg', '₹320'],
-  ['Basmati 1kg', '₹95'],
-  ['Basmati 5kg', '₹440'],
-].map(([name,price])=>(
+                  {[['Sona Masoori 1kg','₹60'],['Sona Masoori 5kg','₹250'],['Sona Masoori 25kg','Coming Soon']].map(([name,price])=>(
                     <span key={name} style={{ fontSize:12, padding:'4px 12px', borderRadius:20, background:'#fff', color:'#3B6D11', fontWeight:600 }}>{name} — {price}</span>
                   ))}
                 </div>
