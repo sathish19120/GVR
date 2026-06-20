@@ -2,9 +2,36 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
-import { t, useLang } from '../lib/i18n'
-import LanguageToggle from '../components/LanguageToggle'
 import ProfilePage from './ProfilePage'
+
+// ── Inline language support ──────────────────────────────
+const SHOP_STRINGS = {
+  en: { orderRice:'Order Rice', myOrders:'My Orders', subscribe:'Subscribe', referEarn:'Refer & Earn', addToCart:'Add +', checkout:'Checkout', placeOrder:'Place Order', homeDelivery:'Home Delivery', storePickup:'Store Pickup', cashOnDelivery:'Cash on Delivery', upiPayment:'UPI Payment', orderPlaced:'Order Placed!', trackOrder:'Track My Order', orderMore:'Order More Rice', outOfStock:'Out of Stock', logout:'Logout', whereWeWork:'Where We Work', whatWeDo:'What We Do', about:'About', freshStock:'Fresh stock available today' },
+  te: { orderRice:'బియ్యం ఆర్డర్', myOrders:'నా ఆర్డర్లు', subscribe:'సబ్‌స్క్రైబ్', referEarn:'రెఫర్ & సంపాదించండి', addToCart:'చేర్చండి +', checkout:'చెక్అవుట్', placeOrder:'ఆర్డర్ పెట్టండి', homeDelivery:'ఇంటికి డెలివరీ', storePickup:'స్టోర్ పికప్', cashOnDelivery:'డెలివరీలో నగదు', upiPayment:'UPI చెల్లింపు', orderPlaced:'ఆర్డర్ పెట్టారు!', trackOrder:'ఆర్డర్ ట్రాక్ చేయండి', orderMore:'మరింత బియ్యం', outOfStock:'స్టాక్ లేదు', logout:'లాగ్ అవుట్', whereWeWork:'మేము ఎక్కడ పని చేస్తాం', whatWeDo:'మేము ఏమి చేస్తాం', about:'గురించి', freshStock:'ఈరోజు తాజా స్టాక్ అందుబాటులో ఉంది' }
+}
+
+function ShopLangToggle({ lang, setLang }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ position:'relative' }}>
+      <button onClick={()=>setOpen(!open)} style={{ display:'flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:20,padding:'4px 10px',cursor:'pointer',color:'#fff',fontSize:11,fontWeight:600 }}>
+        <span>{lang==='te'?'🇮🇳':'🌐'}</span>
+        {lang==='te'?'తె':'EN'}
+      </button>
+      {open && (
+        <div style={{ position:'absolute',top:'110%',right:0,background:'#fff',borderRadius:12,boxShadow:'0 4px 16px rgba(0,0,0,0.15)',overflow:'hidden',minWidth:120,zIndex:999 }}>
+          {[['en','🌐','English'],['te','🇮🇳','తెలుగు']].map(([code,flag,label])=>(
+            <button key={code} onClick={()=>{setLang(code);setOpen(false)}} style={{ width:'100%',padding:'9px 12px',display:'flex',alignItems:'center',gap:8,background:lang===code?'#EAF3DE':'#fff',border:'none',borderBottom:'1px solid #F3F4F6',cursor:'pointer' }}>
+              <span style={{fontSize:15}}>{flag}</span>
+              <span style={{fontSize:12,fontWeight:600,color:'#111827'}}>{label}</span>
+              {lang===code && <span style={{marginLeft:'auto',color:'#3B6D11',fontWeight:700,fontSize:11}}>✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const G = {
   green:'#3B6D11',greenDark:'#27500A',greenLight:'#EAF3DE',green2:'#639922',
@@ -249,7 +276,9 @@ function SubscribeSection({ user }) {
 
 export default function CustomerShop() {
   const { user, signOut }         = useAuth()
-  const lang                        = useLang()
+  const [lang, setLangState]        = useState(localStorage.getItem('gvr_lang')||'en')
+  const T = SHOP_STRINGS[lang] || SHOP_STRINGS.en
+  const setLang = (l) => { localStorage.setItem('gvr_lang',l); setLangState(l) }
   const navigate                  = useNavigate()
   const [tab, setTab]             = useState('shop')
   const switchTab = (t) => { setTab(t) }
@@ -374,12 +403,12 @@ export default function CustomerShop() {
     <div style={{ minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:G.surface,padding:20 }}>
       <div style={{ textAlign:'center',background:G.white,borderRadius:20,padding:'48px 40px',maxWidth:400,width:'100%',boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
         <div style={{ fontSize:60,marginBottom:16 }}>✅</div>
-        <h2 style={{ fontSize:24,fontWeight:800,color:G.greenDark,margin:'0 0 8px' }}>{t('orderPlaced',lang)}</h2>
+        <h2 style={{ fontSize:24,fontWeight:800,color:G.greenDark,margin:'0 0 8px' }}>{T.orderPlaced}</h2>
         <p style={{ color:G.muted,margin:'0 0 4px',fontSize:14 }}>Order: <strong style={{color:G.green}}>{orderNum}</strong></p>
         <p style={{ color:G.muted,margin:'0 0 28px',fontSize:13 }}>We will deliver your fresh rice soon 🌾</p>
         <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
-          <button onClick={()=>{ setStep('shop'); setTab('myorders') }} style={{ background:G.green,color:G.white,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer' }}>{t('trackOrder',lang)} →</button>
-          <button onClick={()=>{ setStep('shop'); setTab('shop') }} style={{ background:G.greenLight,color:G.green,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer' }}>{t('orderMore',lang)}</button>
+          <button onClick={()=>{ setStep('shop'); setTab('myorders') }} style={{ background:G.green,color:G.white,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer' }}>{T.trackOrder} →</button>
+          <button onClick={()=>{ setStep('shop'); setTab('shop') }} style={{ background:G.greenLight,color:G.green,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer' }}>{T.orderMore}</button>
         </div>
       </div>
     </div>
@@ -424,7 +453,7 @@ export default function CustomerShop() {
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>How do you want your order?</p>
           <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14 }}>
-            {[['delivery','🚚',t('homeDelivery',lang),'₹15 delivery fee'],['pickup','🏪',t('storePickup',lang),'Free — collect at branch']].map(([val,icon,label,sub])=>(
+            {[['delivery','🚚',T.homeDelivery,'₹15 delivery fee'],['pickup','🏪',T.storePickup,'Free — collect at branch']].map(([val,icon,label,sub])=>(
               <div key={val} onClick={()=>setOrderType(val)} style={{ padding:12,borderRadius:12,cursor:'pointer',border:`2px solid ${orderType===val?G.green:G.border}`,background:orderType===val?G.greenLight:G.white,textAlign:'center' }}>
                 <div style={{ fontSize:24,marginBottom:4 }}>{icon}</div>
                 <p style={{ margin:'0 0 2px',fontWeight:700,fontSize:13,color:orderType===val?G.greenDark:G.text }}>{label}</p>
@@ -466,7 +495,7 @@ export default function CustomerShop() {
         {/* Payment */}
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>Payment Method</p>
-          {[['cod','💵',t('cashOnDelivery',lang),'Pay when your order arrives'],['upi','📱',t('upiPayment',lang),'GPay, PhonePe, Paytm']].map(([val,icon,label,sub])=>(
+          {[['cod','💵',T.cashOnDelivery,'Pay when your order arrives'],['upi','📱',T.upiPayment,'GPay, PhonePe, Paytm']].map(([val,icon,label,sub])=>(
             <div key={val} onClick={()=>setPayMethod(val)} style={{ display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderRadius:10,marginBottom:8,cursor:'pointer',border:`2px solid ${payMethod===val?G.green:G.border}`,background:payMethod===val?G.greenLight:G.white }}>
               <span style={{ fontSize:22 }}>{icon}</span>
               <div style={{ flex:1 }}><p style={{ margin:0,fontWeight:600,fontSize:14 }}>{label}</p><p style={{ margin:0,fontSize:12,color:G.muted }}>{sub}</p></div>
@@ -549,23 +578,23 @@ export default function CustomerShop() {
             </div>
             <span style={{ color:G.white,fontSize:12,fontWeight:600,maxWidth:70,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{user?.full_name?.split(' ')[0]||user?.username}</span>
           </button>
-          <LanguageToggle />
+          <ShopLangToggle lang={lang} setLang={setLang} />
           <button onClick={handleLogout} style={{ background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:8,padding:'5px 12px',color:G.white,fontSize:12,fontWeight:600,cursor:'pointer' }}>
-            {t('logout',lang)}
+            {T.logout}
           </button>
         </div>
       </header>
 
       {/* Top nav */}
       <div style={{ background:G.white,borderBottom:`1px solid ${G.border}`,padding:'0 16px',display:'flex',alignItems:'center' }}>
-        {[['where','📍 '+t('whereWeWork',lang)],['what','🌾 '+t('whatWeDo',lang)],['about','ℹ️ '+t('about',lang)]].map(([key,label])=>(
+        {[['where','📍 '+T.whereWeWork],['what','🌾 '+T.whatWeDo],['about','ℹ️ '+T.about]].map(([key,label])=>(
           <button key={key} onClick={()=>setTopModal(key)} style={{ padding:'10px 14px',border:'none',background:'none',cursor:'pointer',fontSize:12,fontWeight:600,color:G.green }}>{label}</button>
         ))}
       </div>
 
       {/* Tabs */}
       <div style={{ background:G.white,borderBottom:`1px solid ${G.border}`,display:'flex',overflowX:'auto' }}>
-        {[[['shop',`🌾 ${t('orderRice',lang)}`],['myorders',`📋 ${t('myOrders',lang)}`],['subscribe',`🔄 ${t('subscribe',lang)}`],['referral',`🎁 ${t('referEarn',lang)}`]]].map(([key,label])=>(
+        {[[['shop',`🌾 ${T.orderRice}`],['myorders',`📋 ${T.myOrders}`],['subscribe',`🔄 ${T.subscribe}`],['referral',`🎁 ${T.referEarn}`]]].map(([key,label])=>(
           <button key={key} onClick={()=>switchTab(key)} style={{ padding:'10px 16px',border:'none',background:'none',cursor:'pointer',fontSize:13,fontWeight:600,borderBottom:`3px solid ${tab===key?G.green:'transparent'}`,color:tab===key?G.green:G.muted,whiteSpace:'nowrap',flex:1,textAlign:'center' }}>
             {label}
           </button>
@@ -633,7 +662,7 @@ export default function CustomerShop() {
             <span>{error}</span><button onClick={()=>setError('')} style={{ background:'none',border:'none',cursor:'pointer',color:G.red,fontSize:16 }}>✕</button>
           </div>}
           <p style={{ fontSize:13,color:G.muted,margin:'12px 0 16px' }}>
-            👋 Hello, <strong style={{color:G.text}}>{user?.full_name||user?.username}</strong> · {t('freshStockToday',lang)}
+            👋 Hello, <strong style={{color:G.text}}>{user?.full_name||user?.username}</strong> · {T.freshStock}
           </p>
           {loading && <p style={{ textAlign:'center',color:G.muted,padding:40 }}>Loading products...</p>}
           {products.map(p=>(
@@ -646,8 +675,8 @@ export default function CustomerShop() {
               </div>
               <div style={{ textAlign:'right',flexShrink:0 }}>
                 <p style={{ margin:'0 0 8px',fontWeight:800,fontSize:17 }}>₹{p.price_per_bag}</p>
-                {p.stock_bags<=0 ? <span style={{ fontSize:12,color:G.red,fontWeight:600 }}>{t('outOfStock',lang)}</span>
-                : !cart[p.id] ? <button onClick={()=>updateCart(p.id,1,p)} style={{ background:G.green,color:G.white,border:'none',borderRadius:8,padding:'7px 18px',fontWeight:700,cursor:'pointer',fontSize:13 }}>{t('addToCart',lang)}</button>
+                {p.stock_bags<=0 ? <span style={{ fontSize:12,color:G.red,fontWeight:600 }}>{T.outOfStock}</span>
+                : !cart[p.id] ? <button onClick={()=>updateCart(p.id,1,p)} style={{ background:G.green,color:G.white,border:'none',borderRadius:8,padding:'7px 18px',fontWeight:700,cursor:'pointer',fontSize:13 }}>{T.addToCart}</button>
                 : <div style={{ display:'flex',alignItems:'center',gap:10,background:G.greenLight,borderRadius:8,padding:'5px 10px' }}>
                     <button onClick={()=>updateCart(p.id,-1,p)} style={{ background:'none',border:'none',color:G.green,fontSize:22,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>−</button>
                     <span style={{ fontWeight:700,color:G.greenDark,minWidth:20,textAlign:'center',fontSize:15 }}>{cart[p.id]}</span>
@@ -660,7 +689,7 @@ export default function CustomerShop() {
             <div className="sticky-checkout" style={{ position:'sticky',bottom:'calc(16px + env(safe-area-inset-bottom))',marginTop:16 }}>
               <button onClick={()=>{ setStep('checkout'); setError('') }} style={{ width:'100%',padding:16,background:G.green,color:G.white,border:'none',borderRadius:14,fontSize:16,fontWeight:700,cursor:'pointer',boxShadow:'0 4px 14px rgba(59,109,17,0.35)',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
                 <span>🛒 {totalItems} item{totalItems>1?'s':''}</span>
-                <span>{t('checkout',lang)} · ₹{totalAmount} →</span>
+                <span>{T.checkout} · ₹{totalAmount} →</span>
               </button>
             </div>
           )}
