@@ -376,41 +376,54 @@ export default function CustomerShop() {
     if (!user) return
     setOL(true)
     try {
-      // Step 1 — get fresh profile from DB to ensure correct id
-      const { data: freshProfile } = await supabase
+      // Get fresh profile from DB
+      const { data: profile } = await supabase
         .from('profiles')
         .select('id, username, full_name')
         .eq('username', user.username)
         .single()
 
-      const uid       = freshProfile?.id || user.id
-      const uname     = freshProfile?.username || user.username || ''
-      const ufullname = freshProfile?.full_name || user.full_name || ''
+      const uid   = profile?.id || user.id
+      const fname = profile?.full_name || user.full_name || ''
+      const uname = profile?.username || user.username || ''
 
-      console.log('Loading orders for:', uid, uname, ufullname)
+      // Build all possible name variations to search
+      const names = [...new Set([fname, uname].filter(Boolean))]
+      console.log('Searching orders for:', uid, names)
 
-      // Step 2 — fetch all orders for this user
-      const { data, error } = await supabase
+      // Fetch orders by customer_id
+      const { data: byId } = await supabase
         .from('orders')
         .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
+        .eq('customer_id', uid)
         .order('created_at', { ascending: false })
 
-      if (error) { console.error('Orders error:', error); setMyOrders([]); return }
+      // Fetch orders by full_name (exact match)
+      const { data: byName } = fname ? await supabase
+        .from('orders')
+        .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
+        .eq('customer_name', fname)
+        .order('created_at', { ascending: false }) : { data: [] }
 
-      const all = data || []
-      console.log('Total orders in DB:', all.length)
+      // Fetch orders by username (exact match)
+      const { data: byUser } = uname ? await supabase
+        .from('orders')
+        .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
+        .eq('customer_name', uname)
+        .order('created_at', { ascending: false }) : { data: [] }
 
-      // Step 3 — filter by id OR name match
-      const mine = all.filter(o => {
-        if (o.customer_id && o.customer_id === uid) return true
-        const cname = (o.customer_name || '').toLowerCase()
-        if (uname && cname.includes(uname.toLowerCase())) return true
-        if (ufullname && cname.includes(ufullname.toLowerCase())) return true
-        return false
+      // Merge all — deduplicate
+      const all = [...(byId||[]), ...(byName||[]), ...(byUser||[])]
+      const seen = new Set()
+      const merged = all.filter(o => {
+        if (seen.has(o.id)) return false
+        seen.add(o.id)
+        return true
       })
+      merged.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
 
-      console.log('My orders:', mine.length)
-      setMyOrders(mine)
+      console.log('byId:', byId?.length, 'byName:', byName?.length, 'byUser:', byUser?.length, 'merged:', merged.length)
+      setMyOrders(merged)
     } catch(e) {
       console.error('loadMyOrders error:', e)
       setMyOrders([])
