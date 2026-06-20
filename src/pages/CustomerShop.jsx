@@ -290,7 +290,7 @@ export default function CustomerShop() {
   const setLang = (l) => { localStorage.setItem('gvr_lang',l); setLangState(l) }
   const navigate                  = useNavigate()
   const [tab, setTab]             = useState('shop')
-  const switchTab = (t) => { setTab(t) }
+  const switchTab = (t) => { setTab(t); if (t === 'myorders') loadMyOrders() }
   const [products, setProducts]   = useState([])
   const [cart, setCart]           = useState(() => {
     try {
@@ -349,7 +349,7 @@ export default function CustomerShop() {
       try { localStorage.setItem('gvr_address', address) } catch {}
     }
   }, [address])
-  useEffect(() => { if (tab === 'myorders') loadMyOrders() }, [tab])
+  useEffect(() => { if (tab === 'myorders') { setOL(true); loadMyOrders() } }, [tab])
 
   useEffect(() => {
     if (step !== 'checkout' || payMethod !== 'upi') return
@@ -376,30 +376,48 @@ export default function CustomerShop() {
     if (!user) return
     setOL(true)
     try {
-      // Search by customer_id first
-      const { data: byId } = await supabase.from('orders')
+      const results = []
+
+      // Query 1 — by customer_id (most reliable)
+      const { data: q1 } = await supabase
+        .from('orders')
         .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
         .eq('customer_id', user.id)
         .order('created_at', { ascending: false })
+      if (q1?.length) results.push(...q1)
 
-      // Also search by username and full_name as fallback
-      const { data: byName } = await supabase.from('orders')
+      // Query 2 — by username
+      const { data: q2 } = await supabase
+        .from('orders')
         .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
-        .or(`customer_name.ilike.%${user.username}%,customer_name.ilike.%${user.full_name||''}%`)
-        .is('customer_id', null)
+        .ilike('customer_name', `%${user.username}%`)
         .order('created_at', { ascending: false })
+      if (q2?.length) results.push(...q2)
 
-      // Merge and deduplicate
-      const all = [...(byId||[]), ...(byName||[])]
+      // Query 3 — by full name if different from username
+      if (user.full_name && user.full_name !== user.username) {
+        const { data: q3 } = await supabase
+          .from('orders')
+          .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
+          .ilike('customer_name', `%${user.full_name}%`)
+          .order('created_at', { ascending: false })
+        if (q3?.length) results.push(...q3)
+      }
+
+      // Deduplicate by order id
       const seen = new Set()
-      const merged = all.filter(o => {
+      const merged = results.filter(o => {
         if (seen.has(o.id)) return false
         seen.add(o.id)
         return true
       })
       merged.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
       setMyOrders(merged)
-    } catch(e) { console.error(e) }
+    } catch(e) {
+      console.error('loadMyOrders error:', e)
+      // Fallback — show empty with error
+      setMyOrders([])
+    }
     finally { setOL(false) }
   }
 
