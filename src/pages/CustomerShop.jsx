@@ -2,6 +2,8 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
+import { t, useLang } from '../lib/i18n'
+import LanguageToggle from '../components/LanguageToggle'
 import ProfilePage from './ProfilePage'
 
 const G = {
@@ -247,6 +249,7 @@ function SubscribeSection({ user }) {
 
 export default function CustomerShop() {
   const { user, signOut }         = useAuth()
+  const lang                        = useLang()
   const navigate                  = useNavigate()
   const [tab, setTab]             = useState('shop')
   const switchTab = (t) => { setTab(t) }
@@ -371,12 +374,12 @@ export default function CustomerShop() {
     <div style={{ minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:G.surface,padding:20 }}>
       <div style={{ textAlign:'center',background:G.white,borderRadius:20,padding:'48px 40px',maxWidth:400,width:'100%',boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
         <div style={{ fontSize:60,marginBottom:16 }}>✅</div>
-        <h2 style={{ fontSize:24,fontWeight:800,color:G.greenDark,margin:'0 0 8px' }}>Order Placed!</h2>
+        <h2 style={{ fontSize:24,fontWeight:800,color:G.greenDark,margin:'0 0 8px' }}>{t('orderPlaced',lang)}</h2>
         <p style={{ color:G.muted,margin:'0 0 4px',fontSize:14 }}>Order: <strong style={{color:G.green}}>{orderNum}</strong></p>
         <p style={{ color:G.muted,margin:'0 0 28px',fontSize:13 }}>We will deliver your fresh rice soon 🌾</p>
         <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
-          <button onClick={()=>{ setStep('shop'); setTab('myorders') }} style={{ background:G.green,color:G.white,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer' }}>Track My Order →</button>
-          <button onClick={()=>{ setStep('shop'); setTab('shop') }} style={{ background:G.greenLight,color:G.green,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer' }}>Order More Rice</button>
+          <button onClick={()=>{ setStep('shop'); setTab('myorders') }} style={{ background:G.green,color:G.white,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer' }}>{t('trackOrder',lang)} →</button>
+          <button onClick={()=>{ setStep('shop'); setTab('shop') }} style={{ background:G.greenLight,color:G.green,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer' }}>{t('orderMore',lang)}</button>
         </div>
       </div>
     </div>
@@ -421,7 +424,7 @@ export default function CustomerShop() {
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>How do you want your order?</p>
           <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14 }}>
-            {[['delivery','🚚','Home Delivery','₹15 delivery fee'],['pickup','🏪','Store Pickup','Free — collect at branch']].map(([val,icon,label,sub])=>(
+            {[['delivery','🚚',t('homeDelivery',lang),'₹15 delivery fee'],['pickup','🏪',t('storePickup',lang),'Free — collect at branch']].map(([val,icon,label,sub])=>(
               <div key={val} onClick={()=>setOrderType(val)} style={{ padding:12,borderRadius:12,cursor:'pointer',border:`2px solid ${orderType===val?G.green:G.border}`,background:orderType===val?G.greenLight:G.white,textAlign:'center' }}>
                 <div style={{ fontSize:24,marginBottom:4 }}>{icon}</div>
                 <p style={{ margin:'0 0 2px',fontWeight:700,fontSize:13,color:orderType===val?G.greenDark:G.text }}>{label}</p>
@@ -463,7 +466,7 @@ export default function CustomerShop() {
         {/* Payment */}
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>Payment Method</p>
-          {[['cod','💵','Cash on Delivery','Pay when your order arrives'],['upi','📱','UPI Payment','GPay, PhonePe, Paytm']].map(([val,icon,label,sub])=>(
+          {[['cod','💵',t('cashOnDelivery',lang),'Pay when your order arrives'],['upi','📱',t('upiPayment',lang),'GPay, PhonePe, Paytm']].map(([val,icon,label,sub])=>(
             <div key={val} onClick={()=>setPayMethod(val)} style={{ display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderRadius:10,marginBottom:8,cursor:'pointer',border:`2px solid ${payMethod===val?G.green:G.border}`,background:payMethod===val?G.greenLight:G.white }}>
               <span style={{ fontSize:22 }}>{icon}</span>
               <div style={{ flex:1 }}><p style={{ margin:0,fontWeight:600,fontSize:14 }}>{label}</p><p style={{ margin:0,fontSize:12,color:G.muted }}>{sub}</p></div>
@@ -546,22 +549,23 @@ export default function CustomerShop() {
             </div>
             <span style={{ color:G.white,fontSize:12,fontWeight:600,maxWidth:70,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{user?.full_name?.split(' ')[0]||user?.username}</span>
           </button>
+          <LanguageToggle />
           <button onClick={handleLogout} style={{ background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:8,padding:'5px 12px',color:G.white,fontSize:12,fontWeight:600,cursor:'pointer' }}>
-            Logout
+            {t('logout',lang)}
           </button>
         </div>
       </header>
 
       {/* Top nav */}
       <div style={{ background:G.white,borderBottom:`1px solid ${G.border}`,padding:'0 16px',display:'flex',alignItems:'center' }}>
-        {[['where','📍 Where We Work'],['what','🌾 What We Do'],['about','ℹ️ About']].map(([key,label])=>(
+        {[['where','📍 '+t('whereWeWork',lang)],['what','🌾 '+t('whatWeDo',lang)],['about','ℹ️ '+t('about',lang)]].map(([key,label])=>(
           <button key={key} onClick={()=>setTopModal(key)} style={{ padding:'10px 14px',border:'none',background:'none',cursor:'pointer',fontSize:12,fontWeight:600,color:G.green }}>{label}</button>
         ))}
       </div>
 
       {/* Tabs */}
       <div style={{ background:G.white,borderBottom:`1px solid ${G.border}`,display:'flex',overflowX:'auto' }}>
-        {[['shop','🌾 Order'],['myorders','📋 Orders'],['subscribe','🔄 Subscribe'],['referral','🎁 Refer']].map(([key,label])=>(
+        {[[['shop',`🌾 ${t('orderRice',lang)}`],['myorders',`📋 ${t('myOrders',lang)}`],['subscribe',`🔄 ${t('subscribe',lang)}`],['referral',`🎁 ${t('referEarn',lang)}`]]].map(([key,label])=>(
           <button key={key} onClick={()=>switchTab(key)} style={{ padding:'10px 16px',border:'none',background:'none',cursor:'pointer',fontSize:13,fontWeight:600,borderBottom:`3px solid ${tab===key?G.green:'transparent'}`,color:tab===key?G.green:G.muted,whiteSpace:'nowrap',flex:1,textAlign:'center' }}>
             {label}
           </button>
@@ -629,7 +633,7 @@ export default function CustomerShop() {
             <span>{error}</span><button onClick={()=>setError('')} style={{ background:'none',border:'none',cursor:'pointer',color:G.red,fontSize:16 }}>✕</button>
           </div>}
           <p style={{ fontSize:13,color:G.muted,margin:'12px 0 16px' }}>
-            👋 Hello, <strong style={{color:G.text}}>{user?.full_name||user?.username}</strong> · Fresh stock available today
+            👋 Hello, <strong style={{color:G.text}}>{user?.full_name||user?.username}</strong> · {t('freshStockToday',lang)}
           </p>
           {loading && <p style={{ textAlign:'center',color:G.muted,padding:40 }}>Loading products...</p>}
           {products.map(p=>(
@@ -642,8 +646,8 @@ export default function CustomerShop() {
               </div>
               <div style={{ textAlign:'right',flexShrink:0 }}>
                 <p style={{ margin:'0 0 8px',fontWeight:800,fontSize:17 }}>₹{p.price_per_bag}</p>
-                {p.stock_bags<=0 ? <span style={{ fontSize:12,color:G.red,fontWeight:600 }}>Out of Stock</span>
-                : !cart[p.id] ? <button onClick={()=>updateCart(p.id,1,p)} style={{ background:G.green,color:G.white,border:'none',borderRadius:8,padding:'7px 18px',fontWeight:700,cursor:'pointer',fontSize:13 }}>Add +</button>
+                {p.stock_bags<=0 ? <span style={{ fontSize:12,color:G.red,fontWeight:600 }}>{t('outOfStock',lang)}</span>
+                : !cart[p.id] ? <button onClick={()=>updateCart(p.id,1,p)} style={{ background:G.green,color:G.white,border:'none',borderRadius:8,padding:'7px 18px',fontWeight:700,cursor:'pointer',fontSize:13 }}>{t('addToCart',lang)}</button>
                 : <div style={{ display:'flex',alignItems:'center',gap:10,background:G.greenLight,borderRadius:8,padding:'5px 10px' }}>
                     <button onClick={()=>updateCart(p.id,-1,p)} style={{ background:'none',border:'none',color:G.green,fontSize:22,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>−</button>
                     <span style={{ fontWeight:700,color:G.greenDark,minWidth:20,textAlign:'center',fontSize:15 }}>{cart[p.id]}</span>
@@ -656,7 +660,7 @@ export default function CustomerShop() {
             <div className="sticky-checkout" style={{ position:'sticky',bottom:'calc(16px + env(safe-area-inset-bottom))',marginTop:16 }}>
               <button onClick={()=>{ setStep('checkout'); setError('') }} style={{ width:'100%',padding:16,background:G.green,color:G.white,border:'none',borderRadius:14,fontSize:16,fontWeight:700,cursor:'pointer',boxShadow:'0 4px 14px rgba(59,109,17,0.35)',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
                 <span>🛒 {totalItems} item{totalItems>1?'s':''}</span>
-                <span>Checkout · ₹{totalAmount} →</span>
+                <span>{t('checkout',lang)} · ₹{totalAmount} →</span>
               </button>
             </div>
           )}
