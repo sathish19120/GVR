@@ -376,11 +376,29 @@ export default function CustomerShop() {
     if (!user) return
     setOL(true)
     try {
-      const { data } = await supabase.from('orders')
+      // Search by customer_id first
+      const { data: byId } = await supabase.from('orders')
         .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
         .eq('customer_id', user.id)
         .order('created_at', { ascending: false })
-      setMyOrders(data || [])
+
+      // Also search by username and full_name as fallback
+      const { data: byName } = await supabase.from('orders')
+        .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
+        .or(`customer_name.ilike.%${user.username}%,customer_name.ilike.%${user.full_name||''}%`)
+        .is('customer_id', null)
+        .order('created_at', { ascending: false })
+
+      // Merge and deduplicate
+      const all = [...(byId||[]), ...(byName||[])]
+      const seen = new Set()
+      const merged = all.filter(o => {
+        if (seen.has(o.id)) return false
+        seen.add(o.id)
+        return true
+      })
+      merged.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+      setMyOrders(merged)
     } catch(e) { console.error(e) }
     finally { setOL(false) }
   }
