@@ -376,59 +376,20 @@ export default function CustomerShop() {
     if (!user) return
     setOL(true)
     try {
-      // Get fresh profile from DB
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id, username, full_name')
-        .eq('username', user.username)
-        .single()
-
-      const uid   = profile?.id || user.id
-      const fname = profile?.full_name || user.full_name || ''
-      const uname = profile?.username || user.username || ''
-
-      // Build all possible name variations to search
-      const names = [...new Set([fname, uname].filter(Boolean))]
-      console.log('Searching orders for:', uid, names)
-
-      // Fetch orders by customer_id
-      const { data: byId } = await supabase
+      const { data, error } = await supabase
         .from('orders')
         .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
-        .eq('customer_id', uid)
+        .eq('customer_id', user.id)
         .order('created_at', { ascending: false })
 
-      // Fetch orders by full_name (exact match)
-      const { data: byName } = fname ? await supabase
-        .from('orders')
-        .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
-        .eq('customer_name', fname)
-        .order('created_at', { ascending: false }) : { data: [] }
-
-      // Fetch orders by username (exact match)
-      const { data: byUser } = uname ? await supabase
-        .from('orders')
-        .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
-        .eq('customer_name', uname)
-        .order('created_at', { ascending: false }) : { data: [] }
-
-      // Merge all — deduplicate
-      const all = [...(byId||[]), ...(byName||[]), ...(byUser||[])]
-      const seen = new Set()
-      const merged = all.filter(o => {
-        if (seen.has(o.id)) return false
-        seen.add(o.id)
-        return true
-      })
-      merged.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
-
-      console.log('byId:', byId?.length, 'byName:', byName?.length, 'byUser:', byUser?.length, 'merged:', merged.length)
-      setMyOrders(merged)
+      if (error) throw error
+      setMyOrders(data || [])
     } catch(e) {
-      console.error('loadMyOrders error:', e)
+      console.error(e)
       setMyOrders([])
+    } finally {
+      setOL(false)
     }
-    finally { setOL(false) }
   }
 
   // Auto-refresh orders every 30 seconds when on myorders tab
