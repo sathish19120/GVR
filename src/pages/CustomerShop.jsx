@@ -376,46 +376,43 @@ export default function CustomerShop() {
     if (!user) return
     setOL(true)
     try {
-      const results = []
+      // Step 1 — get fresh profile from DB to ensure correct id
+      const { data: freshProfile } = await supabase
+        .from('profiles')
+        .select('id, username, full_name')
+        .eq('username', user.username)
+        .single()
 
-      // Query 1 — by customer_id (most reliable)
-      const { data: q1 } = await supabase
+      const uid       = freshProfile?.id || user.id
+      const uname     = freshProfile?.username || user.username || ''
+      const ufullname = freshProfile?.full_name || user.full_name || ''
+
+      console.log('Loading orders for:', uid, uname, ufullname)
+
+      // Step 2 — fetch all orders for this user
+      const { data, error } = await supabase
         .from('orders')
         .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
-        .eq('customer_id', user.id)
         .order('created_at', { ascending: false })
-      if (q1?.length) results.push(...q1)
 
-      // Query 2 — by username
-      const { data: q2 } = await supabase
-        .from('orders')
-        .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
-        .ilike('customer_name', `%${user.username}%`)
-        .order('created_at', { ascending: false })
-      if (q2?.length) results.push(...q2)
+      if (error) { console.error('Orders error:', error); setMyOrders([]); return }
 
-      // Query 3 — by full name if different from username
-      if (user.full_name && user.full_name !== user.username) {
-        const { data: q3 } = await supabase
-          .from('orders')
-          .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
-          .ilike('customer_name', `%${user.full_name}%`)
-          .order('created_at', { ascending: false })
-        if (q3?.length) results.push(...q3)
-      }
+      const all = data || []
+      console.log('Total orders in DB:', all.length)
 
-      // Deduplicate by order id
-      const seen = new Set()
-      const merged = results.filter(o => {
-        if (seen.has(o.id)) return false
-        seen.add(o.id)
-        return true
+      // Step 3 — filter by id OR name match
+      const mine = all.filter(o => {
+        if (o.customer_id && o.customer_id === uid) return true
+        const cname = (o.customer_name || '').toLowerCase()
+        if (uname && cname.includes(uname.toLowerCase())) return true
+        if (ufullname && cname.includes(ufullname.toLowerCase())) return true
+        return false
       })
-      merged.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
-      setMyOrders(merged)
+
+      console.log('My orders:', mine.length)
+      setMyOrders(mine)
     } catch(e) {
       console.error('loadMyOrders error:', e)
-      // Fallback — show empty with error
       setMyOrders([])
     }
     finally { setOL(false) }
@@ -985,10 +982,20 @@ export default function CustomerShop() {
           </div>
           {ordersLoading && <p style={{ textAlign:'center',color:G.muted,padding:40 }}>Loading...</p>}
           {!ordersLoading && myOrders.length===0 && (
-            <div style={{ textAlign:'center',padding:'60px 20px',background:G.white,borderRadius:14 }}>
+            <div style={{ textAlign:'center',padding:'40px 20px',background:D.card,borderRadius:14,border:`1px solid ${D.border}` }}>
               <div style={{ fontSize:48,marginBottom:12 }}>📦</div>
-              <p style={{ fontWeight:700,color:G.text,margin:'0 0 6px',fontSize:16 }}>No orders yet</p>
-              <button onClick={()=>setTab('shop')} style={{ background:G.green,color:G.white,border:'none',borderRadius:10,padding:'10px 24px',fontWeight:700,cursor:'pointer',fontSize:14 }}>Order Now →</button>
+              <p style={{ fontWeight:700,color:D.text,margin:'0 0 6px',fontSize:16 }}>No orders found</p>
+              <p style={{ fontSize:13,color:D.muted,margin:'0 0 16px' }}>
+                Logged in as: <strong>{user?.full_name || user?.username}</strong>
+              </p>
+              <div style={{ display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap' }}>
+                <button onClick={loadMyOrders} style={{ background:G.blueLight,color:G.blue,border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,cursor:'pointer',fontSize:13 }}>
+                  ↻ Refresh
+                </button>
+                <button onClick={()=>switchTab('shop')} style={{ background:G.green,color:G.white,border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,cursor:'pointer',fontSize:13 }}>
+                  Order Now →
+                </button>
+              </div>
             </div>
           )}
           {myOrders.map(order=>(
