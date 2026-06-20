@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
+import { t, useLang } from '../lib/i18n'
+import LanguageToggle from '../components/LanguageToggle'
 
 const G = {
   green:      '#3B6D11',
@@ -102,7 +104,7 @@ export default function AuthPage({ defaultMode }) {
       }
     } else {
       const ok = await signIn(username, password)
-      if (ok) navigate('/')
+      if (ok) navigate('/', { replace: true })
     }
   }
 
@@ -253,11 +255,11 @@ export default function AuthPage({ defaultMode }) {
               ) : (
                 <button type="button" onClick={() => reset('login')}
                   style={{ background: 'none', border: 'none', color: G.green, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
-                  ← Back to Login
+                  {t('backToLogin',lang)}
                 </button>
               )}
               {mode === 'login' && (
-                <button type="button" onClick={() => reset('forgot')} style={{ background:'none', border:'none', color:G.amber, fontSize:13, fontWeight:600, cursor:'pointer', padding:0, textDecoration:'underline' }}>Forgot Password?</button>
+                <button type="button" onClick={() => reset('forgot')} style={{ background:'none', border:'none', color:G.amber, fontSize:13, fontWeight:600, cursor:'pointer', padding:0, textDecoration:'underline' }}>{t('forgotPassword',lang)}</button>
               )}
             </div>
 
