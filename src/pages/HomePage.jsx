@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../store/auth'
 
 const G = {
@@ -34,14 +34,54 @@ const FACTS = [
 
 export default function HomePage() {
   const { user } = useAuth()
+  const [slide, setSlide] = useState(0)
+
+  const SLIDES = [
+    { url:'https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=1400&q=80', caption:'Sona Masoori paddy fields — Nalgonda, Telangana' },
+    { url:'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=1400&q=80', caption:'Fresh harvest — farm to mill in hours' },
+    { url:'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=1400&q=80', caption:'Quality rice — small batch milled fresh' },
+    { url:'https://images.unsplash.com/photo-1536304929831-ee1ca9d44906?w=1400&q=80', caption:'Farm direct — no middlemen, no markup' },
+    { url:'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=1400&q=80', caption:'Nalgonda farmers — our trusted partners' },
+  ]
+
+  useEffect(() => {
+    const t = setInterval(() => setSlide(s => (s+1) % SLIDES.length), 4000)
+    return () => clearInterval(t)
+  }, [])
+
 
   return (
     <div style={{ fontFamily:"'Inter',sans-serif" }}>
 
-      {/* Hero banner */}
-      <div style={{ background:`linear-gradient(135deg,${G.green} 0%,${G.greenDark} 50%,#1a3a08 100%)`, borderRadius:20, padding:'36px 32px', marginBottom:24, position:'relative', overflow:'hidden' }}>
-        <div style={{ position:'absolute',top:-40,right:-20,fontSize:130,opacity:0.07,userSelect:'none',pointerEvents:'none' }}>🌾</div>
-        <div style={{ position:'relative',zIndex:1 }}>
+      {/* Hero banner with slideshow */}
+      <div style={{ borderRadius:20, marginBottom:24, position:'relative', overflow:'hidden', height:320 }}>
+        {/* Slides */}
+        {SLIDES.map((s,i) => (
+          <div key={i} style={{
+            position:'absolute', inset:0,
+            backgroundImage:`url(${s.url})`,
+            backgroundSize:'cover', backgroundPosition:'center',
+            opacity: i === slide ? 1 : 0,
+            transition:'opacity 1.5s ease',
+            zIndex: i === slide ? 1 : 0
+          }} />
+        ))}
+        {/* Overlay */}
+        <div style={{ position:'absolute', inset:0, background:'linear-gradient(135deg,rgba(27,50,8,0.82) 0%,rgba(0,0,0,0.45) 100%)', zIndex:2 }} />
+        {/* Slide dots */}
+        <div style={{ position:'absolute', bottom:14, left:'50%', transform:'translateX(-50%)', display:'flex', gap:6, zIndex:4 }}>
+          {SLIDES.map((_,i) => (
+            <div key={i} onClick={() => setSlide(i)} style={{ width: i===slide?22:8, height:8, borderRadius:4, background: i===slide?'#C0DD97':'rgba(255,255,255,0.4)', cursor:'pointer', transition:'all 0.3s' }} />
+          ))}
+        </div>
+        {/* Caption */}
+        <div style={{ position:'absolute', bottom:32, left:24, zIndex:4 }}>
+          <p style={{ margin:0, fontSize:11, color:'rgba(255,255,255,0.65)', letterSpacing:'0.5px' }}>{SLIDES[slide].caption}</p>
+        </div>
+        {/* Left / Right arrows */}
+        <button onClick={()=>setSlide(s=>(s-1+SLIDES.length)%SLIDES.length)} style={{ position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',zIndex:4,background:'rgba(0,0,0,0.35)',border:'none',color:'#fff',width:32,height:32,borderRadius:'50%',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center' }}>‹</button>
+        <button onClick={()=>setSlide(s=>(s+1)%SLIDES.length)} style={{ position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',zIndex:4,background:'rgba(0,0,0,0.35)',border:'none',color:'#fff',width:32,height:32,borderRadius:'50%',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center' }}>›</button>
+        <div style={{ position:'relative', zIndex:3, padding:'36px 32px' }}>
           <div style={{ display:'flex',alignItems:'center',gap:14,marginBottom:16 }}>
             <div style={{ width:56,height:56,borderRadius:14,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:30 }}>🌾</div>
             <div>
