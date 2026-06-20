@@ -315,6 +315,8 @@ export default function CustomerShop() {
   const [reviews, setReviews]       = useState({})  // orderid -> {rating, comment}
   const [reviewModal, setRevModal]  = useState(null)
   const [reportModal, setRepModal]  = useState(null)
+  const [notifyModal, setNotifyModal] = useState(null)
+  const [notified, setNotified]       = useState({})
   const [ordersLoading, setOL]    = useState(false)
   const [error, setError]         = useState('')
   const [loading, setLoading]     = useState(true)
@@ -401,6 +403,94 @@ export default function CustomerShop() {
   }, [tab])
 
   const handleLogout = async () => { await signOut(); navigate('/login') }
+
+  // ── Notify When Back in Stock Modal ──────────────────────
+  function NotifyModal({ product, onClose }) {
+    const [phone, setPhone]   = useState(user?.phone || '')
+    const [saving, setSaving] = useState(false)
+    const [done, setDone]     = useState(false)
+
+    async function save() {
+      if (!phone.trim()) return
+      setSaving(true)
+      try {
+        // Check if already registered
+        const { data: existing } = await supabase
+          .from('stock_notifications')
+          .select('id')
+          .eq('product_id', product.id)
+          .eq('customer_id', user.id)
+          .eq('notified', false)
+          .single()
+
+        if (!existing) {
+          await supabase.from('stock_notifications').insert({
+            product_id:    product.id,
+            product_name:  product.name,
+            customer_id:   user.id,
+            customer_name: user.full_name || user.username,
+            phone:         phone.trim(),
+            notified:      false,
+            created_at:    new Date().toISOString()
+          })
+        }
+        setNotified(prev => ({ ...prev, [product.id]: true }))
+        setDone(true)
+        setTimeout(() => onClose(), 2000)
+      } catch(e) { console.error(e) }
+      finally { setSaving(false) }
+    }
+
+    return (
+      <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16 }}>
+        <div style={{ background:D.card,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:480,padding:28 }}>
+          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14 }}>
+            <p style={{ margin:0,fontSize:17,fontWeight:700,color:D.text }}>🔔 Notify Me</p>
+            <button type="button" onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:D.muted }}>✕</button>
+          </div>
+
+          {done ? (
+            <div style={{ textAlign:'center',padding:'24px 0' }}>
+              <div style={{ fontSize:48,marginBottom:12 }}>✅</div>
+              <p style={{ fontSize:16,fontWeight:700,color:G.green,margin:'0 0 6px' }}>You are on the list!</p>
+              <p style={{ fontSize:13,color:D.muted }}>We will notify you when {product.name} is back in stock.</p>
+            </div>
+          ) : (
+            <>
+              <div style={{ background:G.amberLight,borderRadius:12,padding:'12px 16px',marginBottom:16,display:'flex',gap:12,alignItems:'center' }}>
+                <span style={{ fontSize:28 }}>🌾</span>
+                <div>
+                  <p style={{ margin:'0 0 2px',fontWeight:700,fontSize:14,color:G.amber }}>{product.name}</p>
+                  <p style={{ margin:0,fontSize:12,color:G.amber }}>Currently out of stock</p>
+                </div>
+              </div>
+              <p style={{ margin:'0 0 14px',fontSize:13,color:D.muted,lineHeight:1.7 }}>
+                Enter your phone number and we will send you a WhatsApp message as soon as this product is back in stock.
+              </p>
+              <div style={{ marginBottom:16 }}>
+                <label style={{ display:'block',fontSize:11,fontWeight:700,color:D.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Phone Number</label>
+                <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)}
+                  placeholder="Your mobile number"
+                  style={{ width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${phone?G.green:D.border}`,fontSize:14,outline:'none',background:D.bg,color:D.text,boxSizing:'border-box' }}
+                  onFocus={e=>e.target.style.borderColor=G.green}
+                  onBlur={e=>e.target.style.borderColor=phone?G.green:D.border} />
+              </div>
+              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
+                <button type="button" onClick={onClose}
+                  style={{ padding:12,background:'transparent',border:`1px solid ${D.border}`,borderRadius:10,fontSize:13,fontWeight:600,color:D.muted,cursor:'pointer' }}>
+                  Cancel
+                </button>
+                <button type="button" onClick={save} disabled={saving||!phone.trim()}
+                  style={{ padding:12,background:saving||!phone.trim()?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
+                  {saving ? 'Saving...' : '🔔 Notify Me'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   // ── PDF Invoice ──────────────────────────────────────────
   function printInvoice(order) {
@@ -900,6 +990,7 @@ export default function CustomerShop() {
       {showProfile && <ProfilePage onClose={()=>setShowProfile(false)} />}
       {reviewModal && <ReviewModal order={reviewModal} onClose={()=>setRevModal(null)} />}
       {reportModal && <ReportModal order={reportModal} onClose={()=>setRepModal(null)} />}
+      {notifyModal && <NotifyModal product={notifyModal} onClose={()=>setNotifyModal(null)} />}
 
       <header style={{ background:G.green,padding:'14px 20px',display:'flex',alignItems:'center',justifyContent:'space-between' }}>
         <div style={{ display:'flex',alignItems:'center',gap:10 }}>
