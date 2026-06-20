@@ -314,6 +314,7 @@ export default function CustomerShop() {
   const [points, setPoints]         = useState(0)
   const [reviews, setReviews]       = useState({})  // orderid -> {rating, comment}
   const [reviewModal, setRevModal]  = useState(null)
+  const [reportModal, setRepModal]  = useState(null)
   const [ordersLoading, setOL]    = useState(false)
   const [error, setError]         = useState('')
   const [loading, setLoading]     = useState(true)
@@ -393,6 +394,216 @@ export default function CustomerShop() {
   }, [tab])
 
   const handleLogout = async () => { await signOut(); navigate('/login') }
+
+  // ── PDF Invoice ──────────────────────────────────────────
+  function printInvoice(order) {
+    const items = order.order_items || []
+    const subtotal = items.reduce((s,i)=>s+(i.price_per_unit*i.quantity),0)
+    const gst      = Math.round(subtotal*0.05)
+    const total    = subtotal + gst
+    const date     = new Date(order.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})
+
+    const w = window.open('', '_blank')
+    w.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Invoice ${order.order_number}</title>
+    <style>
+      * { box-sizing:border-box; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; padding: 30px; max-width: 700px; margin: 0 auto; color: #111; }
+      .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:28px; padding-bottom:20px; border-bottom:2px solid #3B6D11; }
+      .brand { display:flex; align-items:center; gap:12px; }
+      .brand-icon { width:50px; height:50px; background:#3B6D11; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; }
+      .brand-name { font-size:20px; font-weight:800; color:#3B6D11; }
+      .brand-sub { font-size:11px; color:#6B7280; margin-top:2px; }
+      .invoice-title { font-size:24px; font-weight:800; color:#3B6D11; text-align:right; }
+      .invoice-num { font-size:13px; color:#6B7280; text-align:right; margin-top:4px; }
+      .section { margin-bottom:20px; }
+      .section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:#6B7280; margin-bottom:8px; }
+      .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+      .info-box { background:#F9FAF7; border-radius:10px; padding:12px 14px; }
+      .info-label { font-size:11px; color:#6B7280; margin-bottom:3px; }
+      .info-value { font-size:13px; font-weight:600; color:#111; }
+      table { width:100%; border-collapse:collapse; margin-bottom:20px; }
+      th { background:#3B6D11; color:#fff; padding:10px 12px; text-align:left; font-size:12px; }
+      th:last-child, td:last-child { text-align:right; }
+      td { padding:10px 12px; border-bottom:1px solid #E5E7EB; font-size:13px; }
+      tr:nth-child(even) td { background:#F9FAF7; }
+      .totals { margin-left:auto; width:260px; }
+      .total-row { display:flex; justify-content:space-between; padding:6px 0; font-size:13px; border-bottom:1px solid #E5E7EB; }
+      .total-final { display:flex; justify-content:space-between; padding:10px 0; font-size:16px; font-weight:800; color:#3B6D11; border-top:2px solid #3B6D11; margin-top:4px; }
+      .footer { margin-top:32px; padding-top:20px; border-top:1px solid #E5E7EB; text-align:center; }
+      .footer p { font-size:11px; color:#9CA3AF; margin-bottom:4px; }
+      .badge { display:inline-block; padding:4px 12px; border-radius:20px; background:#EAF3DE; color:#27500A; font-size:11px; font-weight:700; margin:3px; }
+      @media print { body { padding:15px; } button { display:none; } }
+    </style></head><body>
+    <div class="header">
+      <div class="brand">
+        <div class="brand-icon">🌾</div>
+        <div>
+          <div class="brand-name">Green Village Rice</div>
+          <div class="brand-sub">గ్రీన్ విలేజ్ రైస్ · Hyderabad, Telangana</div>
+          <div class="brand-sub">FSSAI Licensed · Farm to Kitchen Since 2014</div>
+        </div>
+      </div>
+      <div>
+        <div class="invoice-title">TAX INVOICE</div>
+        <div class="invoice-num">${order.order_number}</div>
+        <div class="invoice-num">${date}</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="info-grid">
+        <div class="info-box">
+          <div class="section-title">Bill To</div>
+          <div class="info-value">${order.customer_name||'Customer'}</div>
+          <div class="info-label" style="margin-top:4px">${order.delivery_address||''}</div>
+        </div>
+        <div class="info-box">
+          <div class="section-title">Order Details</div>
+          <div class="info-label">Order Number</div>
+          <div class="info-value">${order.order_number}</div>
+          <div class="info-label" style="margin-top:6px">Payment Method</div>
+          <div class="info-value">${(order.payment_method||'').toUpperCase()}</div>
+          <div class="info-label" style="margin-top:6px">Status</div>
+          <div class="info-value" style="color:#3B6D11">${(order.status||'').toUpperCase()}</div>
+        </div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Product</th>
+          <th>Weight</th>
+          <th>Qty</th>
+          <th>Rate (₹)</th>
+          <th>Amount (₹)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item,i)=>`
+        <tr>
+          <td>${i+1}</td>
+          <td>${item.name}</td>
+          <td>${item.weight_kg}kg</td>
+          <td>${item.quantity}</td>
+          <td>₹${item.price_per_unit}</td>
+          <td>₹${item.price_per_unit*item.quantity}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div class="total-row"><span>Subtotal</span><span>₹${subtotal.toLocaleString('en-IN')}</span></div>
+      <div class="total-row"><span>GST @ 5%</span><span>₹${gst.toLocaleString('en-IN')}</span></div>
+      <div class="total-final"><span>Total</span><span>₹${total.toLocaleString('en-IN')}</span></div>
+    </div>
+
+    <div class="footer">
+      <p>Thank you for choosing Green Village Rice!</p>
+      <p>Fresh · Pure · Traceable · Farm to Kitchen</p>
+      <div style="margin-top:8px">
+        <span class="badge">Farm Direct</span>
+        <span class="badge">QR Traceable</span>
+        <span class="badge">FSSAI Certified</span>
+        <span class="badge">Fresh Milled</span>
+      </div>
+      <p style="margin-top:12px">gvr-lemon.vercel.app · admin@greenvillagerice.in</p>
+      <p>© 2014–2026 Green Village Rice. All Rights Reserved.</p>
+    </div>
+
+    <div style="text-align:center;margin-top:20px">
+      <button onclick="window.print()" style="padding:12px 32px;background:#3B6D11;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">
+        🖨 Print / Save as PDF
+      </button>
+    </div>
+    </body></html>`)
+    w.document.close()
+    setTimeout(() => w.print(), 800)
+  }
+
+  // ── Report Issue Modal ───────────────────────────────────
+  function ReportModal({ order, onClose }) {
+    const [issue, setIssue]     = useState('')
+    const [details, setDetails] = useState('')
+    const [saving, setSaving]   = useState(false)
+    const [done, setDone]       = useState(false)
+
+    const ISSUES = [
+      '📦 Wrong item received',
+      '⚖️ Less quantity / short weight',
+      '🍚 Poor rice quality',
+      '💧 Damaged / wet packaging',
+      '🚚 Late delivery',
+      '💰 Payment issue',
+      '📱 App / order problem',
+      '🔄 Other issue',
+    ]
+
+    async function submit() {
+      if (!issue) return
+      setSaving(true)
+      try {
+        await supabase.from('orders').update({
+          notes: (order.notes||'') + ` | ⚠️ ISSUE: ${issue} — ${details}`,
+          status: order.status === 'delivered' ? 'delivered' : order.status,
+        }).eq('id', order.id)
+        setDone(true)
+        setTimeout(() => onClose(), 2000)
+      } catch(e) { console.error(e) }
+      finally { setSaving(false) }
+    }
+
+    return (
+      <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16 }}>
+        <div style={{ background:D.card,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:500,padding:28,maxHeight:'85vh',overflowY:'auto' }}>
+          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16 }}>
+            <p style={{ margin:0,fontSize:17,fontWeight:700,color:D.text }}>⚠️ Report an Issue</p>
+            <button type="button" onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:D.muted }}>✕</button>
+          </div>
+          <div style={{ background:G.amberLight,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',gap:8 }}>
+            <span>📦</span>
+            <p style={{ margin:0,fontSize:12,color:G.amber,fontWeight:600 }}>{order.order_number} · ₹{Number(order.total_amount).toLocaleString('en-IN')}</p>
+          </div>
+
+          {done ? (
+            <div style={{ textAlign:'center',padding:'24px 0' }}>
+              <p style={{ fontSize:40,marginBottom:10 }}>✅</p>
+              <p style={{ fontSize:16,fontWeight:700,color:G.green }}>Issue reported!</p>
+              <p style={{ fontSize:13,color:D.muted,marginTop:6 }}>Our team will contact you within 24 hours.</p>
+            </div>
+          ) : (
+            <>
+              <p style={{ margin:'0 0 10px',fontSize:13,fontWeight:600,color:D.muted }}>What went wrong?</p>
+              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14 }}>
+                {ISSUES.map(i=>(
+                  <button key={i} type="button" onClick={()=>setIssue(i)}
+                    style={{ padding:'10px 8px',borderRadius:10,border:`1.5px solid ${issue===i?G.red:D.border}`,background:issue===i?G.redLight:'transparent',color:issue===i?G.red:D.text,fontSize:12,fontWeight:issue===i?700:400,cursor:'pointer',textAlign:'left' }}>
+                    {i}
+                  </button>
+                ))}
+              </div>
+              <div style={{ marginBottom:14 }}>
+                <label style={{ display:'block',fontSize:11,fontWeight:700,color:D.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Additional Details</label>
+                <textarea value={details} onChange={e=>setDetails(e.target.value)} rows={3}
+                  placeholder="Describe the issue in detail..."
+                  style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${D.border}`,fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',background:D.bg,color:D.text,boxSizing:'border-box' }} />
+              </div>
+              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
+                <button type="button" onClick={onClose} style={{ padding:12,background:'transparent',border:`1px solid ${D.border}`,borderRadius:10,fontSize:13,fontWeight:600,color:D.muted,cursor:'pointer' }}>Cancel</button>
+                <button type="button" onClick={submit} disabled={saving||!issue}
+                  style={{ padding:12,background:saving||!issue?'#9CA3AF':G.red,color:G.white,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
+                  {saving?'Reporting...':'Report Issue'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   // ── Review Modal ─────────────────────────────────────────
   function ReviewModal({ order, onClose }) {
@@ -681,6 +892,7 @@ export default function CustomerShop() {
       <TopNavModal modal={topModal} onClose={()=>setTopModal(null)} />
       {showProfile && <ProfilePage onClose={()=>setShowProfile(false)} />}
       {reviewModal && <ReviewModal order={reviewModal} onClose={()=>setRevModal(null)} />}
+      {reportModal && <ReportModal order={reportModal} onClose={()=>setRepModal(null)} />}
 
       <header style={{ background:G.green,padding:'14px 20px',display:'flex',alignItems:'center',justifyContent:'space-between' }}>
         <div style={{ display:'flex',alignItems:'center',gap:10 }}>
@@ -770,6 +982,16 @@ export default function CustomerShop() {
                   )}
                   {order.status==='delivered' && reviews[order.id] && (
                     <span style={{ fontSize:10,color:G.green,fontWeight:600 }}>{'★'.repeat(reviews[order.id].rating)}</span>
+                  )}
+                  {order.status==='delivered' && (
+                    <button type="button" onClick={()=>setRepModal(order)} style={{ fontSize:10,fontWeight:700,padding:'3px 10px',borderRadius:20,background:G.amberLight,color:G.amber,border:'none',cursor:'pointer' }}>
+                      ⚠️ Issue
+                    </button>
+                  )}
+                  {(order.status==='delivered'||order.status==='dispatched') && (
+                    <button type="button" onClick={()=>printInvoice(order)} style={{ fontSize:10,fontWeight:700,padding:'3px 10px',borderRadius:20,background:G.blueLight,color:G.blue,border:'none',cursor:'pointer' }}>
+                      🧾 Invoice
+                    </button>
                   )}
                 </div>
               </div>
