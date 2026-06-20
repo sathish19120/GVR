@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
-import { t, useLang } from '../lib/i18n'
-import LanguageToggle from '../components/LanguageToggle'
 
 const G = {
   green:      '#3B6D11',
@@ -27,6 +25,36 @@ const lbl = {
   display: 'block', fontSize: 11, fontWeight: 700,
   textTransform: 'uppercase', letterSpacing: '0.8px',
   color: G.muted, marginBottom: 7,
+}
+
+// ── Inline language support ──────────────────────────────
+const LANG_STRINGS = {
+  en: { welcome:'Welcome', signIn:'Sign In', signUp:'Create Account', resetPassword:'Reset Password', username:'Username', password:'Password', fullName:'Full Name', phone:'Phone', confirmPassword:'Confirm Password', forgotPassword:'Forgot Password?', createAccount:'Create My Account', backToLogin:'← Back to Login', loading:'Please wait…', creating:'Creating…' },
+  te: { welcome:'స్వాగతం', signIn:'లాగిన్ చేయండి', signUp:'ఖాతా తయారు చేయండి', resetPassword:'పాస్‌వర్డ్ రీసెట్', username:'యూజర్‌నేమ్', password:'పాస్‌వర్డ్', fullName:'పూర్తి పేరు', phone:'ఫోన్ నంబర్', confirmPassword:'పాస్‌వర్డ్ నిర్ధారించండి', forgotPassword:'పాస్‌వర్డ్ మర్చిపోయారా?', createAccount:'నా ఖాతా తయారు చేయండి', backToLogin:'← లాగిన్‌కు వెళ్ళండి', loading:'వేచి ఉండండి…', creating:'తయారవుతోంది…' }
+}
+
+function InlineLangToggle({ lang, setLang }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ position:'relative' }}>
+      <button onClick={()=>setOpen(!open)} style={{ display:'flex',alignItems:'center',gap:6,background:'#EAF3DE',border:'1px solid #97C459',borderRadius:20,padding:'5px 12px',cursor:'pointer',color:'#27500A',fontSize:12,fontWeight:600 }}>
+        <span>{lang==='te'?'🇮🇳':'🌐'}</span>
+        {lang==='te'?'తెలుగు':'English'}
+        <span style={{fontSize:10}}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position:'absolute',top:'110%',right:0,background:'#fff',borderRadius:12,boxShadow:'0 4px 16px rgba(0,0,0,0.15)',overflow:'hidden',minWidth:130,zIndex:999 }}>
+          {[['en','🌐','English'],['te','🇮🇳','తెలుగు']].map(([code,flag,label])=>(
+            <button key={code} onClick={()=>{setLang(code);setOpen(false)}} style={{ width:'100%',padding:'10px 14px',display:'flex',alignItems:'center',gap:8,background:lang===code?'#EAF3DE':'#fff',border:'none',borderBottom:'1px solid #F3F4F6',cursor:'pointer' }}>
+              <span style={{fontSize:16}}>{flag}</span>
+              <span style={{fontSize:13,fontWeight:600,color:'#111827'}}>{label}</span>
+              {lang===code && <span style={{marginLeft:'auto',color:'#3B6D11',fontWeight:700}}>✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function AuthPage({ defaultMode }) {
@@ -255,11 +283,11 @@ export default function AuthPage({ defaultMode }) {
               ) : (
                 <button type="button" onClick={() => reset('login')}
                   style={{ background: 'none', border: 'none', color: G.green, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
-                  {t('backToLogin',lang)}
+                  {T.backToLogin}
                 </button>
               )}
               {mode === 'login' && (
-                <button type="button" onClick={() => reset('forgot')} style={{ background:'none', border:'none', color:G.amber, fontSize:13, fontWeight:600, cursor:'pointer', padding:0, textDecoration:'underline' }}>{t('forgotPassword',lang)}</button>
+                <button type="button" onClick={() => reset('forgot')} style={{ background:'none', border:'none', color:G.amber, fontSize:13, fontWeight:600, cursor:'pointer', padding:0, textDecoration:'underline' }}>{T.forgotPassword}</button>
               )}
             </div>
 
