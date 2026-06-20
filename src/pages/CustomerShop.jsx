@@ -2,7 +2,6 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
-import { trackPage, trackAddToCart, trackBeginCheckout, trackPurchase, trackOrderType, trackPaymentMethod, trackTabSwitch } from '../lib/analytics'
 import ProfilePage from './ProfilePage'
 
 const G = {
@@ -250,7 +249,7 @@ export default function CustomerShop() {
   const { user, signOut }         = useAuth()
   const navigate                  = useNavigate()
   const [tab, setTab]             = useState('shop')
-  const switchTab = (t) => { setTab(t); trackTabSwitch(t) }
+  const switchTab = (t) => { setTab(t) }
   const [products, setProducts]   = useState([])
   const [cart, setCart]           = useState({})
   const [step, setStep]           = useState('shop')
@@ -271,7 +270,7 @@ export default function CustomerShop() {
   const [showProfile, setShowProfile] = useState(false)
   const [autoPlacing, setAutoPlacing] = useState(false)
 
-  useEffect(() => { loadProducts(); trackPage('Customer Shop', user?.role) }, [])
+  useEffect(() => { loadProducts() }, [])
   useEffect(() => { if (tab === 'myorders') loadMyOrders() }, [tab])
 
   useEffect(() => {
@@ -327,7 +326,6 @@ export default function CustomerShop() {
     setCart(prev => {
       const qty = Math.max(0, (prev[id]||0) + delta)
       if (qty === 0) { const n = {...prev}; delete n[id]; return n }
-      if (delta > 0 && product) trackAddToCart(product, qty)
       return {...prev, [id]: qty}
     })
   }
@@ -337,7 +335,6 @@ export default function CustomerShop() {
     if (orderType === 'pickup' && !pickupBranch) { setError('Please select a pickup branch'); return }
     setError(''); setPlacing(true)
     try {
-      trackBeginCheckout(products.filter(p=>cart[p.id]).map(p=>({...p,quantity:cart[p.id]})), grand)
       const { count } = await supabase.from('orders').select('*',{count:'exact',head:true})
       const orderNumber = `GVR-${String((count||0)+1).padStart(4,'0')}`
       const { data: order, error: oErr } = await supabase.from('orders').insert({
@@ -360,7 +357,6 @@ export default function CustomerShop() {
         await supabase.from('order_items').insert({ order_id:order.id, product_id:p.id, name:p.name, weight_kg:p.weight_kg, quantity:cart[p.id], price_per_unit:p.price_per_bag })
         await supabase.from('products').update({ stock_bags: Math.max(0, p.stock_bags - cart[p.id]) }).eq('id', p.id)
       }
-      trackPurchase(orderNumber, products.filter(p=>cart[p.id]).map(p=>({...p,quantity:cart[p.id]})), grand, payMethod)
       setOrderNum(orderNumber); setCart({}); setAddress(''); setStep('success')
     } catch(e) { setError(e.message || 'Failed to place order') }
     finally { setPlacing(false) }
@@ -426,7 +422,7 @@ export default function CustomerShop() {
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>How do you want your order?</p>
           <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14 }}>
             {[['delivery','🚚','Home Delivery','₹15 delivery fee'],['pickup','🏪','Store Pickup','Free — collect at branch']].map(([val,icon,label,sub])=>(
-              <div key={val} onClick={()=>{ setOrderType(val); trackOrderType(val) }} style={{ padding:12,borderRadius:12,cursor:'pointer',border:`2px solid ${orderType===val?G.green:G.border}`,background:orderType===val?G.greenLight:G.white,textAlign:'center' }}>
+              <div key={val} onClick={()=>setOrderType(val)} style={{ padding:12,borderRadius:12,cursor:'pointer',border:`2px solid ${orderType===val?G.green:G.border}`,background:orderType===val?G.greenLight:G.white,textAlign:'center' }}>
                 <div style={{ fontSize:24,marginBottom:4 }}>{icon}</div>
                 <p style={{ margin:'0 0 2px',fontWeight:700,fontSize:13,color:orderType===val?G.greenDark:G.text }}>{label}</p>
                 <p style={{ margin:0,fontSize:11,color:G.muted }}>{sub}</p>
@@ -468,7 +464,7 @@ export default function CustomerShop() {
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>Payment Method</p>
           {[['cod','💵','Cash on Delivery','Pay when your order arrives'],['upi','📱','UPI Payment','GPay, PhonePe, Paytm']].map(([val,icon,label,sub])=>(
-            <div key={val} onClick={()=>{ setPayMethod(val); trackPaymentMethod(val) }} style={{ display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderRadius:10,marginBottom:8,cursor:'pointer',border:`2px solid ${payMethod===val?G.green:G.border}`,background:payMethod===val?G.greenLight:G.white }}>
+            <div key={val} onClick={()=>setPayMethod(val)} style={{ display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderRadius:10,marginBottom:8,cursor:'pointer',border:`2px solid ${payMethod===val?G.green:G.border}`,background:payMethod===val?G.greenLight:G.white }}>
               <span style={{ fontSize:22 }}>{icon}</span>
               <div style={{ flex:1 }}><p style={{ margin:0,fontWeight:600,fontSize:14 }}>{label}</p><p style={{ margin:0,fontSize:12,color:G.muted }}>{sub}</p></div>
               {payMethod===val && <span style={{ color:G.green,fontWeight:700 }}>✓</span>}
