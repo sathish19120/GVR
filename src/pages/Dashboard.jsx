@@ -569,11 +569,45 @@ export default function Dashboard() {
           {!collapsed && <div><p style={{ margin:0, fontSize:13, fontWeight:700, color:G.greenDark }}>Green Village</p><p style={{ margin:0, fontSize:10, color:G.green2, fontWeight:600 }}>Rice Admin</p></div>}
         </div>
         <nav style={{ flex:1, padding:'10px 6px', overflowY:'auto' }}>
+          <style>{`
+            .nav-item { position: relative; }
+            .nav-tooltip {
+              position: absolute;
+              left: calc(100% + 10px);
+              top: 50%;
+              transform: translateY(-50%);
+              background: #1F2937;
+              color: #fff;
+              font-size: 12px;
+              font-weight: 600;
+              padding: 5px 10px;
+              border-radius: 7px;
+              white-space: nowrap;
+              pointer-events: none;
+              opacity: 0;
+              transition: opacity 0.15s;
+              z-index: 9999;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            }
+            .nav-tooltip::before {
+              content: '';
+              position: absolute;
+              right: 100%;
+              top: 50%;
+              transform: translateY(-50%);
+              border: 5px solid transparent;
+              border-right-color: #1F2937;
+            }
+            .nav-item:hover .nav-tooltip { opacity: 1; }
+          `}</style>
           {PAGES.map(item => (
-            <button key={item.key} onClick={()=>{ setPage(item.key); setCollapsed(true) }} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:collapsed?'center':'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
-              <span style={{ fontSize:17, flexShrink:0 }}>{item.icon}</span>
-              {!collapsed && item.label}
-            </button>
+            <div key={item.key} className="nav-item">
+              <button onClick={()=>{ setPage(item.key); setCollapsed(true) }} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:collapsed?'center':'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
+                <span style={{ fontSize:17, flexShrink:0 }}>{item.icon}</span>
+                {!collapsed && item.label}
+              </button>
+              {collapsed && <span className="nav-tooltip">{item.label}</span>}
+            </div>
           ))}
         </nav>
         <div style={{ padding:'8px 6px', borderTop:`1px solid ${G.border}`, flexShrink:0 }}>
@@ -591,13 +625,16 @@ export default function Dashboard() {
               </div>
             </div>
           )}
-          <button onClick={async()=>{ await signOut(); navigate('/login') }}
-            style={{ width:'100%', padding:collapsed?'9px 0':'9px 12px', borderRadius:10, border:'none', background:G.redLight, color:G.red, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:8, transition:'background 0.15s' }}
-            onMouseEnter={e=>e.currentTarget.style.background='#FECACA'}
-            onMouseLeave={e=>e.currentTarget.style.background=G.redLight}>
-            <span style={{ fontSize:16, flexShrink:0 }}>↩</span>
-            {!collapsed && <span>Logout</span>}
-          </button>
+          <div className="nav-item" style={{ position:'relative' }}>
+            <button onClick={async()=>{ await signOut(); navigate('/login') }}
+              style={{ width:'100%', padding:collapsed?'9px 0':'9px 12px', borderRadius:10, border:'none', background:G.redLight, color:G.red, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:8, transition:'background 0.15s' }}
+              onMouseEnter={e=>e.currentTarget.style.background='#FECACA'}
+              onMouseLeave={e=>e.currentTarget.style.background=G.redLight}>
+              <span style={{ fontSize:16, flexShrink:0 }}>↩</span>
+              {!collapsed && <span>Logout</span>}
+            </button>
+            {collapsed && <span className="nav-tooltip">Logout</span>}
+          </div>
         </div>
       </aside>
 
