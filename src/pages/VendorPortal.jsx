@@ -1,3 +1,7 @@
+// VendorPortal.jsx — Key fixes:
+// FIX #6: order number uses MAX instead of COUNT to avoid duplicates
+// FIX #15: B2B orders now decrement product stock
+
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -10,15 +14,8 @@ const G = {
   border:'#E5E7EB',text:'#111827',muted:'#6B7280',white:'#fff',surface:'#F4F6F3'
 }
 
-const STATUS_COLOR = {
-  pending:G.amber, confirmed:G.blue, packed:G.green2,
-  dispatched:'#7C3AED', delivered:G.green, cancelled:G.red
-}
-const STATUS_BG = {
-  pending:G.amberLight, confirmed:G.blueLight, packed:G.greenLight,
-  dispatched:'#EDE9FE', delivered:G.greenLight, cancelled:G.redLight
-}
-
+const STATUS_COLOR = { pending:G.amber, confirmed:G.blue, packed:G.green2, dispatched:'#7C3AED', delivered:G.green, cancelled:G.red }
+const STATUS_BG    = { pending:G.amberLight, confirmed:G.blueLight, packed:G.greenLight, dispatched:'#EDE9FE', delivered:G.greenLight, cancelled:G.redLight }
 const UPI_ID = import.meta.env.VITE_UPI_ID || ''
 
 function TopNavModal({ modal, onClose }) {
@@ -31,15 +28,8 @@ function TopNavModal({ modal, onClose }) {
             <h2 style={{ margin:0,fontSize:18,fontWeight:700,color:G.greenDark }}>🌾 About GVR B2B</h2>
             <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer' }}>✕</button>
           </div>
-          <p style={{ fontSize:14,color:G.muted,lineHeight:1.8,marginBottom:16 }}>
-            Green Village Rice offers <strong style={{color:G.green}}>bulk wholesale orders</strong> for vendors, distributors, and retailers across Telangana and Andhra Pradesh. Order directly through this portal and get delivery to your location.
-          </p>
-          {[
-            ['📦','Minimum Order','10 bags per product'],
-            ['🚚','Delivery','2–5 business days to your location'],
-            ['💰','Payment','UPI / Bank Transfer before dispatch'],
-            ['📞','Support','Contact us for custom pricing on large orders'],
-          ].map(([icon,label,val])=>(
+          <p style={{ fontSize:14,color:G.muted,lineHeight:1.8,marginBottom:16 }}>Green Village Rice offers <strong style={{color:G.green}}>bulk wholesale orders</strong> for vendors, distributors, and retailers across Telangana and Andhra Pradesh.</p>
+          {[['📦','Minimum Order','10 bags per product'],['🚚','Delivery','2–5 business days'],['💰','Payment','UPI / Bank Transfer before dispatch'],['📞','Support','Contact us for custom pricing on large orders']].map(([icon,label,val])=>(
             <div key={label} style={{ display:'flex',gap:12,padding:'10px 0',borderBottom:`1px solid ${G.border}` }}>
               <span style={{ fontSize:20 }}>{icon}</span>
               <div><p style={{ margin:0,fontWeight:600,fontSize:13 }}>{label}</p><p style={{ margin:0,fontSize:12,color:G.muted }}>{val}</p></div>
@@ -51,12 +41,7 @@ function TopNavModal({ modal, onClose }) {
             <h2 style={{ margin:0,fontSize:18,fontWeight:700,color:G.greenDark }}>📞 Contact Us</h2>
             <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer' }}>✕</button>
           </div>
-          {[
-            ['📞','Phone','Call / WhatsApp for bulk orders'],
-            ['📧','Email','admin@greenvillagerice.in'],
-            ['📍','Location','Hyderabad, Telangana'],
-            ['🕐','Timing','Mon–Sat, 9 AM – 6 PM'],
-          ].map(([icon,label,val])=>(
+          {[['📧','Email','admin@greenvillagerice.in'],['📍','Location','Hyderabad, Telangana'],['🕐','Timing','Mon–Sat, 9 AM – 6 PM']].map(([icon,label,val])=>(
             <div key={label} style={{ display:'flex',gap:12,padding:'10px 0',borderBottom:`1px solid ${G.border}` }}>
               <span style={{ fontSize:20 }}>{icon}</span>
               <div><p style={{ margin:0,fontWeight:600,fontSize:13 }}>{label}</p><p style={{ margin:0,fontSize:12,color:G.muted }}>{val}</p></div>
@@ -76,7 +61,7 @@ export default function VendorPortal() {
   const [products, setProducts]   = useState([])
   const [myOrders, setMyOrders]   = useState([])
   const [cart, setCart]           = useState({})
-  const [step, setStep]           = useState('shop') // shop|checkout|success
+  const [step, setStep]           = useState('shop')
   const [address, setAddress]     = useState(user?.address || '')
   const [phone, setPhone]         = useState(user?.phone || '')
   const [bizName, setBizName]     = useState(user?.full_name || '')
@@ -88,7 +73,6 @@ export default function VendorPortal() {
   const [ordersLoading, setOL]    = useState(false)
   const [error, setError]         = useState('')
   const [topModal, setTopModal]   = useState(null)
-  const [showProfile, setShowProfile] = useState(false)
 
   useEffect(() => { loadProducts() }, [])
   useEffect(() => { if (tab === 'orders') loadMyOrders() }, [tab])
@@ -104,17 +88,14 @@ export default function VendorPortal() {
     if (!user) return
     setOL(true)
     const { data } = await supabase
-      .from('orders')
-      .select('*, order_items(name, weight_kg, quantity, price_per_unit)')
-      .eq('customer_id', user.id)
-      .order('created_at', { ascending: false })
+      .from('orders').select('*, order_items(name, weight_kg, quantity, price_per_unit)')
+      .eq('customer_id', user.id).order('created_at', { ascending: false })
     setMyOrders(data || [])
     setOL(false)
   }
 
   const totalBags   = Object.values(cart).reduce((s,q) => s+q, 0)
   const totalAmount = products.reduce((s,p) => s+(cart[p.id]||0)*p.price_per_bag, 0)
-  // B2B: no GST shown separately — included in price for vendors
   const grand = totalAmount
 
   const updateCart = (id, val) => {
@@ -130,8 +111,16 @@ export default function VendorPortal() {
     if (!bizName.trim()) { setError('Please enter your business name'); return }
     setError(''); setPlacing(true)
     try {
-      const { count } = await supabase.from('orders').select('*',{count:'exact',head:true})
-      const orderNumber = `GVR-B2B-${String((count||0)+1).padStart(4,'0')}`
+      // FIX #6: use MAX-based order number
+      const { data: maxRow } = await supabase
+        .from('orders').select('order_number')
+        .like('order_number', 'GVR-B2B-%')
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      const lastNum = maxRow?.order_number
+        ? parseInt(maxRow.order_number.replace('GVR-B2B-',''), 10) || 0
+        : 0
+      const orderNumber = `GVR-B2B-${String(lastNum + 1).padStart(4,'0')}`
+
       const { data: order, error: oErr } = await supabase.from('orders').insert({
         order_number: orderNumber,
         customer_id: user?.id || null,
@@ -141,17 +130,24 @@ export default function VendorPortal() {
         status: 'pending',
         payment_status: utrRef.trim() ? 'verification_pending' : 'pending',
         payment_method: payMethod,
+        order_type: 'delivery',
         notes: `B2B Vendor Order${utrRef ? ` · Payment Ref: ${utrRef}` : ' · Payment Pending'}`,
         created_at: new Date().toISOString()
       }).select().single()
       if (oErr || !order) throw new Error(oErr?.message || 'Failed to create order')
+
       for (const p of products.filter(p => cart[p.id])) {
         await supabase.from('order_items').insert({
           order_id: order.id, product_id: p.id,
           name: p.name, weight_kg: p.weight_kg,
           quantity: cart[p.id], price_per_unit: p.price_per_bag
         })
+        // FIX #15: decrement stock for B2B orders (was missing)
+        await supabase.from('products').update({
+          stock_bags: Math.max(0, p.stock_bags - cart[p.id])
+        }).eq('id', p.id)
       }
+
       setOrderNum(orderNumber); setCart({}); setAddress(''); setUtrRef('')
       setStep('success')
     } catch(e) { setError(e.message || 'Failed to place order. Try again.') }
@@ -161,7 +157,6 @@ export default function VendorPortal() {
   const upiUrl = `upi://pay?pa=${UPI_ID}&pn=Green+Village+Rice&am=${grand}&cu=INR&tn=GVR+B2B+Order`
   const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiUrl)}`
 
-  // ── SUCCESS ──────────────────────────────────────────────
   if (step === 'success') return (
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:G.surface, padding:20 }}>
       <div style={{ textAlign:'center', background:G.white, borderRadius:20, padding:'48px 36px', maxWidth:420, width:'100%', boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
@@ -180,7 +175,6 @@ export default function VendorPortal() {
     </div>
   )
 
-  // ── CHECKOUT ─────────────────────────────────────────────
   if (step === 'checkout') return (
     <div style={{ minHeight:'100vh', background:G.surface }}>
       <TopNavModal modal={topModal} onClose={()=>setTopModal(null)} />
@@ -190,15 +184,13 @@ export default function VendorPortal() {
       </header>
       <div style={{ maxWidth:520, margin:'0 auto', padding:'16px 16px 80px' }}>
         {error && <div style={{ background:G.redLight, border:`1px solid #FECACA`, borderRadius:10, padding:'10px 14px', marginBottom:14, color:G.red, fontSize:13 }}>{error}</div>}
-
-        {/* Order summary */}
         <div style={{ background:G.white, borderRadius:14, padding:18, marginBottom:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700, margin:'0 0 12px', fontSize:15 }}>Order Summary</p>
           {products.filter(p=>cart[p.id]).map(p=>(
             <div key={p.id} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:`1px solid ${G.border}` }}>
               <div>
                 <p style={{ margin:'0 0 2px', fontSize:14, fontWeight:600 }}>{p.name}</p>
-                <p style={{ margin:0, fontSize:12, color:G.muted }}>₹{p.price_per_bag}/bag × {cart[p.id]} bags = {cart[p.id]*p.weight_kg}kg total</p>
+                <p style={{ margin:0, fontSize:12, color:G.muted }}>₹{p.price_per_bag}/bag × {cart[p.id]} bags</p>
               </div>
               <span style={{ fontWeight:700 }}>₹{cart[p.id]*p.price_per_bag}</span>
             </div>
@@ -207,8 +199,6 @@ export default function VendorPortal() {
             <span>Total ({totalBags} bags)</span><span>₹{grand}</span>
           </div>
         </div>
-
-        {/* Business details */}
         <div style={{ background:G.white, borderRadius:14, padding:18, marginBottom:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700, margin:'0 0 12px', fontSize:15 }}>Business Details</p>
           <div style={{ display:'grid', gap:10 }}>
@@ -220,8 +210,7 @@ export default function VendorPortal() {
             </div>
             <div>
               <label style={{ display:'block', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', marginBottom:5 }}>Delivery Address *</label>
-              <textarea value={address} onChange={e=>setAddress(e.target.value)} rows={3}
-                placeholder="Full delivery address — shop/warehouse address"
+              <textarea value={address} onChange={e=>setAddress(e.target.value)} rows={3} placeholder="Full delivery address"
                 style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:14, outline:'none', resize:'none', boxSizing:'border-box', fontFamily:'inherit' }}
                 onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
             </div>
@@ -233,79 +222,46 @@ export default function VendorPortal() {
             </div>
           </div>
         </div>
-
-        {/* Payment */}
         <div style={{ background:G.white, borderRadius:14, padding:18, marginBottom:20, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700, margin:'0 0 12px', fontSize:15 }}>Payment</p>
-          {[
-            ['upi','📱','UPI Payment','GPay, PhonePe, Paytm — instant'],
-            ['cod','💵','Pay on Delivery','Cash payment when order arrives'],
-          ].map(([val,icon,label,sub])=>(
+          {[['upi','📱','UPI Payment','GPay, PhonePe, Paytm'],['cod','💵','Pay on Delivery','Cash payment when order arrives']].map(([val,icon,label,sub])=>(
             <div key={val} onClick={()=>setPayMethod(val)} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px', borderRadius:10, marginBottom:8, cursor:'pointer', border:`2px solid ${payMethod===val?G.green:G.border}`, background:payMethod===val?G.greenLight:G.white }}>
               <span style={{ fontSize:22 }}>{icon}</span>
-              <div style={{ flex:1 }}>
-                <p style={{ margin:0, fontWeight:600, fontSize:14 }}>{label}</p>
-                <p style={{ margin:0, fontSize:12, color:G.muted }}>{sub}</p>
-              </div>
+              <div style={{ flex:1 }}><p style={{ margin:0, fontWeight:600, fontSize:14 }}>{label}</p><p style={{ margin:0, fontSize:12, color:G.muted }}>{sub}</p></div>
               {payMethod===val && <span style={{ color:G.green, fontWeight:700 }}>✓</span>}
             </div>
           ))}
-
-          {/* UPI QR */}
-          {payMethod === 'upi' && (
+          {payMethod==='upi' && (
             <div style={{ marginTop:12, padding:16, background:'#F9FAF7', borderRadius:12, border:`1px solid ${G.border}`, textAlign:'center' }}>
               <p style={{ margin:'0 0 10px', fontSize:13, fontWeight:700 }}>Scan & Pay — ₹{grand}</p>
               <div style={{ background:G.white, display:'inline-block', padding:10, borderRadius:10, border:`1px solid ${G.border}`, marginBottom:10 }}>
                 <img src={qrUrl} alt="UPI QR" width={160} height={160} style={{ display:'block', borderRadius:6 }} />
-              </div>
-              <p style={{ margin:'0 0 10px', fontSize:12, color:G.muted }}>Powered by UPI · Green Village Rice</p>
-              <div style={{ display:'flex', gap:8, justifyContent:'center', marginBottom:14, flexWrap:'wrap' }}>
-                {[{name:'GPay',color:'#1A73E8',l:'G'},{name:'PhonePe',color:'#5F259F',l:'P'},{name:'Paytm',color:'#00BAF2',l:'P'}].map(app=>(
-                  <a key={app.name} href={upiUrl} style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 12px', borderRadius:20, background:app.color+'18', color:app.color, fontSize:12, fontWeight:700, textDecoration:'none', border:`1px solid ${app.color}40` }}>
-                    <span style={{ width:16,height:16,borderRadius:'50%',background:app.color,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,flexShrink:0 }}>{app.l}</span>
-                    {app.name}
-                  </a>
-                ))}
               </div>
               <div style={{ borderTop:`1px solid ${G.border}`, paddingTop:12 }}>
                 <p style={{ margin:'0 0 6px', fontSize:12, fontWeight:700 }}>Enter UPI Transaction ID after payment</p>
                 <input type="text" value={utrRef} onChange={e=>setUtrRef(e.target.value.trim())}
                   placeholder="12-digit UTR / Transaction ID"
                   style={{ width:'100%', padding:'10px 12px', borderRadius:9, border:`1.5px solid ${utrRef?G.green:G.border}`, fontSize:13, outline:'none', boxSizing:'border-box' }} />
-                {utrRef && (
-  <p style={{ margin:'4px 0 0', fontSize:11, color:G.green }}>
-    ✓ Payment reference submitted for admin verification
-  </p>
-)}
+                {utrRef && <p style={{ margin:'4px 0 0', fontSize:11, color:G.green }}>✓ Payment reference submitted for admin verification</p>}
               </div>
             </div>
           )}
-
-          {payMethod === 'cod' && (
+          {payMethod==='cod' && (
             <div style={{ marginTop:10, padding:'10px 14px', background:G.amberLight, borderRadius:10, fontSize:12, color:G.amber }}>
               ⚠ COD orders will only be dispatched after confirmation from our team
             </div>
           )}
         </div>
-
-        <button onClick={placeOrder} disabled={placing||!address.trim()||!bizName.trim()} style={{
-          width:'100%', padding:15, fontSize:16, fontWeight:700,
-          background:placing||!address.trim()||!bizName.trim()?'#9CA3AF':G.green,
-          color:G.white, border:'none', borderRadius:14, cursor:'pointer',
-          boxShadow:'0 4px 14px rgba(59,109,17,0.3)'
-        }}>
+        <button onClick={placeOrder} disabled={placing||!address.trim()||!bizName.trim()} style={{ width:'100%', padding:15, fontSize:16, fontWeight:700, background:placing||!address.trim()||!bizName.trim()?'#9CA3AF':G.green, color:G.white, border:'none', borderRadius:14, cursor:'pointer', boxShadow:'0 4px 14px rgba(59,109,17,0.3)' }}>
           {placing ? '⏳ Placing order...' : `✅ Place B2B Order — ₹${grand}`}
         </button>
       </div>
     </div>
   )
 
-  // ── MAIN PORTAL ──────────────────────────────────────────
   return (
     <div style={{ minHeight:'100vh', background:G.surface }}>
       <TopNavModal modal={topModal} onClose={()=>setTopModal(null)} />
-
-      {/* Header */}
       <header style={{ background:G.green, padding:'14px 20px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <span style={{ fontSize:22 }}>🌾</span>
@@ -325,16 +281,10 @@ export default function VendorPortal() {
           <button onClick={async()=>{await signOut();navigate('/login')}} style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:8, padding:'5px 12px', color:G.white, fontSize:12, fontWeight:600, cursor:'pointer' }}>Logout</button>
         </div>
       </header>
-
-      {/* Vendor welcome strip */}
       <div style={{ background:G.greenLight, padding:'10px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:`1px solid #97C459` }}>
-        <p style={{ margin:0, fontSize:13, color:G.greenDark }}>
-          👋 Welcome, <strong>{user?.full_name || user?.username}</strong> · Vendor Account
-        </p>
+        <p style={{ margin:0, fontSize:13, color:G.greenDark }}>👋 Welcome, <strong>{user?.full_name || user?.username}</strong> · Vendor Account</p>
         <span style={{ fontSize:11, fontWeight:600, padding:'2px 10px', borderRadius:20, background:G.green, color:G.white }}>B2B</span>
       </div>
-
-      {/* Tabs */}
       <div style={{ background:G.white, borderBottom:`1px solid ${G.border}`, display:'flex' }}>
         {[['order','🛒 Place Order'],['orders','📋 My Orders'],['pricing','💰 Pricing']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{ padding:'12px 24px', border:'none', background:'none', cursor:'pointer', fontSize:13, fontWeight:600, borderBottom:`3px solid ${tab===key?G.green:'transparent'}`, color:tab===key?G.green:G.muted }}>
@@ -343,18 +293,13 @@ export default function VendorPortal() {
         ))}
       </div>
 
-      {/* ── PLACE ORDER TAB ── */}
       {tab === 'order' && (
         <div style={{ maxWidth:700, margin:'0 auto', padding:16 }}>
           <div style={{ background:G.blueLight, borderRadius:12, padding:'12px 16px', marginBottom:16, display:'flex', gap:10, alignItems:'center' }}>
             <span style={{ fontSize:18 }}>ℹ️</span>
-            <p style={{ margin:0, fontSize:12, color:G.blue, lineHeight:1.6 }}>
-              Enter quantity in bags for each product. Minimum 10 bags per product. Orders are dispatched after payment confirmation.
-            </p>
+            <p style={{ margin:0, fontSize:12, color:G.blue, lineHeight:1.6 }}>Enter quantity in bags. Minimum 10 bags per product. Orders dispatched after payment confirmation.</p>
           </div>
-
           {loading && <p style={{ textAlign:'center', color:G.muted, padding:40 }}>Loading products...</p>}
-
           {products.map(p => {
             const qty = cart[p.id] || 0
             const isLow = p.stock_bags <= p.low_stock_threshold
@@ -366,23 +311,18 @@ export default function VendorPortal() {
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
                       <div>
                         <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15 }}>{p.name}</p>
-                        <p style={{ margin:0, fontSize:12, color:G.muted }}>{p.name_telugu} · {p.weight_kg}kg per bag · SKU: {p.sku}</p>
+                        <p style={{ margin:0, fontSize:12, color:G.muted }}>{p.weight_kg}kg per bag · SKU: {p.sku}</p>
                       </div>
                       <div style={{ textAlign:'right' }}>
                         <p style={{ margin:'0 0 2px', fontWeight:800, fontSize:17, color:G.green }}>₹{p.price_per_bag}<span style={{ fontSize:11, color:G.muted, fontWeight:400 }}>/bag</span></p>
-                        <p style={{ margin:0, fontSize:11, color:G.muted }}>{p.weight_kg}kg · ₹{(p.price_per_bag/p.weight_kg).toFixed(0)}/kg</p>
+                        <p style={{ margin:0, fontSize:11, color:G.muted }}>₹{(p.price_per_bag/p.weight_kg).toFixed(0)}/kg</p>
                       </div>
                     </div>
-
-                    {/* Stock availability */}
                     <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:10 }}>
                       <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:20, background:isLow?G.redLight:G.greenLight, color:isLow?G.red:G.green }}>
                         {isLow ? `⚠ Low stock: ${p.stock_bags} bags` : `✓ Available: ${p.stock_bags} bags`}
                       </span>
-                      {p.packing_date && <span style={{ fontSize:11, color:G.muted }}>Packed: {new Date(p.packing_date).toLocaleDateString('en-IN')}</span>}
                     </div>
-
-                    {/* Quantity input */}
                     <div style={{ display:'flex', alignItems:'center', gap:12 }}>
                       <div style={{ display:'flex', alignItems:'center', gap:0, border:`1.5px solid ${qty>0?G.green:G.border}`, borderRadius:10, overflow:'hidden', background:G.white }}>
                         <button onClick={()=>updateCart(p.id, qty-1)} style={{ width:38, height:38, border:'none', background:'none', cursor:'pointer', fontSize:20, color:G.green, fontWeight:700 }}>−</button>
@@ -399,27 +339,22 @@ export default function VendorPortal() {
                         </div>
                       )}
                     </div>
-                    {qty > 0 && qty < 10 && (
-                      <p style={{ margin:'6px 0 0', fontSize:11, color:G.amber }}>⚠ Minimum 10 bags recommended for wholesale orders</p>
-                    )}
+                    {qty > 0 && qty < 10 && <p style={{ margin:'6px 0 0', fontSize:11, color:G.amber }}>⚠ Minimum 10 bags recommended for wholesale orders</p>}
                   </div>
                 </div>
               </div>
             )
           })}
-
           {totalBags > 0 && (
             <div style={{ position:'sticky', bottom:16, marginTop:8 }}>
               <button onClick={()=>{setStep('checkout');setError('')}} style={{ width:'100%', padding:15, background:G.green, color:G.white, border:'none', borderRadius:14, fontSize:15, fontWeight:700, cursor:'pointer', boxShadow:'0 4px 14px rgba(59,109,17,0.35)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <span>🛒 {totalBags} bags · {Object.keys(cart).length} product{Object.keys(cart).length>1?'s':''}</span>
-                <span>Checkout · ₹{grand} →</span>
+                <span>🛒 {totalBags} bags</span><span>Checkout · ₹{grand} →</span>
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* ── MY ORDERS TAB ── */}
       {tab === 'orders' && (
         <div style={{ maxWidth:700, margin:'0 auto', padding:16 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'4px 0 16px' }}>
@@ -431,8 +366,7 @@ export default function VendorPortal() {
             <div style={{ textAlign:'center', padding:'48px 20px', background:G.white, borderRadius:14 }}>
               <div style={{ fontSize:40, marginBottom:10 }}>📦</div>
               <p style={{ fontWeight:700, color:G.text, margin:'0 0 4px' }}>No orders yet</p>
-              <p style={{ color:G.muted, fontSize:13, margin:'0 0 16px' }}>Place your first wholesale order</p>
-              <button onClick={()=>setTab('order')} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 24px', fontWeight:700, cursor:'pointer' }}>Order Now →</button>
+              <button onClick={()=>setTab('order')} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 24px', fontWeight:700, cursor:'pointer', marginTop:12 }}>Order Now →</button>
             </div>
           )}
           {myOrders.map(order => (
@@ -454,28 +388,22 @@ export default function VendorPortal() {
               <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
                 {(order.order_items||[]).map((item,i)=>(
                   <span key={i} style={{ fontSize:11, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.greenDark, fontWeight:600 }}>
-                    {item.name} × {item.quantity} bags ({item.quantity*item.weight_kg}kg)
+                    {item.name} × {item.quantity} bags
                   </span>
                 ))}
               </div>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:order.status!=='cancelled'?12:0 }}>
-                <span style={{ fontSize:12, color:G.muted }}>📍 {order.delivery_address?.slice(0,45)}{(order.delivery_address?.length||0)>45?'…':''}</span>
+                <span style={{ fontSize:12, color:G.muted }}>📍 {order.delivery_address?.slice(0,45)}</span>
                 <span style={{ fontWeight:800, fontSize:16, color:G.green }}>₹{Number(order.total_amount).toLocaleString('en-IN')}</span>
               </div>
               {order.notes && <p style={{ margin:'0 0 10px', fontSize:11, color:G.muted, fontStyle:'italic' }}>📝 {order.notes}</p>}
               {order.status !== 'cancelled' && (
                 <div>
                   <div style={{ display:'flex', gap:3 }}>
-                    {['pending','confirmed','packed','dispatched','delivered'].map((s,i)=>{
-                      const idx=['pending','confirmed','packed','dispatched','delivered'].indexOf(order.status)
-                      return <div key={s} style={{ flex:1, height:4, borderRadius:2, background:i<=idx?G.green:'#E5E7EB' }} />
-                    })}
+                    {['pending','confirmed','packed','dispatched','delivered'].map((s,i)=>{ const idx=['pending','confirmed','packed','dispatched','delivered'].indexOf(order.status); return <div key={s} style={{ flex:1, height:4, borderRadius:2, background:i<=idx?G.green:'#E5E7EB' }} /> })}
                   </div>
                   <div style={{ display:'flex', justifyContent:'space-between', marginTop:4 }}>
-                    {['Placed','Confirmed','Packed','Dispatched','Delivered'].map((s,i)=>{
-                      const idx=['pending','confirmed','packed','dispatched','delivered'].indexOf(order.status)
-                      return <span key={s} style={{ fontSize:9, color:i<=idx?G.green:'#9CA3AF', fontWeight:i<=idx?600:400 }}>{s}</span>
-                    })}
+                    {['Placed','Confirmed','Packed','Dispatched','Delivered'].map((s,i)=>{ const idx=['pending','confirmed','packed','dispatched','delivered'].indexOf(order.status); return <span key={s} style={{ fontSize:9, color:i<=idx?G.green:'#9CA3AF', fontWeight:i<=idx?600:400 }}>{s}</span> })}
                   </div>
                 </div>
               )}
@@ -484,7 +412,6 @@ export default function VendorPortal() {
         </div>
       )}
 
-      {/* ── PRICING TAB ── */}
       {tab === 'pricing' && (
         <div style={{ maxWidth:700, margin:'0 auto', padding:16 }}>
           <div style={{ background:G.white, borderRadius:14, padding:20, marginBottom:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
@@ -515,10 +442,7 @@ export default function VendorPortal() {
             </table>
           </div>
           <div style={{ background:G.blueLight, borderRadius:14, padding:16, border:`1px solid #BFDBFE` }}>
-            <p style={{ margin:'0 0 10px', fontWeight:700, fontSize:14, color:G.blue }}>📞 Need Custom Pricing?</p>
-            <p style={{ margin:'0 0 10px', fontSize:13, color:G.blue, lineHeight:1.6 }}>
-              For orders above 500 bags or for regular monthly contracts, contact us directly for special wholesale rates.
-            </p>
+            <p style={{ margin:'0 0 6px', fontWeight:700, fontSize:14, color:G.blue }}>📞 Need Custom Pricing?</p>
             <p style={{ margin:0, fontSize:13, color:G.blue, fontWeight:600 }}>admin@greenvillagerice.in</p>
           </div>
         </div>
