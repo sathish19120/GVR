@@ -16,47 +16,48 @@ const inp = {
 }
 
 const FREQ = [
-  { key:'weekly',    label:'Every Week',     days:7,  badge:'Most Fresh',  color:G.green },
-  { key:'biweekly',  label:'Every 2 Weeks',  days:14, badge:'Popular',     color:G.blue  },
-  { key:'monthly',   label:'Every Month',    days:30, badge:'Best Value',  color:G.amber },
+  { key:'weekly',   label:'Every Week',    days:7,  badge:'Most Fresh', color:G.green },
+  { key:'biweekly', label:'Every 2 Weeks', days:14, badge:'Popular',    color:G.blue  },
+  { key:'monthly',  label:'Every Month',   days:30, badge:'Best Value', color:G.amber },
 ]
 
 // ── Subscribe Modal ───────────────────────────────────────
 function SubscribeModal({ product, onClose, onSaved }) {
   const { user } = useAuth()
-  const [qty, setQty]           = useState(1)
-  const [freq, setFreq]         = useState('monthly')
-  const [address, setAddress]   = useState(user?.address || '')
-  const [phone, setPhone]       = useState(user?.phone || '')
-  const [payMethod, setPay]     = useState('upi')
-  const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState('')
+  const [qty, setQty]         = useState(1)
+  const [freq, setFreq]       = useState('monthly')
+  const [address, setAddress] = useState(user?.address || '')
+  const [phone, setPhone]     = useState(user?.phone || '')
+  const [payMethod, setPay]   = useState('upi')
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState('')
 
-  const freqObj     = FREQ.find(f=>f.key===freq)
-  const discount    = freq === 'weekly' ? 3 : freq === 'biweekly' ? 4 : 5
-  const origPrice   = product.price_per_bag * qty
-  const discounted  = Math.round(origPrice * (1 - discount/100))
-  const saving_amt  = origPrice - discounted
-  const nextDate    = new Date(); nextDate.setDate(nextDate.getDate() + freqObj.days)
+  const freqObj    = FREQ.find(f => f.key === freq)
+  const discount   = freq==='weekly' ? 3 : freq==='biweekly' ? 4 : 5
+  const origPrice  = product.price_per_bag * qty
+  const discounted = Math.round(origPrice * (1 - discount/100))
+  const saveAmt    = origPrice - discounted
+  const nextDate   = new Date(); nextDate.setDate(nextDate.getDate() + freqObj.days)
 
   async function save() {
     if (!address.trim()) { setError('Please enter delivery address'); return }
     setSaving(true); setError('')
     try {
       const { error: err } = await supabase.from('subscriptions').insert({
-        customer_id:    user.id,
-        customer_name:  user.full_name || user.username,
-        product_id:     product.id,
-        product_name:   product.name,
-        quantity_bags:  qty,
-        frequency:      freq,
+        customer_id:     user.id,
+        customer_name:   user.full_name || user.username,
+        product_id:      product.id,
+        product_name:    product.name,
+        quantity_bags:   qty,
+        frequency:       freq,
         next_order_date: nextDate.toISOString().split('T')[0],
-        discount_pct:   discount,
-        status:         'active',
+        discount_pct:    discount,
+        status:          'active',
         address,
         phone,
-        payment_method: payMethod,
-        created_at:     new Date().toISOString()
+        payment_method:  payMethod,
+        total_orders:    0,  // FIX #3: column now exists in schema
+        created_at:      new Date().toISOString()
       })
       if (err) throw err
       onSaved(); onClose()
@@ -73,7 +74,6 @@ function SubscribeModal({ product, onClose, onSaved }) {
         </div>
         {error && <div style={{ background:G.redLight,border:`1px solid #FECACA`,borderRadius:8,padding:'8px 12px',marginBottom:12,color:G.red,fontSize:12 }}>{error}</div>}
 
-        {/* Frequency */}
         <p style={{ margin:'0 0 10px',fontSize:12,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px' }}>Delivery Frequency</p>
         <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:16 }}>
           {FREQ.map(f => (
@@ -84,7 +84,6 @@ function SubscribeModal({ product, onClose, onSaved }) {
           ))}
         </div>
 
-        {/* Quantity */}
         <p style={{ margin:'0 0 8px',fontSize:12,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px' }}>Quantity per delivery</p>
         <div style={{ display:'flex',alignItems:'center',gap:0,border:`2px solid ${G.green}`,borderRadius:12,overflow:'hidden',width:'fit-content',marginBottom:16 }}>
           <button onClick={()=>setQty(q=>Math.max(1,q-1))} style={{ width:44,height:44,border:'none',background:'none',cursor:'pointer',fontSize:22,color:G.green,fontWeight:700 }}>−</button>
@@ -93,31 +92,29 @@ function SubscribeModal({ product, onClose, onSaved }) {
           <span style={{ padding:'0 14px',fontSize:13,color:G.muted }}>{qty} bag{qty>1?'s':''} · {qty*product.weight_kg}kg</span>
         </div>
 
-        {/* Savings */}
         <div style={{ background:G.greenLight,borderRadius:12,padding:'14px 16px',marginBottom:16,border:`1px solid #97C459` }}>
           <div style={{ display:'flex',justifyContent:'space-between',marginBottom:6 }}>
-            <span style={{ fontSize:13,color:G.muted,textDecoration:'line-through' }}>Regular price: ₹{origPrice}</span>
-            <span style={{ fontSize:13,color:G.green,fontWeight:700 }}>You save: ₹{saving_amt}</span>
+            <span style={{ fontSize:13,color:G.muted,textDecoration:'line-through' }}>Regular: ₹{origPrice}</span>
+            <span style={{ fontSize:13,color:G.green,fontWeight:700 }}>You save ₹{saveAmt}</span>
           </div>
           <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
             <span style={{ fontSize:16,fontWeight:800,color:G.greenDark }}>₹{discounted} per delivery</span>
             <span style={{ fontSize:12,fontWeight:700,padding:'3px 10px',borderRadius:20,background:G.green,color:G.white }}>{discount}% OFF</span>
           </div>
           <p style={{ margin:'8px 0 0',fontSize:12,color:G.green2 }}>
-            Next delivery: {nextDate.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'long'})}
+            Next: {nextDate.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'long'})}
           </p>
         </div>
 
-        {/* Address */}
         <p style={{ margin:'0 0 8px',fontSize:12,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px' }}>Delivery Address *</p>
-        <textarea value={address} onChange={e=>setAddress(e.target.value)} rows={2} placeholder="House/flat, street, area, landmark"
+        <textarea value={address} onChange={e=>setAddress(e.target.value)} rows={2}
+          placeholder="House/flat, street, area, landmark"
           style={{ ...inp,resize:'none',fontFamily:'inherit',marginBottom:10 }}
           onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
-        <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone number"
-          style={{ ...inp,marginBottom:16 }}
+        <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)}
+          placeholder="Phone number" style={{ ...inp,marginBottom:16 }}
           onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
 
-        {/* Payment */}
         <p style={{ margin:'0 0 8px',fontSize:12,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px' }}>Payment Method</p>
         <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:20 }}>
           {[['upi','📱','UPI Auto-pay'],['cod','💵','Cash on Delivery']].map(([val,icon,label])=>(
@@ -129,9 +126,53 @@ function SubscribeModal({ product, onClose, onSaved }) {
         </div>
 
         <button onClick={save} disabled={saving} style={{ width:'100%',padding:13,background:saving?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer' }}>
-          {saving ? 'Subscribing...' : `✅ Start Subscription — ₹${discounted}/${freq==='monthly'?'month':freq==='biweekly'?'2 weeks':'week'}`}
+          {saving ? 'Subscribing...' : `✅ Start Subscription — ₹${discounted}/${freq==='monthly'?'month':freq==='biweekly'?'2 wks':'week'}`}
         </button>
         <p style={{ margin:'10px 0 0',fontSize:11,color:G.muted,textAlign:'center' }}>Cancel anytime. No lock-in period.</p>
+      </div>
+    </div>
+  )
+}
+
+// FIX #12: Edit address modal for existing subscriptions
+function EditAddressModal({ sub, onClose, onSaved }) {
+  const [address, setAddress] = useState(sub.address || '')
+  const [phone, setPhone]     = useState(sub.phone || '')
+  const [saving, setSaving]   = useState(false)
+
+  async function save() {
+    if (!address.trim()) return
+    setSaving(true)
+    await supabase.from('subscriptions').update({ address, phone }).eq('id', sub.id)
+    onSaved(); onClose()
+    setSaving(false)
+  }
+
+  return (
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
+      <div style={{ background:G.white,borderRadius:18,width:'100%',maxWidth:420,padding:24 }}>
+        <div style={{ display:'flex',justifyContent:'space-between',marginBottom:16 }}>
+          <h3 style={{ margin:0,fontSize:16,fontWeight:700 }}>Edit Delivery Address</h3>
+          <button onClick={onClose} style={{ background:'none',border:'none',fontSize:20,cursor:'pointer',color:G.muted }}>✕</button>
+        </div>
+        <p style={{ margin:'0 0 14px',fontSize:12,color:G.muted }}>{sub.product_name} · {sub.frequency}</p>
+        <div style={{ display:'grid',gap:12,marginBottom:16 }}>
+          <div>
+            <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:5 }}>Delivery Address *</label>
+            <textarea value={address} onChange={e=>setAddress(e.target.value)} rows={3}
+              style={{ ...inp,resize:'none',fontFamily:'inherit' }}
+              onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+          </div>
+          <div>
+            <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:5 }}>Phone</label>
+            <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)}
+              style={inp}
+              onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+          </div>
+        </div>
+        <button onClick={save} disabled={saving||!address.trim()} style={{ width:'100%',padding:12,background:saving?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:10,fontSize:14,fontWeight:700,cursor:'pointer' }}>
+          {saving ? 'Saving...' : '✓ Save Address'}
+        </button>
       </div>
     </div>
   )
@@ -145,6 +186,11 @@ export default function SubscriptionPage() {
   const [loading, setLoading]     = useState(true)
   const [tab, setTab]             = useState('browse')
   const [subscribeModal, setSub]  = useState(null)
+  // FIX #12: edit address modal state
+  const [editAddrModal, setEditAddr] = useState(null)
+  // FIX #7: process subscriptions button
+  const [processing, setProcessing] = useState(false)
+  const [processResult, setProcessResult] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -164,28 +210,74 @@ export default function SubscriptionPage() {
     setMySubs(prev => prev.map(s => s.id === id ? { ...s, status } : s))
   }
 
+  // FIX #7: trigger subscription processing via RPC
+  async function processSubscriptions() {
+    setProcessing(true); setProcessResult(null)
+    try {
+      const { data, error } = await supabase.rpc('process_due_subscriptions')
+      if (error) throw error
+      setProcessResult(data || [])
+      load()
+    } catch(e) {
+      setProcessResult([])
+      alert('Process error: ' + e.message)
+    } finally { setProcessing(false) }
+  }
+
   const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'}) : '—'
   const activeSubs = mySubs.filter(s => s.status === 'active')
+  const dueToday   = activeSubs.filter(s => s.next_order_date && new Date(s.next_order_date) <= new Date())
 
   if (loading) return <div style={{ textAlign:'center',padding:60,color:G.muted }}>Loading...</div>
 
   return (
     <div style={{ fontFamily:"'Inter',sans-serif", maxWidth:600, margin:'0 auto' }}>
       {subscribeModal && <SubscribeModal product={subscribeModal} onClose={()=>setSub(null)} onSaved={load} />}
+      {/* FIX #12: edit address modal */}
+      {editAddrModal && <EditAddressModal sub={editAddrModal} onClose={()=>setEditAddr(null)} onSaved={load} />}
 
-      {/* Active subscription summary */}
+      {/* Active summary */}
       {activeSubs.length > 0 && (
         <div style={{ background:`linear-gradient(135deg,${G.green},${G.greenDark})`, borderRadius:16, padding:'18px 22px', marginBottom:16, color:G.white }}>
           <p style={{ margin:'0 0 4px', fontSize:13, color:'rgba(255,255,255,0.7)' }}>Active Subscriptions</p>
-          <p style={{ margin:'0 0 12px', fontSize:30, fontWeight:800 }}>{activeSubs.length} plan{activeSubs.length>1?'s':''}</p>
-          <div style={{ display:'flex', gap:10 }}>
-            {activeSubs.slice(0,2).map(s=>(
-              <div key={s.id} style={{ background:'rgba(255,255,255,0.15)', borderRadius:10, padding:'8px 12px', flex:1 }}>
+          <p style={{ margin:'0 0 12px', fontSize:28, fontWeight:800 }}>{activeSubs.length} plan{activeSubs.length>1?'s':''}</p>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            {activeSubs.slice(0,2).map(s => (
+              <div key={s.id} style={{ background:'rgba(255,255,255,0.15)', borderRadius:10, padding:'8px 12px', flex:1, minWidth:140 }}>
                 <p style={{ margin:'0 0 2px', fontSize:12, color:'rgba(255,255,255,0.8)', fontWeight:600 }}>{s.product_name}</p>
                 <p style={{ margin:0, fontSize:11, color:'rgba(255,255,255,0.6)' }}>Next: {fmtDate(s.next_order_date)}</p>
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* FIX #7: Process due subscriptions button — shown when there are due subscriptions */}
+      {dueToday.length > 0 && (
+        <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:12, padding:'12px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
+          <div>
+            <p style={{ margin:'0 0 2px', fontSize:14, fontWeight:700, color:G.amber }}>
+              🔔 {dueToday.length} subscription{dueToday.length>1?'s':''} due today
+            </p>
+            <p style={{ margin:0, fontSize:12, color:G.amber }}>Click to create orders automatically</p>
+          </div>
+          <button onClick={processSubscriptions} disabled={processing} style={{ padding:'9px 18px', background:processing?'#9CA3AF':G.amber, color:G.white, border:'none', borderRadius:9, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+            {processing ? '⏳ Processing...' : '▶ Process Now'}
+          </button>
+        </div>
+      )}
+
+      {processResult !== null && (
+        <div style={{ background:G.greenLight, border:`1px solid #97C459`, borderRadius:12, padding:'12px 16px', marginBottom:16 }}>
+          <p style={{ margin:'0 0 6px', fontSize:14, fontWeight:700, color:G.greenDark }}>
+            ✅ Processed {processResult.length} subscription{processResult.length!==1?'s':''}
+          </p>
+          {processResult.length > 0 && (
+            <div style={{ fontSize:12, color:G.muted }}>
+              {processResult.map((r,i) => <p key={i} style={{ margin:'2px 0' }}>🌾 {r.product_name} → {r.customer_name} · {r.order_number}</p>)}
+            </div>
+          )}
+          <button onClick={()=>setProcessResult(null)} style={{ marginTop:8, background:'none', border:`1px solid ${G.green}`, borderRadius:7, padding:'5px 12px', fontSize:11, fontWeight:600, color:G.green, cursor:'pointer' }}>Dismiss</button>
         </div>
       )}
 
@@ -198,16 +290,14 @@ export default function SubscriptionPage() {
         ))}
       </div>
 
-      {/* Browse products to subscribe */}
       {tab === 'browse' && (
         <>
           <div style={{ background:G.blueLight,borderRadius:12,padding:'12px 16px',marginBottom:14,display:'flex',gap:10,alignItems:'center' }}>
             <span style={{ fontSize:18 }}>💡</span>
             <p style={{ margin:0,fontSize:12,color:G.blue,lineHeight:1.6 }}>
-              Subscribe and save! Get <strong>3–5% off</strong> on every order. Auto-delivered to your door. Cancel anytime.
+              Subscribe and save <strong>3–5%</strong> on every delivery. Auto-delivered to your door. Cancel anytime.
             </p>
           </div>
-
           {products.map(p => (
             <div key={p.id} style={{ background:G.white,borderRadius:14,padding:18,marginBottom:12,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
               <div style={{ display:'flex',gap:14,alignItems:'center',marginBottom:12 }}>
@@ -218,11 +308,9 @@ export default function SubscriptionPage() {
                   <p style={{ margin:'3px 0 0',fontWeight:800,fontSize:16,color:G.text }}>₹{p.price_per_bag} <span style={{ fontSize:11,color:G.muted,fontWeight:400 }}>/bag regular</span></p>
                 </div>
               </div>
-
-              {/* Subscription options preview */}
               <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12 }}>
                 {FREQ.map(f => {
-                  const disc = f.key==='weekly'?3:f.key==='biweekly'?4:5
+                  const disc  = f.key==='weekly'?3:f.key==='biweekly'?4:5
                   const price = Math.round(p.price_per_bag*(1-disc/100))
                   return (
                     <div key={f.key} style={{ background:'#F9FAF7',borderRadius:10,padding:'10px 8px',textAlign:'center',border:`1px solid ${G.border}` }}>
@@ -233,7 +321,6 @@ export default function SubscriptionPage() {
                   )
                 })}
               </div>
-
               <button onClick={()=>setSub(p)} style={{ width:'100%',padding:11,background:G.green,color:G.white,border:'none',borderRadius:10,fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8 }}>
                 <span>🔄</span> Subscribe & Save
               </button>
@@ -242,7 +329,6 @@ export default function SubscriptionPage() {
         </>
       )}
 
-      {/* My Subscriptions */}
       {tab === 'mysubs' && (
         <>
           {mySubs.length === 0 && (
@@ -259,10 +345,14 @@ export default function SubscriptionPage() {
               <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10 }}>
                 <div>
                   <p style={{ margin:'0 0 3px',fontWeight:700,fontSize:15 }}>{s.product_name}</p>
-                  <p style={{ margin:'0 0 3px',fontSize:12,color:G.muted }}>{s.quantity_bags} bag{s.quantity_bags>1?'s':''} · {FREQ.find(f=>f.key===s.frequency)?.label || s.frequency}</p>
-                  <p style={{ margin:0,fontSize:13,fontWeight:700,color:G.green }}>₹{s.discount_pct}% off every delivery</p>
+                  <p style={{ margin:'0 0 3px',fontSize:12,color:G.muted }}>
+                    {s.quantity_bags} bag{s.quantity_bags>1?'s':''} · {FREQ.find(f=>f.key===s.frequency)?.label||s.frequency}
+                  </p>
+                  <p style={{ margin:0,fontSize:13,fontWeight:700,color:G.green }}>{s.discount_pct}% off every delivery</p>
                 </div>
-                <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:s.status==='active'?G.greenLight:s.status==='paused'?G.amberLight:G.redLight,color:s.status==='active'?G.green:s.status==='paused'?G.amber:G.red,textTransform:'capitalize' }}>
+                <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,
+                  background:s.status==='active'?G.greenLight:s.status==='paused'?G.amberLight:G.redLight,
+                  color:s.status==='active'?G.green:s.status==='paused'?G.amber:G.red,textTransform:'capitalize' }}>
                   {s.status}
                 </span>
               </div>
@@ -274,26 +364,35 @@ export default function SubscriptionPage() {
                     <p style={{ margin:0,fontWeight:700,fontSize:14,color:G.greenDark }}>{fmtDate(s.next_order_date)}</p>
                   </div>
                   <div style={{ textAlign:'right' }}>
-                    <p style={{ margin:'0 0 2px',fontSize:11,color:G.muted }}>Total orders</p>
-                    <p style={{ margin:0,fontWeight:700,fontSize:14,color:G.green }}>{s.total_orders}</p>
+                    <p style={{ margin:'0 0 2px',fontSize:11,color:G.muted }}>Total delivered</p>
+                    {/* FIX #3: total_orders now exists in schema, no more undefined */}
+                    <p style={{ margin:0,fontWeight:700,fontSize:14,color:G.green }}>{s.total_orders || 0} orders</p>
                   </div>
                 </div>
               )}
 
-              <p style={{ margin:'0 0 10px',fontSize:12,color:G.muted }}>📍 {s.address?.slice(0,50)}{(s.address?.length||0)>50?'…':''}</p>
+              {/* FIX #12: address row with edit button */}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+                <p style={{ margin:0,fontSize:12,color:G.muted,flex:1 }}>
+                  📍 {s.address?.slice(0,50)}{(s.address?.length||0)>50?'…':''}
+                </p>
+                <button onClick={()=>setEditAddr(s)} style={{ flexShrink:0, marginLeft:10, background:'none', border:`1px solid ${G.border}`, borderRadius:7, padding:'4px 10px', fontSize:11, fontWeight:600, color:G.muted, cursor:'pointer' }}>
+                  ✏️ Edit
+                </button>
+              </div>
 
               <div style={{ display:'flex',gap:8 }}>
-                {s.status === 'active' && (
+                {s.status==='active' && (
                   <button onClick={()=>updateSub(s.id,'paused')} style={{ flex:1,padding:'8px',background:G.amberLight,border:'none',borderRadius:9,fontSize:12,fontWeight:700,color:G.amber,cursor:'pointer' }}>
                     ⏸ Pause
                   </button>
                 )}
-                {s.status === 'paused' && (
+                {s.status==='paused' && (
                   <button onClick={()=>updateSub(s.id,'active')} style={{ flex:1,padding:'8px',background:G.greenLight,border:'none',borderRadius:9,fontSize:12,fontWeight:700,color:G.green,cursor:'pointer' }}>
                     ▶ Resume
                   </button>
                 )}
-                {s.status !== 'cancelled' && (
+                {s.status!=='cancelled' && (
                   <button onClick={()=>{ if(window.confirm('Cancel this subscription?')) updateSub(s.id,'cancelled') }} style={{ flex:1,padding:'8px',background:G.redLight,border:'none',borderRadius:9,fontSize:12,fontWeight:700,color:G.red,cursor:'pointer' }}>
                     ✕ Cancel
                   </button>
