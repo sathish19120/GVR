@@ -1,6 +1,7 @@
 import { useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './store/auth'
+import ErrorBoundary from './pages/ErrorBoundary' // FIX #18: now actually used
 
 // ── Lazy load all pages ───────────────────────────────────
 const AuthPage        = lazy(() => import('./pages/AuthPage'))
@@ -76,20 +77,23 @@ export default function App() {
   useEffect(() => { init() }, [])
 
   return (
-    <BrowserRouter>
-      <Suspense fallback={<Loading />}>
-        <Routes>
-          <Route path="/login"      element={<AuthGuard><AuthPage /></AuthGuard>} />
-          <Route path="/signup"     element={<AuthGuard><AuthPage defaultMode="signup" /></AuthGuard>} />
-          <Route path="/"           element={<RoleRouter />} />
-          <Route path="/dashboard/*" element={<Protected roles={['superadmin','admin']}><Dashboard /></Protected>} />
-          <Route path="/shop"       element={<Protected><CustomerShop /></Protected>} />
-          <Route path="/delivery"   element={<Protected roles={['delivery','superadmin','admin']}><DeliveryPage /></Protected>} />
-          <Route path="/branch/*"   element={<Protected roles={['branch_executive','superadmin','admin']}><BranchDashboard /></Protected>} />
-          <Route path="/vendor/*"   element={<Protected roles={['vendor','superadmin','admin']}><VendorPortal /></Protected>} />
-          <Route path="*"           element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
-    </BrowserRouter>
+    // FIX #18: ErrorBoundary wraps entire app so crashes show friendly message
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Suspense fallback={<Loading />}>
+          <Routes>
+            <Route path="/login"       element={<AuthGuard><AuthPage /></AuthGuard>} />
+            <Route path="/signup"      element={<AuthGuard><AuthPage defaultMode="signup" /></AuthGuard>} />
+            <Route path="/"            element={<RoleRouter />} />
+            <Route path="/dashboard/*" element={<Protected roles={['superadmin','admin']}><Dashboard /></Protected>} />
+            <Route path="/shop"        element={<Protected><CustomerShop /></Protected>} />
+            <Route path="/delivery"    element={<Protected roles={['delivery','superadmin','admin']}><DeliveryPage /></Protected>} />
+            <Route path="/branch/*"    element={<Protected roles={['branch_executive','superadmin','admin']}><BranchDashboard /></Protected>} />
+            <Route path="/vendor/*"    element={<Protected roles={['vendor','superadmin','admin']}><VendorPortal /></Protected>} />
+            <Route path="*"            element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
