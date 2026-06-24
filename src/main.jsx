@@ -1,40 +1,33 @@
 // src/main.jsx
-// FIX #5: initGA() is now called here so GA4 actually initialises
-// FIX #8: gvr_user_updated event listener added so auth store
-//         re-reads localStorage when ProfilePage saves changes
-
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
-import { initGA } from './lib/analytics'
 
 // ── Initialize Google Analytics ───────────────────────────
-// Make sure VITE_GA_ID is set in your .env file:
-//   VITE_GA_ID=G-XXXXXXXXXX
-initGA()
+// Set VITE_GA_ID=G-XXXXXXXXXX in your Vercel environment variables
+const GA_ID = import.meta.env.VITE_GA_ID || ''
+if (GA_ID && !window.__gvrAnalyticsInit) {
+  window.__gvrAnalyticsInit = true
+  const s = document.createElement('script')
+  s.async = true
+  s.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`
+  document.head.appendChild(s)
+  window.dataLayer = window.dataLayer || []
+  window.gtag = function(){ window.dataLayer.push(arguments) }
+  window.gtag('js', new Date())
+  window.gtag('config', GA_ID)
+}
 
 // ── Auth store hot-reload on profile save ─────────────────
-// ProfilePage dispatches 'gvr_user_updated' after saving to DB.
-// This listener ensures the Zustand/context auth store re-reads
-// the updated user from localStorage so the sidebar avatar/name
-// refreshes without a page reload.
-window.addEventListener('gvr_user_updated', (e) => {
-  // The auth store's init() re-reads gvr_user from localStorage.
-  // We dispatch a storage event as well as the custom event so
-  // both patterns are covered regardless of how auth.js is written.
+window.addEventListener('gvr_user_updated', () => {
   try {
     const stored = localStorage.getItem('gvr_user')
     if (stored) {
-      // Trigger any storage-based listeners
       window.dispatchEvent(new StorageEvent('storage', {
-        key:      'gvr_user',
-        newValue: stored,
-        oldValue: null,
+        key: 'gvr_user', newValue: stored, oldValue: null,
       }))
     }
-  } catch(err) {
-    console.error('gvr_user_updated handler error:', err)
-  }
+  } catch(e) { console.error('gvr_user_updated handler error:', e) }
 })
 
 ReactDOM.createRoot(document.getElementById('root')).render(
