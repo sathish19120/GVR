@@ -28,6 +28,7 @@ const ROLE_COLORS = {
 }
 
 function RoleBadge({ role }) {
+  // FIX: safe fallback so unknown roles don't crash
   const [color, bg] = ROLE_COLORS[role] || [G.muted, '#F3F4F6']
   return <span style={{ fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:20, background:bg, color }}>{role}</span>
 }
@@ -54,9 +55,13 @@ function CreateUserModal({ onClose, onSaved }) {
       const { data: existing } = await supabase.from('profiles').select('id').eq('username', clean).single()
       if (existing) { setError('Username already taken'); setSaving(false); return }
       const hashed = await hashPassword(password)
+      // Auto-generate referral code
+      const referralCode = clean.slice(0,4).toUpperCase() + Math.floor(1000 + Math.random()*9000)
       const { error: err } = await supabase.from('profiles').insert({
         username: clean, full_name: fullName, password_hash: hashed,
-        role, phone, branch: branch || null, created_at: new Date().toISOString()
+        role, phone, branch: branch || null,
+        referral_code: referralCode,
+        created_at: new Date().toISOString()
       })
       if (err) { setError(err.message); setSaving(false); return }
       onSaved(); onClose()
@@ -144,19 +149,24 @@ function CreateUserModal({ onClose, onSaved }) {
   )
 }
 
-
 // ── Edit User Modal ───────────────────────────────────────
+// FIX #4: added missing branch / setBranch state
 function EditUserModal({ user: u, onClose, onSaved }) {
   const [fullName, setFullName] = useState(u.full_name || '')
   const [phone, setPhone]       = useState(u.phone || '')
   const [role, setRole]         = useState(u.role || 'customer')
+  const [branch, setBranch]     = useState(u.branch || '') // FIX: was missing
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
 
   async function save() {
+    if (role === 'branch_executive' && !branch) { setError('Please select a branch for branch executive'); return }
     setSaving(true); setError('')
     try {
-      const { error: err } = await supabase.from('profiles').update({ full_name: fullName, phone, role }).eq('id', u.id)
+      const { error: err } = await supabase.from('profiles').update({
+        full_name: fullName, phone, role,
+        branch: role === 'branch_executive' ? branch : null
+      }).eq('id', u.id)
       if (err) { setError(err.message); setSaving(false); return }
       onSaved(); onClose()
     } catch(e) { setError(e.message) }
@@ -173,11 +183,28 @@ function EditUserModal({ user: u, onClose, onSaved }) {
         {error && <div style={{ background:G.redLight, border:`1px solid #FECACA`, borderRadius:10, padding:'10px 14px', marginBottom:16, color:G.red, fontSize:13 }}>{error}</div>}
         <div style={{ display:'grid', gap:16 }}>
           <Field label="Full Name">
-            <input type="text" value={fullName} onChange={e=>setFullName(e.target.value)} style={inp} />
+            <input type="text" value={fullName} onChange={e=>setFullName(e.target.value)} style={inp}
+              onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
           </Field>
           <Field label="Phone">
-            <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} style={inp} />
+            <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} style={inp}
+              onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
           </Field>
+          <Field label="Role">
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {ROLES.map(r => {
+                const [color, bg] = ROLE_COLORS[r] || [G.muted, '#F3F4F6']
+                return (
+                  <button key={r} type="button" onClick={()=>{ setRole(r); if(r !== 'branch_executive') setBranch('') }} style={{
+                    padding:'10px', borderRadius:10, border:`2px solid ${role===r?color:G.border}`,
+                    background:role===r?bg:G.white, cursor:'pointer', fontWeight:600,
+                    fontSize:13, color:role===r?color:G.muted, textTransform:'capitalize'
+                  }}>{r.replace('_',' ')}</button>
+                )
+              })}
+            </div>
+          </Field>
+          {/* FIX #4: branch selector now works — branch state exists */}
           {role === 'branch_executive' && (
             <Field label="Assign Branch *">
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -191,22 +218,9 @@ function EditUserModal({ user: u, onClose, onSaved }) {
                   }}>{b}</button>
                 ))}
               </div>
+              {!branch && <p style={{ margin:'6px 0 0', fontSize:11, color:G.amber }}>⚠ Select a branch</p>}
             </Field>
           )}
-          <Field label="Role">
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-              {ROLES.map(r => {
-                const [color, bg] = ROLE_COLORS[r]
-                return (
-                  <button key={r} type="button" onClick={()=>setRole(r)} style={{
-                    padding:'10px', borderRadius:10, border:`2px solid ${role===r?color:G.border}`,
-                    background:role===r?bg:G.white, cursor:'pointer', fontWeight:600,
-                    fontSize:13, color:role===r?color:G.muted, textTransform:'capitalize'
-                  }}>{r}</button>
-                )
-              })}
-            </div>
-          </Field>
         </div>
         <button onClick={save} disabled={saving} style={{ width:'100%', marginTop:24, padding:13, background:saving?'#9CA3AF':G.blue, color:G.white, border:'none', borderRadius:12, fontSize:15, fontWeight:700, cursor:'pointer' }}>
           {saving ? 'Saving...' : 'Save Changes'}
@@ -272,17 +286,17 @@ function ChangePasswordModal({ user: u, onClose, onSaved }) {
 
 // ── My Profile / Change Own Password ─────────────────────
 function MyProfile({ currentUser, onUpdated }) {
-  const [fullName, setFullName]   = useState(currentUser.full_name || '')
-  const [phone, setPhone]         = useState(currentUser.phone || '')
-  const [oldPass, setOldPass]     = useState('')
-  const [newPass, setNewPass]     = useState('')
-  const [confirm, setConfirm]     = useState('')
-  const [showP, setShowP]         = useState(false)
-  const [saving, setSaving]       = useState(false)
+  const [fullName, setFullName]     = useState(currentUser.full_name || '')
+  const [phone, setPhone]           = useState(currentUser.phone || '')
+  const [oldPass, setOldPass]       = useState('')
+  const [newPass, setNewPass]       = useState('')
+  const [confirm, setConfirm]       = useState('')
+  const [showP, setShowP]           = useState(false)
+  const [saving, setSaving]         = useState(false)
   const [savingPass, setSavingPass] = useState(false)
-  const [msg, setMsg]             = useState('')
-  const [passMsg, setPassMsg]     = useState('')
-  const [passErr, setPassErr]     = useState('')
+  const [msg, setMsg]               = useState('')
+  const [passMsg, setPassMsg]       = useState('')
+  const [passErr, setPassErr]       = useState('')
 
   async function saveProfile() {
     setSaving(true); setMsg('')
@@ -299,7 +313,6 @@ function MyProfile({ currentUser, onUpdated }) {
     if (newPass !== confirm) { setPassErr('Passwords do not match'); return }
     setSavingPass(true)
     try {
-      // Verify old password
       const oldHashed = await hashPassword(oldPass)
       const { data } = await supabase.from('profiles').select('id').eq('id', currentUser.id).eq('password_hash', oldHashed).single()
       if (!data) { setPassErr('Current password is incorrect'); setSavingPass(false); return }
@@ -314,7 +327,6 @@ function MyProfile({ currentUser, onUpdated }) {
 
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-      {/* Profile info */}
       <div style={{ background:G.white, borderRadius:16, padding:'24px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
         <h3 style={{ margin:'0 0 20px', fontSize:16, fontWeight:700, color:G.text }}>My Profile</h3>
         {msg && <div style={{ background:G.greenLight, border:`1px solid #97C459`, borderRadius:10, padding:'10px 14px', marginBottom:16, color:G.greenDark, fontSize:13 }}>✓ {msg}</div>}
@@ -331,7 +343,7 @@ function MyProfile({ currentUser, onUpdated }) {
               onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
           </Field>
           <Field label="Role">
-            <div style={{ padding:'10px 14px', borderRadius:10, background:'#F9FAF7', fontSize:13, color:G.muted }}>
+            <div style={{ padding:'10px 14px', borderRadius:10, background:'#F9FAF7', fontSize:13 }}>
               <RoleBadge role={currentUser.role} />
             </div>
           </Field>
@@ -341,7 +353,6 @@ function MyProfile({ currentUser, onUpdated }) {
         </button>
       </div>
 
-      {/* Change own password */}
       <div style={{ background:G.white, borderRadius:16, padding:'24px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
         <h3 style={{ margin:'0 0 20px', fontSize:16, fontWeight:700, color:G.text }}>Change My Password</h3>
         {passErr && <div style={{ background:G.redLight, border:`1px solid #FECACA`, borderRadius:10, padding:'10px 14px', marginBottom:16, color:G.red, fontSize:13 }}>{passErr}</div>}
@@ -373,15 +384,15 @@ function MyProfile({ currentUser, onUpdated }) {
 export default function AdminPage() {
   const authStore = useAuth()
   const currentUser = authStore.user
-  const [tab, setTab]           = useState('users') // users | profile
-  const [users, setUsers]       = useState([])
-  const [loading, setLoading]   = useState(true)
+  const [tab, setTab]               = useState('users')
+  const [users, setUsers]           = useState([])
+  const [loading, setLoading]       = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [editUser, setEditUser]     = useState(null)
   const [changePassUser, setChangePassUser] = useState(null)
-  const [search, setSearch]     = useState('')
+  const [search, setSearch]         = useState('')
   const [filterRole, setFilterRole] = useState('all')
-  const [deleting, setDeleting] = useState(null)
+  const [deleting, setDeleting]     = useState(null)
 
   useEffect(() => { loadUsers() }, [])
 
@@ -405,7 +416,7 @@ export default function AdminPage() {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, active: !active } : u))
   }
 
-  const ROLE_ORDER = { superadmin:0, admin:1, branch_executive:2, delivery:3, customer:4 }
+  const ROLE_ORDER = { superadmin:0, admin:1, branch_executive:2, delivery:3, customer:4, vendor:5 }
   const filtered = users.filter(u => {
     const matchSearch = !search || u.username?.includes(search.toLowerCase()) || u.full_name?.toLowerCase().includes(search.toLowerCase())
     const matchRole = filterRole === 'all' || u.role === filterRole
@@ -423,7 +434,6 @@ export default function AdminPage() {
       {editUser && <EditUserModal user={editUser} onClose={()=>setEditUser(null)} onSaved={loadUsers} />}
       {changePassUser && <ChangePasswordModal user={changePassUser} onClose={()=>setChangePassUser(null)} onSaved={loadUsers} />}
 
-      {/* Tab bar */}
       <div style={{ display:'flex', gap:8, marginBottom:24 }}>
         {TABS.map(t => (
           <button key={t.key} onClick={()=>setTab(t.key)} style={{
@@ -436,22 +446,20 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {/* MY PROFILE TAB */}
       {tab === 'profile' && currentUser && (
         <MyProfile currentUser={currentUser} onUpdated={loadUsers} />
       )}
 
-      {/* MANAGE USERS TAB */}
       {tab === 'users' && (
         <>
-          {/* Stats */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:12, marginBottom:20 }}>
             {[
-              { label:'Total Users', value:users.length, color:G.blue, bg:G.blueLight },
-              { label:'Super Admins', value:users.filter(u=>u.role==='superadmin').length, color:G.purple, bg:G.purpleLight },
-              { label:'Admins', value:users.filter(u=>u.role==='admin').length, color:G.blue, bg:G.blueLight },
-              { label:'Delivery', value:users.filter(u=>u.role==='delivery').length, color:G.amber, bg:G.amberLight },
-              { label:'Customers', value:users.filter(u=>u.role==='customer').length, color:G.green, bg:G.greenLight },
+              { label:'Total Users',  value:users.length,                                      color:G.blue,   bg:G.blueLight },
+              { label:'Super Admins', value:users.filter(u=>u.role==='superadmin').length,      color:G.purple, bg:G.purpleLight },
+              { label:'Admins',       value:users.filter(u=>u.role==='admin').length,           color:G.blue,   bg:G.blueLight },
+              { label:'Delivery',     value:users.filter(u=>u.role==='delivery').length,        color:G.amber,  bg:G.amberLight },
+              { label:'Customers',    value:users.filter(u=>u.role==='customer').length,        color:G.green,  bg:G.greenLight },
+              { label:'Vendors',      value:users.filter(u=>u.role==='vendor').length,          color:'#0E7490',bg:'#ECFEFF' },
             ].map((s,i) => (
               <div key={i} style={{ background:G.white, borderRadius:12, padding:'14px 16px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`3px solid ${s.color}` }}>
                 <p style={{ margin:'0 0 5px', fontSize:11, color:G.muted }}>{s.label}</p>
@@ -460,14 +468,13 @@ export default function AdminPage() {
             ))}
           </div>
 
-          {/* Toolbar */}
           <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
             <input type="text" placeholder="Search username or name..." value={search} onChange={e=>setSearch(e.target.value)}
               style={{ ...inp, width:240, padding:'9px 14px' }} />
             <select value={filterRole} onChange={e=>setFilterRole(e.target.value)}
-              style={{ ...inp, width:150, padding:'9px 14px', cursor:'pointer' }}>
+              style={{ ...inp, width:160, padding:'9px 14px', cursor:'pointer' }}>
               <option value="all">All Roles</option>
-              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              {ROLES.map(r => <option key={r} value={r}>{r.replace('_',' ')}</option>)}
             </select>
             <div style={{ marginLeft:'auto' }}>
               <button onClick={()=>setShowCreate(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'9px 20px', fontSize:13, fontWeight:700, cursor:'pointer' }}>
@@ -476,7 +483,6 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Users table */}
           <div style={{ background:G.white, borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden' }}>
             <div style={{ overflowX:'auto' }}>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
@@ -489,7 +495,7 @@ export default function AdminPage() {
                 </thead>
                 <tbody>
                   {loading && (
-                    <tr><td colSpan={8} style={{ padding:40, textAlign:'center', color:G.muted }}>Loading users...</td></tr>
+                    <tr><td colSpan={9} style={{ padding:40, textAlign:'center', color:G.muted }}>Loading users...</td></tr>
                   )}
                   {!loading && filtered.map((u, i) => (
                     <tr key={u.id} style={{ borderTop:`1px solid ${G.border}`, background:i%2?'#FAFAFA':G.white }}>
@@ -504,8 +510,8 @@ export default function AdminPage() {
                       </td>
                       <td style={{ padding:'12px 14px', color:G.muted, fontFamily:'monospace', fontSize:12 }}>{u.username}</td>
                       <td style={{ padding:'12px 14px' }}><RoleBadge role={u.role} /></td>
-                      <td style={{ padding:'12px 14px', color:G.muted, fontSize:12 }}>{u.phone || '—'}</td>
                       <td style={{ padding:'12px 14px', color:u.branch?'#0891B2':G.muted, fontSize:12, fontWeight:u.branch?600:400 }}>{u.branch || '—'}</td>
+                      <td style={{ padding:'12px 14px', color:G.muted, fontSize:12 }}>{u.phone || '—'}</td>
                       <td style={{ padding:'12px 14px' }}>
                         <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:20, background:u.active!==false?G.greenLight:G.redLight, color:u.active!==false?G.green:G.red }}>
                           {u.active !== false ? 'Active' : 'Inactive'}
@@ -529,7 +535,7 @@ export default function AdminPage() {
                     </tr>
                   ))}
                   {!loading && filtered.length===0 && (
-                    <tr><td colSpan={8} style={{ padding:40, textAlign:'center', color:G.muted }}>No users found</td></tr>
+                    <tr><td colSpan={9} style={{ padding:40, textAlign:'center', color:G.muted }}>No users found</td></tr>
                   )}
                 </tbody>
               </table>
@@ -541,7 +547,6 @@ export default function AdminPage() {
   )
 }
 
-// Helper components
 function Field({ label, children }) {
   return (
     <div>
