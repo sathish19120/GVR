@@ -15,13 +15,25 @@ const inp = {
   boxSizing:'border-box',
 }
 
-const BRANCHES = ['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu']
+// FIX #10: MAX-based batch number — no duplicates when batches are deleted
+async function getNextBatchNumber(sku, packDate) {
+  const datePart = packDate.replace(/-/g,'')
+  const prefix = `GVR-${(sku||'PROD').replace('GVR-','')}-${datePart}-`
+  const { data } = await supabase
+    .from('batches')
+    .select('batch_number')
+    .like('batch_number', `${prefix}%`)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const lastNum = data?.batch_number
+    ? parseInt(data.batch_number.slice(prefix.length), 10) || 0
+    : 0
+  return `${prefix}${String(lastNum + 1).padStart(3, '0')}`
+}
 
-// ── Barcode Label Generator (Code 128) ───────────────────
+// ── Barcode Label Generator ───────────────────────────────
 function QRLabel({ batch, onClose }) {
-  const printRef = useRef()
-
-  // Generate Code 128 barcode using barcodeapi.org (free, no key needed)
   const barcodeVal = batch.batch_number
   const barcodeUrl = `https://barcodeapi.org/api/128/${encodeURIComponent(barcodeVal)}`
 
@@ -34,10 +46,7 @@ function QRLabel({ batch, onClose }) {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; background: #fff; }
         .page { display: flex; flex-wrap: wrap; padding: 8mm; gap: 4mm; justify-content: flex-start; }
-        .label {
-          width: 90mm; border: 1.5px solid #27500A; border-radius: 3mm;
-          padding: 3mm 4mm; page-break-inside: avoid; background: #fff;
-        }
+        .label { width: 90mm; border: 1.5px solid #27500A; border-radius: 3mm; padding: 3mm 4mm; page-break-inside: avoid; background: #fff; }
         .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2mm; border-bottom: 0.5px solid #ccc; padding-bottom: 2mm; }
         .brand { font-size: 10pt; font-weight: 800; color: #27500A; }
         .telugu { font-size: 7pt; color: #555; }
@@ -49,18 +58,15 @@ function QRLabel({ batch, onClose }) {
         .barcode-wrap img { height: 14mm; width: auto; max-width: 100%; }
         .batch-num { text-align: center; font-size: 6.5pt; color: #333; font-family: Courier New, monospace; letter-spacing: 0.5px; margin-bottom: 1mm; }
         .fssai { font-size: 5.5pt; color: #888; text-align: center; border-top: 0.5px solid #eee; padding-top: 1mm; }
-        @media print {
-          body { margin: 0; }
-          .page { padding: 5mm; gap: 3mm; }
-        }
+        @media print { body { margin: 0; } .page { padding: 5mm; gap: 3mm; } }
       </style></head><body>
       <div class="page">
         ${Array(12).fill(0).map(() => `
         <div class="label">
           <div class="header">
             <div>
-              <div class="brand">&#x1F33E; Green Village Rice</div>
-              <div class="telugu">&#x0C17;&#x0C4D;&#x0C30;&#x0C40;&#x0C28;&#x0C4D; &#x0C35;&#x0C3F;&#x0C32;&#x0C47;&#x0C1C;&#x0C4D; &#x0C30;&#x0C48;&#x0C38;&#x0C4D;</div>
+              <div class="brand">🌾 Green Village Rice</div>
+              <div class="telugu">గ్రీన్ విలేజ్ రైస్</div>
             </div>
             <div style="font-size:7pt;color:#27500A;font-weight:700;text-align:right;">${batch.weight_kg}kg<br/>Pack</div>
           </div>
@@ -75,7 +81,7 @@ function QRLabel({ batch, onClose }) {
             <img src="${barcodeUrl}" alt="${barcodeVal}" />
           </div>
           <div class="batch-num">${batch.batch_number}</div>
-          <div class="fssai">FSSAI Lic. No: ${batch.fssai_no} &nbsp;|&nbsp; Hyderabad, Telangana</div>
+          <div class="fssai">FSSAI Lic. No: ${batch.fssai_no} | Hyderabad, Telangana</div>
         </div>`).join('')}
       </div>
       </body></html>
@@ -92,8 +98,7 @@ function QRLabel({ batch, onClose }) {
           <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:G.muted }}>✕</button>
         </div>
 
-        {/* Label preview */}
-        <div ref={printRef} style={{ border:`2px solid ${G.green}`,borderRadius:12,padding:16,marginBottom:16,background:'#FAFFF7' }}>
+        <div style={{ border:`2px solid ${G.green}`,borderRadius:12,padding:16,marginBottom:16,background:'#FAFFF7' }}>
           <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10,paddingBottom:10,borderBottom:`1px solid ${G.border}` }}>
             <div>
               <p style={{ margin:'0 0 2px',fontWeight:800,fontSize:15,color:G.greenDark }}>🌾 Green Village Rice</p>
@@ -115,7 +120,6 @@ function QRLabel({ batch, onClose }) {
               </div>
             ))}
           </div>
-          {/* Barcode preview */}
           <div style={{ textAlign:'center',background:G.white,padding:'10px',borderRadius:8,border:`1px solid ${G.border}`,marginBottom:8 }}>
             <img src={barcodeUrl} alt={barcodeVal} style={{ height:56,maxWidth:'100%' }} />
             <p style={{ margin:'4px 0 0',fontSize:10,fontFamily:'monospace',letterSpacing:'0.5px',color:G.text }}>{barcodeVal}</p>
@@ -125,7 +129,7 @@ function QRLabel({ batch, onClose }) {
 
         <div style={{ background:G.greenLight,borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12,color:G.greenDark,display:'flex',gap:8,alignItems:'center' }}>
           <span>📋</span>
-          <span>Prints <strong>12 labels per sheet</strong> — A4 paper, 2 columns × 6 rows. Each label is 90mm wide with Code 128 barcode.</span>
+          <span>Prints <strong>12 labels per sheet</strong> — A4 paper, 2 columns × 6 rows.</span>
         </div>
 
         <button onClick={printLabel} style={{ width:'100%',padding:13,background:G.green,color:G.white,border:'none',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer' }}>
@@ -155,33 +159,35 @@ function CreateBatchModal({ products, vendors, onClose, onSaved }) {
     if (!productId || !qty) { setError('Select product and enter quantity'); return }
     setSaving(true); setError('')
     try {
-      // Generate batch number: GVR-SM1KG-20260602-001
-      const { count } = await supabase.from('batches').select('*',{count:'exact',head:true})
-      const datePart = packDate.replace(/-/g,'')
-      const batchNum = `GVR-${(product?.sku||'PROD').replace('GVR-','')}-${datePart}-${String((count||0)+1).padStart(3,'0')}`
+      // FIX #10: use MAX-based batch number
+      const batchNum = await getNextBatchNumber(product?.sku || 'PROD', packDate)
 
       const { error: err } = await supabase.from('batches').insert({
-        batch_number:   batchNum,
-        product_id:     productId,
-        product_name:   product?.name || '',
-        vendor_id:      vendorId || null,
-        vendor_name:    vendors.find(v=>v.id===vendorId)?.name || null,
+        batch_number:    batchNum,
+        product_id:      productId,
+        product_name:    product?.name || '',
+        vendor_id:       vendorId || null,
+        vendor_name:     vendors.find(v=>v.id===vendorId)?.name || null,
         origin_district: origin,
-        quantity_bags:  parseInt(qty),
-        remaining_bags: parseInt(qty),
-        weight_kg:      product?.weight_kg || 1,
-        packing_date:   packDate,
-        best_before:    bestBefore,
-        fssai_no:       fssai,
-        mill_name:      millName,
-        status:         'active',
-        created_at:     new Date().toISOString()
+        quantity_bags:   parseInt(qty),
+        remaining_bags:  parseInt(qty),
+        weight_kg:       product?.weight_kg || 1,
+        packing_date:    packDate,
+        best_before:     bestBefore,
+        fssai_no:        fssai,
+        mill_name:       millName,
+        status:          'active',
+        created_at:      new Date().toISOString()
       })
       if (err) throw err
 
       // Update product stock
       if (product) {
-        await supabase.from('products').update({ stock_bags: (product.stock_bags||0) + parseInt(qty), packing_date: packDate, best_before_date: bestBefore }).eq('id', productId)
+        await supabase.from('products').update({
+          stock_bags: (product.stock_bags||0) + parseInt(qty),
+          packing_date: packDate,
+          best_before_date: bestBefore
+        }).eq('id', productId)
       }
 
       onSaved(); onClose()
@@ -288,10 +294,9 @@ export default function BatchPage() {
     return matchTab && matchSearch
   })
 
-  const totalActive   = batches.filter(b=>b.status==='active').length
-  const totalBags     = batches.filter(b=>b.status==='active').reduce((s,b)=>s+b.remaining_bags,0)
+  const totalActive    = batches.filter(b=>b.status==='active').length
+  const totalBags      = batches.filter(b=>b.status==='active').reduce((s,b)=>s+b.remaining_bags,0)
   const totalExhausted = batches.filter(b=>b.status==='exhausted').length
-
   const fmtDate = d => new Date(d).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})
 
   return (
@@ -299,7 +304,6 @@ export default function BatchPage() {
       {showCreate && <CreateBatchModal products={products} vendors={vendors} onClose={()=>setShowCreate(false)} onSaved={load} />}
       {showQR && <QRLabel batch={showQR} onClose={()=>setShowQR(null)} />}
 
-      {/* Header */}
       <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:12 }}>
         <div>
           <h2 style={{ margin:'0 0 4px',fontSize:18,fontWeight:700,color:G.text }}>📦 Batch Tracking</h2>
@@ -310,13 +314,12 @@ export default function BatchPage() {
         </button>
       </div>
 
-      {/* Stats */}
       <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12,marginBottom:20 }}>
         {[
-          { label:'Active Batches',   value:totalActive,    color:G.green,  bg:G.greenLight,  icon:'📦' },
-          { label:'Bags Available',   value:totalBags,      color:G.blue,   bg:G.blueLight,   icon:'🌾' },
-          { label:'Total Batches',    value:batches.length, color:G.purple, bg:G.purpleLight, icon:'📊' },
-          { label:'Exhausted',        value:totalExhausted, color:G.muted,  bg:'#F3F4F6',     icon:'✓' },
+          { label:'Active Batches',  value:totalActive,    color:G.green,  bg:G.greenLight,  icon:'📦' },
+          { label:'Bags Available',  value:totalBags,      color:G.blue,   bg:G.blueLight,   icon:'🌾' },
+          { label:'Total Batches',   value:batches.length, color:G.purple, bg:G.purpleLight, icon:'📊' },
+          { label:'Exhausted',       value:totalExhausted, color:G.muted,  bg:'#F3F4F6',     icon:'✓' },
         ].map((s,i)=>(
           <div key={i} style={{ background:G.white,borderRadius:14,padding:'16px 18px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',borderLeft:`4px solid ${s.color}` }}>
             <div style={{ display:'flex',justifyContent:'space-between' }}>
@@ -330,7 +333,6 @@ export default function BatchPage() {
         ))}
       </div>
 
-      {/* Filters */}
       <div style={{ display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center' }}>
         <div style={{ display:'flex',gap:4 }}>
           {[['active','Active'],['exhausted','Exhausted'],['recalled','Recalled'],['all','All']].map(([key,label])=>(
@@ -351,7 +353,6 @@ export default function BatchPage() {
 
       {loading && <div style={{ textAlign:'center',padding:60,color:G.muted }}>Loading batches...</div>}
 
-      {/* Batch cards */}
       {!loading && filtered.length === 0 && (
         <div style={{ textAlign:'center',padding:'60px 20px',background:G.white,borderRadius:14,color:G.muted }}>
           <div style={{ fontSize:40,marginBottom:10 }}>📦</div>
@@ -371,8 +372,6 @@ export default function BatchPage() {
           return (
             <div key={b.id} style={{ background:G.white,borderRadius:16,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${isExpired?G.red:isExpiringSoon?G.amber:G.border}` }}>
               <div style={{ display:'flex' }}>
-
-                {/* Left — Barcode */}
                 <div style={{ width:130,flexShrink:0,background:'#F9FAF7',borderRight:`1px solid ${G.border}`,padding:'12px 10px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6 }}>
                   <img
                     src={`https://barcodeapi.org/api/128/${encodeURIComponent(b.batch_number)}`}
@@ -385,7 +384,6 @@ export default function BatchPage() {
                   </button>
                 </div>
 
-                {/* Right — details */}
                 <div style={{ flex:1,padding:'14px 16px' }}>
                   <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8 }}>
                     <div>
@@ -405,10 +403,10 @@ export default function BatchPage() {
 
                   <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:10 }}>
                     {[
-                      ['Total Bags',    b.quantity_bags,  G.blue],
-                      ['Remaining',     b.remaining_bags, b.remaining_bags<b.quantity_bags*0.2?G.red:G.green],
-                      ['Packed',        fmtDate(b.packing_date), G.muted],
-                      ['Best Before',   fmtDate(b.best_before),  isExpired?G.red:isExpiringSoon?G.amber:G.muted],
+                      ['Total Bags',  b.quantity_bags,  G.blue],
+                      ['Remaining',   b.remaining_bags, b.remaining_bags<b.quantity_bags*0.2?G.red:G.green],
+                      ['Packed',      fmtDate(b.packing_date), G.muted],
+                      ['Best Before', fmtDate(b.best_before),  isExpired?G.red:isExpiringSoon?G.amber:G.muted],
                     ].map(([label,val,color])=>(
                       <div key={label} style={{ background:'#F9FAF7',borderRadius:8,padding:'7px 9px' }}>
                         <p style={{ margin:'0 0 2px',fontSize:9,color:G.muted,textTransform:'uppercase',letterSpacing:'0.3px' }}>{label}</p>
@@ -417,7 +415,6 @@ export default function BatchPage() {
                     ))}
                   </div>
 
-                  {/* Usage bar */}
                   <div style={{ marginBottom:8 }}>
                     <div style={{ display:'flex',justifyContent:'space-between',fontSize:11,color:G.muted,marginBottom:3 }}>
                       <span>Used: {b.quantity_bags - b.remaining_bags} bags ({usedPct}%)</span>
