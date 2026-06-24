@@ -1,21 +1,32 @@
 // ============================================================
 // GVR Google Analytics 4 — Analytics Tracking
-// src/lib/analytics.js
+// FIX #5/#11: correct path is src/lib/analytics.js
+//             Move this file from src/pages/ to src/lib/
+//             Then in src/main.jsx add:
+//               import { initGA } from './lib/analytics'
+//               initGA()
 // ============================================================
 
 const GA_ID = import.meta.env.VITE_GA_ID || ''
 
 // ── Initialize GA4 ────────────────────────────────────────
 export function initGA() {
-  if (!GA_ID) return
+  if (!GA_ID) {
+    if (import.meta.env.DEV) {
+      console.warn('[GVR Analytics] VITE_GA_ID not set — analytics disabled')
+    }
+    return
+  }
 
-  // Load gtag script
-  const script1 = document.createElement('script')
-  script1.async = true
-  script1.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`
-  document.head.appendChild(script1)
+  // Avoid double-init
+  if (window.__gvrAnalyticsInit) return
+  window.__gvrAnalyticsInit = true
 
-  // Initialize
+  const script = document.createElement('script')
+  script.async = true
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`
+  document.head.appendChild(script)
+
   window.dataLayer = window.dataLayer || []
   function gtag(){ window.dataLayer.push(arguments) }
   window.gtag = gtag
@@ -23,7 +34,6 @@ export function initGA() {
   gtag('config', GA_ID, {
     page_title:    document.title,
     page_location: window.location.href,
-    // Custom dimensions
     custom_map: {
       dimension1: 'user_role',
       dimension2: 'branch',
@@ -41,40 +51,37 @@ export function trackPage(pageName, userRole) {
   })
 }
 
-// ── Custom Events ─────────────────────────────────────────
+// ── E-commerce Events ─────────────────────────────────────
 
-// Product viewed
 export function trackProductView(product) {
   if (!window.gtag) return
   window.gtag('event', 'view_item', {
     currency: 'INR',
     value:    product.price_per_bag,
     items: [{
-      item_id:   product.id,
-      item_name: product.name,
-      price:     product.price_per_bag,
+      item_id:       product.id,
+      item_name:     product.name,
+      price:         product.price_per_bag,
       item_category: product.weight_kg + 'kg',
     }]
   })
 }
 
-// Add to cart
 export function trackAddToCart(product, quantity) {
   if (!window.gtag) return
   window.gtag('event', 'add_to_cart', {
     currency: 'INR',
     value:    product.price_per_bag * quantity,
     items: [{
-      item_id:   product.id,
-      item_name: product.name,
-      price:     product.price_per_bag,
-      quantity:  quantity,
+      item_id:       product.id,
+      item_name:     product.name,
+      price:         product.price_per_bag,
+      quantity,
       item_category: product.weight_kg + 'kg',
     }]
   })
 }
 
-// Begin checkout
 export function trackBeginCheckout(cartItems, totalAmount) {
   if (!window.gtag) return
   window.gtag('event', 'begin_checkout', {
@@ -89,7 +96,6 @@ export function trackBeginCheckout(cartItems, totalAmount) {
   })
 }
 
-// Purchase complete
 export function trackPurchase(orderNumber, items, totalAmount, paymentMethod) {
   if (!window.gtag) return
   window.gtag('event', 'purchase', {
@@ -98,39 +104,38 @@ export function trackPurchase(orderNumber, items, totalAmount, paymentMethod) {
     value:          totalAmount,
     payment_type:   paymentMethod,
     items:          items.map(item => ({
-      item_id:   item.id,
+      item_id:   item.id || item.product_id,
       item_name: item.name,
-      price:     item.price_per_bag,
+      price:     item.price_per_bag || item.price_per_unit,
       quantity:  item.quantity,
     }))
   })
 }
 
-// Signup
+// ── Auth Events ───────────────────────────────────────────
+
 export function trackSignup(method) {
   if (!window.gtag) return
   window.gtag('event', 'sign_up', { method: method || 'username' })
 }
 
-// Login
 export function trackLogin(role) {
   if (!window.gtag) return
   window.gtag('event', 'login', { method: 'username', user_role: role })
 }
 
-// Order type selected (delivery vs pickup)
+// ── UX Events ─────────────────────────────────────────────
+
 export function trackOrderType(orderType) {
   if (!window.gtag) return
   window.gtag('event', 'select_order_type', { order_type: orderType })
 }
 
-// Payment method selected
 export function trackPaymentMethod(method) {
   if (!window.gtag) return
   window.gtag('event', 'select_payment_method', { payment_method: method })
 }
 
-// Referral shared
 export function trackReferralShare(method) {
   if (!window.gtag) return
   window.gtag('event', 'share', {
@@ -139,33 +144,29 @@ export function trackReferralShare(method) {
   })
 }
 
-// Subscription started
 export function trackSubscription(product, frequency, amount) {
   if (!window.gtag) return
   window.gtag('event', 'subscribe', {
     currency:     'INR',
     value:        amount,
     product_name: product,
-    frequency:    frequency,
+    frequency,
   })
 }
 
-// Search
 export function trackSearch(searchTerm) {
   if (!window.gtag) return
   window.gtag('event', 'search', { search_term: searchTerm })
 }
 
-// Error
 export function trackError(errorMessage, fatal = false) {
   if (!window.gtag) return
   window.gtag('event', 'exception', {
     description: errorMessage,
-    fatal:       fatal,
+    fatal,
   })
 }
 
-// Tab switch (to understand navigation patterns)
 export function trackTabSwitch(tabName) {
   if (!window.gtag) return
   window.gtag('event', 'tab_view', { tab_name: tabName })
