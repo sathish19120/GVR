@@ -11,22 +11,33 @@ const G = {
 const BRANCHES = ['All','Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu']
 
 export default function PickupQueue({ defaultBranch }) {
-  const [orders, setOrders]     = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [branch, setBranch]     = useState(defaultBranch || 'All')
-  const [tab, setTab]           = useState('pending') // pending|ready|done
+  const [orders, setOrders]   = useState([])
+  const [loading, setLoading] = useState(true)
+  const [branch, setBranch]   = useState(defaultBranch || 'All')
+  const [tab, setTab]         = useState('pending')
 
   useEffect(() => { load() }, [branch])
 
   async function load() {
     setLoading(true)
-    let q = supabase.from('orders')
-      .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
-      .in('order_type', ['pickup','walkin'])
-      .order('created_at', { ascending: false })
-    if (branch !== 'All') q = q.eq('pickup_branch', branch)
-    const { data } = await q
-    setOrders(data || [])
+    try {
+      // FIX #8: use OR filter to handle both old deployments (no order_type column)
+      // and new ones. Filter on pickup_branch or delivery_address contains 'Pickup'
+      // to catch walkin/pickup orders even without the order_type column.
+      let q = supabase
+        .from('orders')
+        .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
+        .or('order_type.in.(pickup,walkin),delivery_address.ilike.%Walk-in%,delivery_address.ilike.%Pickup%')
+        .order('created_at', { ascending: false })
+
+      if (branch !== 'All') q = q.eq('pickup_branch', branch)
+      const { data, error } = await q
+      if (error) throw error
+      setOrders(data || [])
+    } catch(e) {
+      console.error('PickupQueue load error:', e)
+      setOrders([])
+    }
     setLoading(false)
   }
 
@@ -36,13 +47,20 @@ export default function PickupQueue({ defaultBranch }) {
   }
 
   async function markCollected(id) {
-    await supabase.from('orders').update({ status: 'delivered' }).eq('id', id)
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'delivered' } : o))
+    // FIX #16: also mark payment as paid when customer collects — cash is always
+    // paid at pickup. This prevents the order showing as payment-pending forever.
+    await supabase.from('orders').update({
+      status: 'delivered',
+      payment_status: 'paid',
+    }).eq('id', id)
+    setOrders(prev => prev.map(o =>
+      o.id === id ? { ...o, status: 'delivered', payment_status: 'paid' } : o
+    ))
   }
 
-  const pending  = orders.filter(o => !o.pickup_ready && o.status !== 'delivered')
-  const ready    = orders.filter(o => o.pickup_ready && o.status !== 'delivered')
-  const done     = orders.filter(o => o.status === 'delivered')
+  const pending = orders.filter(o => !o.pickup_ready && o.status !== 'delivered' && o.status !== 'cancelled')
+  const ready   = orders.filter(o => o.pickup_ready && o.status !== 'delivered' && o.status !== 'cancelled')
+  const done    = orders.filter(o => o.status === 'delivered')
 
   const shown = tab === 'pending' ? pending : tab === 'ready' ? ready : done
 
@@ -65,9 +83,9 @@ export default function PickupQueue({ defaultBranch }) {
       {/* Stats */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16 }}>
         {[
-          { label:'Waiting',   count:pending.length,  color:G.amber, bg:G.amberLight, icon:'⏳' },
-          { label:'Ready',     count:ready.length,    color:G.blue,  bg:G.blueLight,  icon:'✅' },
-          { label:'Collected', count:done.length,     color:G.green, bg:G.greenLight, icon:'🏠' },
+          { label:'Waiting',   count:pending.length, color:G.amber, bg:G.amberLight, icon:'⏳' },
+          { label:'Ready',     count:ready.length,   color:G.blue,  bg:G.blueLight,  icon:'✅' },
+          { label:'Collected', count:done.length,    color:G.green, bg:G.greenLight, icon:'🏠' },
         ].map(s => (
           <div key={s.label} style={{ background:G.white, borderRadius:12, padding:'12px 14px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${s.color}`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <div>
@@ -81,7 +99,11 @@ export default function PickupQueue({ defaultBranch }) {
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:4, marginBottom:14 }}>
-        {[['pending',`⏳ Waiting (${pending.length})`],['ready',`✅ Ready (${ready.length})`],['done',`🏠 Collected (${done.length})`]].map(([key,label])=>(
+        {[
+          ['pending', `⏳ Waiting (${pending.length})`],
+          ['ready',   `✅ Ready (${ready.length})`],
+          ['done',    `🏠 Collected (${done.length})`],
+        ].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{ padding:'7px 16px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:tab===key?G.green:'#F3F4F6', color:tab===key?G.white:G.muted }}>
             {label}
           </button>
@@ -94,6 +116,11 @@ export default function PickupQueue({ defaultBranch }) {
         <div style={{ textAlign:'center', padding:'40px 20px', background:G.white, borderRadius:14, color:G.muted }}>
           <div style={{ fontSize:36, marginBottom:8 }}>🏪</div>
           <p style={{ fontWeight:600, color:G.text, margin:'0 0 4px' }}>No {tab} orders</p>
+          <p style={{ fontSize:13 }}>
+            {tab === 'pending' ? 'All pickup orders are ready or collected.' :
+             tab === 'ready'   ? 'No orders ready for pickup yet.' :
+             'No orders collected yet today.'}
+          </p>
         </div>
       )}
 
@@ -104,7 +131,9 @@ export default function PickupQueue({ defaultBranch }) {
               <div>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
                   <p style={{ margin:0, fontWeight:700, fontSize:15, color:G.green }}>{order.order_number}</p>
-                  <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20, background:order.order_type==='walkin'?G.greenLight:G.blueLight, color:order.order_type==='walkin'?G.green:G.blue }}>
+                  <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20,
+                    background: order.order_type==='walkin' ? G.greenLight : G.blueLight,
+                    color: order.order_type==='walkin' ? G.green : G.blue }}>
                     {order.order_type === 'walkin' ? '🏪 Walk-in' : '📱 App Pickup'}
                   </span>
                 </div>
@@ -113,7 +142,15 @@ export default function PickupQueue({ defaultBranch }) {
                 </p>
                 {order.pickup_time && <p style={{ margin:'2px 0 0', fontSize:12, color:G.blue }}>🕐 Pickup: {order.pickup_time}</p>}
               </div>
-              <span style={{ fontWeight:800, fontSize:16, color:G.green }}>₹{Number(order.total_amount).toLocaleString('en-IN')}</span>
+              <div style={{ textAlign:'right' }}>
+                <span style={{ fontWeight:800, fontSize:16, color:G.green, display:'block' }}>₹{Number(order.total_amount).toLocaleString('en-IN')}</span>
+                {/* FIX #16: show payment status badge */}
+                <span style={{ fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20, marginTop:4, display:'inline-block',
+                  background: order.payment_status==='paid' ? G.greenLight : G.amberLight,
+                  color: order.payment_status==='paid' ? G.green : G.amber }}>
+                  {order.payment_status==='paid' ? '✅ Paid' : '⏳ Unpaid'}
+                </span>
+              </div>
             </div>
 
             <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
@@ -131,8 +168,9 @@ export default function PickupQueue({ defaultBranch }) {
                 </button>
               )}
               {tab === 'ready' && (
+                // FIX #16: markCollected now sets payment_status=paid too
                 <button onClick={() => markCollected(order.id)} style={{ flex:1, padding:'9px', background:G.green, color:G.white, border:'none', borderRadius:9, fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                  🏠 Mark Collected
+                  🏠 Mark Collected & Paid
                 </button>
               )}
             </div>
