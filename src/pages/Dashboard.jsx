@@ -7,7 +7,7 @@ import SupplierPage from './SupplierPage'
 import HomePage from './HomePage'
 import VendorPage from './VendorPage'
 import BranchStockPage from './BranchStockPage'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { supabase } from '../lib/supabase'
@@ -24,21 +24,21 @@ const G = {
 }
 
 const PAGES = [
-  { key:'dashboard', icon:'⊞', label:'Dashboard' },
-  { key:'orders',    icon:'📋', label:'Orders' },
-  { key:'inventory', icon:'📦', label:'Inventory' },
-  { key:'analytics', icon:'📊', label:'Analytics' },
-  { key:'users',     icon:'👥', label:'Users' },
-  { key:'admin',     icon:'⚙️', label:'Admin' },
-  { key:'branches',  icon:'🏪', label:'Branches' },
-  { key:'vendors',   icon:'🌾', label:'Vendors' },
-  { key:'batches',   icon:'📦', label:'Batches' },
-  { key:'pickup',    icon:'🏪', label:'Pickup Queue' },
-  { key:'bulk',      icon:'🏢', label:'Bulk Orders' },
-  { key:'suppliers', icon:'🏭', label:'Suppliers' },
-  { key:'branchstock',icon:'🏭', label:'Branch Stock' },
+  { key:'dashboard',   icon:'⊞',  label:'Dashboard' },
+  { key:'orders',      icon:'📋', label:'Orders' },
+  { key:'inventory',   icon:'📦', label:'Inventory' },
+  { key:'analytics',   icon:'📊', label:'Analytics' },
+  { key:'users',       icon:'👥', label:'Users' },
+  { key:'admin',       icon:'⚙️', label:'Admin' },
+  { key:'branches',    icon:'🏪', label:'Branches' },
+  { key:'vendors',     icon:'🌾', label:'Vendors' },
+  { key:'batches',     icon:'📦', label:'Batches' },
+  { key:'pickup',      icon:'🏪', label:'Pickup Queue' },
+  { key:'bulk',        icon:'🏢', label:'Bulk Orders' },
+  { key:'suppliers',   icon:'🏭', label:'Suppliers' },
+  { key:'branchstock', icon:'📊', label:'Branch Stock' }, // FIX #8: unique icon
+  { key:'home',        icon:'🏠', label:'Home' },         // FIX #9: added to PAGES so it's reachable
 ]
-const TOP_LINKS = ['Where We Work','What We Do','About']
 
 function Badge({ status }) {
   const map = {
@@ -122,28 +122,54 @@ function NewOrderModal({ products, onClose, onSaved }) {
     return {...prev,[id]:qty}
   })
 
+  // FIX #6: wrapped in try/catch with rollback on failure
   async function save() {
     if (!customerName.trim() || Object.keys(cart).length === 0) return
     setSaving(true)
+    let order = null
     try {
-      const { count } = await supabase.from('orders').select('*',{count:'exact',head:true})
-      const orderNumber = `GVR-${String((count||0)+1).padStart(4,'0')}`
-      const { data: order } = await supabase.from('orders').insert({
+      // FIX #5: use MAX order_number to avoid duplicates when orders are deleted
+      const { data: maxRow } = await supabase
+        .from('orders')
+        .select('order_number')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const lastNum = maxRow?.order_number
+        ? parseInt(maxRow.order_number.replace('GVR-', ''), 10)
+        : 0
+      const orderNumber = `GVR-${String(lastNum + 1).padStart(4, '0')}`
+
+      const { data: newOrder, error: orderErr } = await supabase.from('orders').insert({
         order_number: orderNumber, customer_name: customerName,
         delivery_address: address, total_amount: grand,
         status:'pending', payment_status:'pending', payment_method: payMethod,
         created_at: new Date().toISOString()
       }).select().single()
+
+      if (orderErr) throw orderErr
+      order = newOrder
+
       for (const p of products.filter(p => cart[p.id])) {
-        await supabase.from('order_items').insert({
-          order_id:order.id, product_id:p.id, name:p.name,
-          weight_kg:p.weight_kg, quantity:cart[p.id], price_per_unit:p.price_per_bag
+        const { error: itemErr } = await supabase.from('order_items').insert({
+          order_id: order.id, product_id: p.id, name: p.name,
+          weight_kg: p.weight_kg, quantity: cart[p.id], price_per_unit: p.price_per_bag
         })
-        await supabase.from('products').update({stock_bags: p.stock_bags - cart[p.id]}).eq('id',p.id)
+        if (itemErr) throw itemErr
+        await supabase.from('products').update({ stock_bags: p.stock_bags - cart[p.id] }).eq('id', p.id)
       }
       onSaved(); onClose()
-    } catch(e){ console.error(e) }
-    finally { setSaving(false) }
+    } catch(e) {
+      console.error('Order save failed:', e)
+      // Rollback: delete the order if it was created but items failed
+      if (order?.id) {
+        await supabase.from('order_items').delete().eq('order_id', order.id)
+        await supabase.from('orders').delete().eq('id', order.id)
+      }
+      alert('Failed to save order. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -167,6 +193,7 @@ function NewOrderModal({ products, onClose, onSaved }) {
         </div>
         <div style={{ marginBottom:16 }}>
           <label style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:8, display:'block' }}>Select Products</label>
+          {/* FIX #1: removed stray logout button that was here */}
           {products.filter(p=>p.active).map(p => (
             <div key={p.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:`1px solid ${G.border}` }}>
               <div>
@@ -174,9 +201,6 @@ function NewOrderModal({ products, onClose, onSaved }) {
                 <p style={{ margin:0, fontSize:12, color:G.muted }}>₹{p.price_per_bag}/bag · {p.stock_bags} left</p>
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={async()=>{ await signOut(); navigate('/login') }} style={{ padding:'6px 14px', background:G.redLight, border:`1px solid ${G.red}40`, borderRadius:8, fontSize:12, fontWeight:700, color:G.red, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
-              <span>↩</span> Logout
-            </button>
                 <button onClick={()=>updateCart(p.id,-1)} style={{ width:28, height:28, borderRadius:'50%', border:`1px solid ${G.border}`, background:'none', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', color:G.green }}>−</button>
                 <span style={{ fontWeight:700, minWidth:20, textAlign:'center', color:G.text }}>{cart[p.id]||0}</span>
                 <button onClick={()=>updateCart(p.id,1)} style={{ width:28, height:28, borderRadius:'50%', border:`1px solid ${G.border}`, background:'none', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', color:G.green }}>+</button>
@@ -268,23 +292,38 @@ export default function Dashboard() {
   const [chart, setChart]     = useState([])
   const [stats, setStats]     = useState({ revenue:0, orders:0, bags:0, pending:0, lowStock:0, customers:0 })
   const [loading, setLoading] = useState(true)
-  const [topModal, setTopModal] = useState(null) // 'where' | 'what' | 'about'
+  const [topModal, setTopModal] = useState(null)
   const [showNewOrder, setShowNewOrder] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [newOrderAlert, setNewOrderAlert] = useState(0)
   const [orderSearch, setOrderSearch] = useState('')
-  const [selectedBranch, setSelectedBranch] = useState('all')
+  const [orderBranchFilter, setOrderBranchFilter] = useState('all') // FIX #4: separate state for order branch filter
   const [orderStatusFilter, setOrderStatusFilter] = useState('all')
   const [orderPayFilter, setOrderPayFilter] = useState('all')
   const [orderDateFilter, setOrderDateFilter] = useState('all')
   const [invoiceSearch, setInvoiceSearch] = useState('')
-  const [stockBranchFilter, setStockBranchFilter] = useState('all')
+  const [stockBranchFilter, setStockBranchFilter] = useState('all') // inventory-only branch filter
   const [showStock, setShowStock] = useState(null)
+
+  // FIX #7: use a ref so auto-refresh always reads the latest pending count
+  const statsPendingRef = useRef(stats.pending)
+  useEffect(() => { statsPendingRef.current = stats.pending }, [stats.pending])
 
   useEffect(() => { load() }, [filter])
 
-  // Auto refresh every 30 seconds — only refreshes order data silently
+  // FIX #10: wire up mobile overlay — toggle body class when sidebar opens
+  useEffect(() => {
+    const overlay = document.querySelector('.dash-overlay')
+    if (!overlay) return
+    if (!collapsed) {
+      overlay.style.display = 'block'
+    } else {
+      overlay.style.display = 'none'
+    }
+  }, [collapsed])
+
+  // Auto refresh every 30 seconds
   useEffect(() => {
     if (!autoRefresh || page !== 'orders') return
     const interval = setInterval(async () => {
@@ -295,15 +334,16 @@ export default function Dashboard() {
           .order('created_at', { ascending: false })
         const newOrders = data || []
         const pendingCount = newOrders.filter(o => o.status === 'pending').length
-        if (pendingCount > stats.pending) {
-          setNewOrderAlert(pendingCount - stats.pending)
+        // FIX #7: read from ref instead of stale closure
+        if (pendingCount > statsPendingRef.current) {
+          setNewOrderAlert(pendingCount - statsPendingRef.current)
         }
         setOrders(newOrders)
         setLastRefresh(new Date())
       } catch(e) { console.error('Auto refresh error:', e) }
     }, 30000)
     return () => clearInterval(interval)
-  }, [autoRefresh, page, stats.pending])
+  }, [autoRefresh, page])
 
   async function load() {
     setLoading(true)
@@ -345,18 +385,75 @@ export default function Dashboard() {
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
 
+  // FIX #3 & #4: compute filtered orders once, applied everywhere in the Orders page
+  const filteredOrders = orders.filter(o => {
+    const matchSearch = !orderSearch ||
+      o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+      o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+      o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
+    const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
+    const matchStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter
+    const matchPay = orderPayFilter === 'all' || o.payment_method === orderPayFilter
+    const matchBranch = orderBranchFilter === 'all' || o.branch === orderBranchFilter
+    const now = new Date()
+    let matchDate = true
+    if (orderDateFilter === 'today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
+    else if (orderDateFilter === 'week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
+    else if (orderDateFilter === 'month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
+    return matchSearch && matchInvoice && matchStatus && matchPay && matchBranch && matchDate
+  })
+
+  // Reusable order action buttons
+  function OrderActions({ o }) {
+    return (
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        {o.payment_status==='pending' && o.payment_method!=='cod' && (
+          <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); load() }}
+            style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
+            💰 Mark Paid
+          </button>
+        )}
+        {o.payment_method==='cod' && o.payment_status==='pending' && (
+          <button onClick={async()=>{
+            await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes?o.notes+' · ':'')+'Cash collected by admin' }).eq('id',o.id)
+            load()
+          }} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
+            💵 Mark Cash Collected
+          </button>
+        )}
+        {o.payment_method==='cod' && o.payment_status==='paid' && (
+          <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.green }}>
+            ✅ Cash Collected
+          </span>
+        )}
+        {o.status==='pending'    && <button onClick={()=>updateOrderStatus(o.id,'confirmed')}  style={{ background:G.greenLight,  border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green,     cursor:'pointer' }}>✓ Confirm</button>}
+        {o.status==='confirmed'  && <button onClick={()=>updateOrderStatus(o.id,'packed')}     style={{ background:G.blueLight,   border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue,      cursor:'pointer' }}>📦 Pack</button>}
+        {o.status==='packed'     && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE',     border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED',   cursor:'pointer' }}>🚚 Dispatch</button>}
+        {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')}  style={{ background:G.greenLight,  border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green,     cursor:'pointer' }}>✅ Delivered</button>}
+        {o.status==='dispatched' && o.payment_status!=='paid' && (
+          <button onClick={async()=>{
+            await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes||'')+' · UPI paid on delivery' }).eq('id',o.id)
+            load()
+          }} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>
+            📱 UPI Paid
+          </button>
+        )}
+        {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
+        <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
-      {/* Mobile overlay — closes sidebar when tapped */}
+      {/* FIX #10: mobile overlay — display toggled via useEffect above */}
       <div className="dash-overlay" style={{ display:'none', position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:199 }} onClick={() => setCollapsed(true)} />
-
 
       {/* TOP NAV MODALS */}
       {topModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }} onClick={()=>setTopModal(null)}>
           <div style={{ background:'#fff', borderRadius:20, width:'100%', maxWidth:600, maxHeight:'85vh', overflowY:'auto', padding:36 }} onClick={e=>e.stopPropagation()}>
 
-            {/* WHERE WE WORK */}
             {topModal==='where' && <>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
                 <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>📍 Where We Work</h2>
@@ -389,7 +486,6 @@ export default function Dashboard() {
               </div>
             </>}
 
-            {/* WHAT WE DO */}
             {topModal==='what' && <>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
                 <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>🌾 What We Do</h2>
@@ -417,7 +513,6 @@ export default function Dashboard() {
               </div>
             </>}
 
-            {/* ABOUT */}
             {topModal==='about' && <>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
                 <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>🌾 About Green Village Rice</h2>
@@ -460,7 +555,6 @@ export default function Dashboard() {
                 </div>
               </div>
             </>}
-
           </div>
         </div>
       )}
@@ -474,16 +568,15 @@ export default function Dashboard() {
           <div style={{ width:36, height:36, borderRadius:9, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌾</div>
           {!collapsed && <div><p style={{ margin:0, fontSize:13, fontWeight:700, color:G.greenDark }}>Green Village</p><p style={{ margin:0, fontSize:10, color:G.green2, fontWeight:600 }}>Rice Admin</p></div>}
         </div>
-        <nav style={{ flex:1, padding:'10px 6px' }}>
+        <nav style={{ flex:1, padding:'10px 6px', overflowY:'auto' }}>
           {PAGES.map(item => (
-            <button key={item.key} onClick={()=>setPage(item.key)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:collapsed?'center':'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
+            <button key={item.key} onClick={()=>{ setPage(item.key); setCollapsed(true) }} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:collapsed?'center':'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
               <span style={{ fontSize:17, flexShrink:0 }}>{item.icon}</span>
               {!collapsed && item.label}
             </button>
           ))}
         </nav>
         <div style={{ padding:'8px 6px', borderTop:`1px solid ${G.border}`, flexShrink:0 }}>
-          {/* User info row */}
           {!collapsed && (
             <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', marginBottom:6, background:'#F9FAF7', borderRadius:10 }}>
               <div style={{ width:30, height:30, borderRadius:'50%', background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:G.greenDark, flexShrink:0, overflow:'hidden' }}>
@@ -498,7 +591,6 @@ export default function Dashboard() {
               </div>
             </div>
           )}
-          {/* Logout button */}
           <button onClick={async()=>{ await signOut(); navigate('/login') }}
             style={{ width:'100%', padding:collapsed?'9px 0':'9px 12px', borderRadius:10, border:'none', background:G.redLight, color:G.red, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:8, transition:'background 0.15s' }}
             onMouseEnter={e=>e.currentTarget.style.background='#FECACA'}
@@ -592,9 +684,8 @@ export default function Dashboard() {
               </div>
               {orders.length===0 && <p style={{ textAlign:'center', padding:40, color:G.muted }}>No orders yet</p>}
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {orders.slice(0,8).map((o,i)=>(
+              {orders.slice(0,8).map((o)=>(
                 <div key={o.id} style={{ display:'flex', gap:0, border:`1px solid ${G.border}`, borderRadius:12, overflow:'hidden', background:G.white }}>
-                  {/* Items column */}
                   <div style={{ width:200, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'10px 12px' }}>
                     <p style={{ margin:'0 0 6px', fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase' }}>Items</p>
                     {(o.order_items||[]).map((item,idx)=>(
@@ -609,7 +700,6 @@ export default function Dashboard() {
                       <span style={{ fontSize:12, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
                     </div>
                   </div>
-                  {/* Details column */}
                   <div style={{ flex:1, padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
                     <div>
                       <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:13, color:G.green }}>{o.order_number}</p>
@@ -628,10 +718,9 @@ export default function Dashboard() {
             </div>
           </>}
 
-          {/* ORDERS */}
+          {/* ORDERS — FIX #2: single render using filteredOrders; FIX #3: filter computed once above */}
           {page==='orders' && <>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
-              {/* Left — refresh controls */}
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                 <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{
                   display:'flex', alignItems:'center', gap:6,
@@ -656,10 +745,9 @@ export default function Dashboard() {
                   Last updated: {lastRefresh.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
                 </span>
               </div>
-              {/* Right — new order button */}
               <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 20px', fontSize:14, fontWeight:700, cursor:'pointer' }}>+ New Order</button>
             </div>
-            {/* New order alert banner */}
+
             {newOrderAlert > 0 && (
               <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:10, padding:'10px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <span style={{ color:G.amber, fontWeight:600, fontSize:13 }}>
@@ -669,30 +757,9 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Search & Filter bar */}
-            {(()=>{
-              const filtered = orders.filter(o => {
-                const matchSearch = !orderSearch ||
-                  o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) ||
-                  o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) ||
-                  o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
-                const matchStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter
-                const matchPay = orderPayFilter === 'all' || o.payment_method === orderPayFilter
-                const now = new Date()
-                let matchDate = true
-                if (orderDateFilter === 'today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
-                else if (orderDateFilter === 'week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
-                else if (orderDateFilter === 'month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
-                return matchSearch && matchStatus && matchPay && matchDate
-              })
-              return null
-            })()}
-
             {/* Filter UI */}
             <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-              {/* Search row */}
               <div style={{ display:'flex', gap:10, marginBottom:12 }}>
-                {/* Order / customer search */}
                 <div style={{ position:'relative', flex:1 }}>
                   <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:15, color:G.muted }}>🔍</span>
                   <input type="text" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)}
@@ -702,7 +769,6 @@ export default function Dashboard() {
                     onBlur={e=>e.target.style.borderColor=G.border} />
                   {orderSearch && <button onClick={()=>setOrderSearch('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:16 }}>✕</button>}
                 </div>
-                {/* Invoice number search */}
                 <div style={{ position:'relative', width:200 }}>
                   <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:13, color:G.muted }}>🧾</span>
                   <input type="text" value={invoiceSearch} onChange={e=>setInvoiceSearch(e.target.value)}
@@ -713,11 +779,11 @@ export default function Dashboard() {
                   {invoiceSearch && <button onClick={()=>setInvoiceSearch('')} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:14 }}>✕</button>}
                 </div>
               </div>
-              {/* Branch filter */}
+              {/* FIX #4: branch filter now uses orderBranchFilter and actually filters orders */}
               <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:10, alignItems:'center' }}>
                 <span style={{ fontSize:11, fontWeight:600, color:G.muted, marginRight:4 }}>Branch:</span>
                 {['all','Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu'].map(b=>(
-                  <button key={b} onClick={()=>setStockBranchFilter(b)} style={{ padding:'4px 10px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:stockBranchFilter===b?'#7C3AED':'#F3F4F6', color:stockBranchFilter===b?G.white:G.muted }}>
+                  <button key={b} onClick={()=>setOrderBranchFilter(b)} style={{ padding:'4px 10px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderBranchFilter===b?'#7C3AED':'#F3F4F6', color:orderBranchFilter===b?G.white:G.muted }}>
                     {b==='all'?'All':b}
                   </button>
                 ))}
@@ -741,53 +807,25 @@ export default function Dashboard() {
                   ))}
                 </div>
                 <span style={{ marginLeft:'auto', fontSize:12, color:G.muted, fontWeight:500 }}>
-                  {orders.filter(o=>{
-                    const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase())
-                    const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
-                    const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
-                    const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
-                    return matchSearch && matchInvoice && matchStatus && matchPay
-                  }).length} of {orders.length} orders
+                  {filteredOrders.length} of {orders.length} orders
                 </span>
               </div>
             </div>
 
-            {/* Orders list */}
-            {orders.filter(o=>{
-              const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) || o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
-              const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
-              const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
-              const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
-              const now = new Date()
-              let matchDate = true
-              if (orderDateFilter==='today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
-              else if (orderDateFilter==='week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
-              else if (orderDateFilter==='month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
-              return matchSearch && matchInvoice && matchStatus && matchPay && matchDate
-            }).length === 0 && (
+            {/* FIX #2: single orders list using filteredOrders */}
+            {filteredOrders.length === 0 && (
               <div style={{ textAlign:'center', padding:60, background:G.white, borderRadius:14, color:G.muted }}>
                 <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
                 <p style={{ fontWeight:600, color:G.text, margin:'0 0 4px' }}>No orders found</p>
                 <p style={{ fontSize:13 }}>Try a different search or filter</p>
-                <button onClick={()=>{ setOrderSearch(''); setOrderStatusFilter('all'); setOrderPayFilter('all'); setOrderDateFilter('all') }}
+                <button onClick={()=>{ setOrderSearch(''); setInvoiceSearch(''); setOrderStatusFilter('all'); setOrderPayFilter('all'); setOrderDateFilter('all'); setOrderBranchFilter('all') }}
                   style={{ marginTop:12, background:G.green, color:G.white, border:'none', borderRadius:8, padding:'8px 20px', fontWeight:600, cursor:'pointer', fontSize:13 }}>
                   Clear Filters
                 </button>
               </div>
             )}
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-            {orders.filter(o=>{
-              const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) || o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
-              const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
-              const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
-              const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
-              const now = new Date()
-              let matchDate = true
-              if (orderDateFilter==='today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
-              else if (orderDateFilter==='week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
-              else if (orderDateFilter==='month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
-              return matchSearch && matchInvoice && matchStatus && matchPay && matchDate
-            }).map((o,i)=>(
+            {filteredOrders.map((o)=>(
               <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
                 <div style={{ display:'flex' }}>
                   <div style={{ width:220, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'14px 16px' }}>
@@ -834,147 +872,16 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                    <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                      {o.payment_status==='pending' && o.payment_method!=='cod' && (
-                        <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); load() }}
-                          style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
-                          💰 Mark Paid
-                        </button>
-                      )}
-                      {o.payment_method==='cod' && o.payment_status==='pending' && (
-                        <button onClick={async()=>{
-                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes?o.notes+' · ':'')+'Cash collected by admin' }).eq('id',o.id)
-                          load()
-                        }} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
-                          💵 Mark Cash Collected
-                        </button>
-                      )}
-                      {o.payment_method==='cod' && o.payment_status==='paid' && (
-                        <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.green }}>
-                          ✅ Cash Collected
-                        </span>
-                      )}
-                      {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
-                      {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
-                      {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
-                      {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
-                      {o.status==='dispatched' && o.payment_status!=='paid' && (
-                        <button onClick={async()=>{
-                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes||'')+' · UPI paid on delivery' }).eq('id',o.id)
-                          load()
-                        }} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>
-                          📱 UPI Paid
-                        </button>
-                      )}
-                      {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
-                      <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
-                    </div>
+                    <OrderActions o={o} />
                   </div>
                 </div>
               </div>
             ))}
             </div>
-            <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-              {orders.length===0 && (
-                <div style={{ textAlign:'center', padding:60, color:G.muted }}>No orders yet</div>
-              )}
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              {orders.map((o,i)=>(
-                <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
-                  <div style={{ display:'flex', gap:0 }}>
-
-                    {/* LEFT — product items panel */}
-                    <div style={{ width:220, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'14px 16px' }}>
-                      <p style={{ margin:'0 0 10px', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px' }}>Items Ordered</p>
-                      {(o.order_items||[]).length === 0 && (
-                        <p style={{ margin:0, fontSize:12, color:G.muted }}>No items found</p>
-                      )}
-                      {(o.order_items||[]).map((item,idx)=>(
-                        <div key={idx} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, padding:'8px 10px', background:G.white, borderRadius:8, border:`1px solid ${G.border}` }}>
-                          <div style={{ width:32, height:32, borderRadius:8, background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>🌾</div>
-                          <div style={{ minWidth:0 }}>
-                            <p style={{ margin:'0 0 1px', fontSize:12, fontWeight:700, color:G.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</p>
-                            <p style={{ margin:0, fontSize:11, color:G.muted }}>{item.weight_kg}kg × {item.quantity} = <strong style={{ color:G.green }}>₹{item.quantity * item.price_per_unit}</strong></p>
-                          </div>
-                        </div>
-                      ))}
-                      <div style={{ marginTop:8, padding:'8px 10px', background:G.greenLight, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                        <span style={{ fontSize:12, fontWeight:600, color:G.greenDark }}>Total</span>
-                        <span style={{ fontSize:14, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
-                      </div>
-                    </div>
-
-                    {/* RIGHT — order details */}
-                    <div style={{ flex:1, padding:'14px 16px' }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-                        <div>
-                          <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15, color:G.green }}>{o.order_number}</p>
-                          <p style={{ margin:0, fontSize:12, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
-                        </div>
-                        <Badge status={o.status} />
-                      </div>
-
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
-                        <div style={{ fontSize:12 }}>
-                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Customer</p>
-                          <p style={{ margin:0, fontWeight:600, color:G.text }}>{o.customer_name||'—'}</p>
-                        </div>
-                        <div style={{ fontSize:12 }}>
-                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p>
-                          <p style={{ margin:0, fontWeight:600, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
-                        </div>
-                        <div style={{ fontSize:12, gridColumn:'1/-1' }}>
-                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Delivery Address</p>
-                          <p style={{ margin:0, color:G.text }}>{o.delivery_address||'—'}</p>
-                        </div>
-                      </div>
-
-                      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                        {o.payment_status==='pending' && o.payment_method!=='cod' && (
-                        <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); load() }}
-                          style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
-                          💰 Mark Paid
-                        </button>
-                      )}
-                      {o.payment_method==='cod' && o.payment_status==='pending' && (
-                        <button onClick={async()=>{
-                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes?o.notes+' · ':'')+'Cash collected by admin' }).eq('id',o.id)
-                          load()
-                        }} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
-                          💵 Mark Cash Collected
-                        </button>
-                      )}
-                      {o.payment_method==='cod' && o.payment_status==='paid' && (
-                        <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.green }}>
-                          ✅ Cash Collected
-                        </span>
-                      )}
-                      {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
-                        {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
-                        {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
-                        {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
-                      {o.status==='dispatched' && o.payment_status!=='paid' && (
-                        <button onClick={async()=>{
-                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes||'')+' · UPI paid on delivery' }).eq('id',o.id)
-                          load()
-                        }} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>
-                          📱 UPI Paid
-                        </button>
-                      )}
-                        {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
-                        <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              </div>
-            </div>
           </>}
 
           {/* INVENTORY */}
           {page==='inventory' && <>
-            {/* Branch + Search filter bar */}
             <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
               <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
                 <span style={{ fontSize:12, fontWeight:600, color:G.muted, padding:'5px 4px' }}>Branch:</span>
@@ -1017,7 +924,6 @@ export default function Dashboard() {
                 )
               })}
             </div>
-            {/* Stock movements log */}
             <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
               <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Stock Movement History</p>
               <Table headers={['Product','Change','Type','Note','Date']}>
@@ -1089,25 +995,12 @@ export default function Dashboard() {
             </div>
           </>}
 
-          {/* VENDORS */}
-          {page==='vendors' && <VendorPage />}
-
-          {/* BATCHES */}
-          {page==='batches' && <BatchPage />}
-
-          {/* PICKUP QUEUE */}
-          {page==='pickup' && <PickupQueue />}
-
-          {/* BULK ORDERS */}
-          {page==='bulk' && <BulkOrderForm />}
-
-          {/* HOME */}
-          {page==='home' && <HomePage />}
-
-          {/* SUPPLIERS */}
-          {page==='suppliers' && <SupplierPage />}
-
-          {/* BRANCH STOCK */}
+          {page==='vendors'     && <VendorPage />}
+          {page==='batches'     && <BatchPage />}
+          {page==='pickup'      && <PickupQueue />}
+          {page==='bulk'        && <BulkOrderForm />}
+          {page==='home'        && <HomePage />}
+          {page==='suppliers'   && <SupplierPage />}
           {page==='branchstock' && <BranchStockPage />}
 
           {/* BRANCHES */}
@@ -1124,7 +1017,7 @@ export default function Dashboard() {
                 { city:'Anantapur', state:'Andhra Pradesh', icon:'🌾', address:'Subash Road, Anantapur - 515001', phone:'+91 98765 43213', status:'Active', color:G.blue, timings:'Mon-Sat: 9AM - 7PM' },
                 { city:'Tadipatri', state:'Andhra Pradesh', icon:'🏘️', address:'Main Bazaar, Tadipatri - 515411', phone:'+91 98765 43214', status:'Active', color:G.green2, timings:'Mon-Sat: 9AM - 6PM' },
                 { city:'Jammalamadugu', state:'Andhra Pradesh', icon:'🌿', address:'Bus Stand Road, Jammalamadugu - 516434', phone:'+91 98765 43215', status:'Active', color:G.green2, timings:'Mon-Sat: 9AM - 6PM' },
-              ].map((b,i)=>(
+              ].map((b)=>(
                 <div key={b.city} style={{ background:G.white, borderRadius:16, padding:'20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderTop:`4px solid ${b.color}` }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -1137,34 +1030,23 @@ export default function Dashboard() {
                     <span style={{ fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:b.color+'18', color:b.color }}>{b.status}</span>
                   </div>
                   <div style={{ display:'grid', gap:8, fontSize:13 }}>
-                    <div style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
-                      <span style={{ fontSize:14, flexShrink:0 }}>📍</span>
-                      <span style={{ color:G.muted, lineHeight:1.5 }}>{b.address}</span>
-                    </div>
-                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                      <span style={{ fontSize:14 }}>📞</span>
-                      <span style={{ color:G.text, fontWeight:500 }}>{b.phone}</span>
-                    </div>
-                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                      <span style={{ fontSize:14 }}>🕐</span>
-                      <span style={{ color:G.muted }}>{b.timings}</span>
-                    </div>
+                    <div style={{ display:'flex', gap:8, alignItems:'flex-start' }}><span style={{ fontSize:14, flexShrink:0 }}>📍</span><span style={{ color:G.muted, lineHeight:1.5 }}>{b.address}</span></div>
+                    <div style={{ display:'flex', gap:8, alignItems:'center' }}><span style={{ fontSize:14 }}>📞</span><span style={{ color:G.text, fontWeight:500 }}>{b.phone}</span></div>
+                    <div style={{ display:'flex', gap:8, alignItems:'center' }}><span style={{ fontSize:14 }}>🕐</span><span style={{ color:G.muted }}>{b.timings}</span></div>
                   </div>
                   <div style={{ marginTop:14, display:'flex', gap:8 }}>
                     <a href={`https://maps.google.com/?q=${b.city}+Green+Village+Rice`} target="_blank" rel="noreferrer"
-                      style={{ flex:1, padding:'8px', background:G.blueLight, border:'none', borderRadius:8, fontSize:12, fontWeight:600, color:G.blue, textAlign:'center', textDecoration:'none', cursor:'pointer' }}>
+                      style={{ flex:1, padding:'8px', background:G.blueLight, border:'none', borderRadius:8, fontSize:12, fontWeight:600, color:G.blue, textAlign:'center', textDecoration:'none' }}>
                       🗺 Navigate
                     </a>
                     <a href={`tel:${b.phone.replace(/ /g,'')}`}
-                      style={{ flex:1, padding:'8px', background:G.greenLight, border:'none', borderRadius:8, fontSize:12, fontWeight:600, color:G.green, textAlign:'center', textDecoration:'none', cursor:'pointer' }}>
+                      style={{ flex:1, padding:'8px', background:G.greenLight, border:'none', borderRadius:8, fontSize:12, fontWeight:600, color:G.green, textAlign:'center', textDecoration:'none' }}>
                       📞 Call
                     </a>
                   </div>
                 </div>
               ))}
             </div>
-
-            {/* Branch summary stats */}
             <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
               <p style={{ margin:'0 0 16px', fontSize:13, fontWeight:700 }}>Branch Network Summary</p>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12 }}>
@@ -1205,7 +1087,6 @@ export default function Dashboard() {
             </div>
           </>}
 
-          {/* ADMIN */}
           {page==='admin' && <AdminPage />}
 
           </>}
