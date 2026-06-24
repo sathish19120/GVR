@@ -18,7 +18,7 @@ const G = {
 }
 
 const PAGES = [
-  { key:'dashboard', icon:'⊞', label:'Dashboard' },
+  { key:'dashboard', icon:'⊞',  label:'Dashboard' },
   { key:'orders',    icon:'📋', label:'Orders' },
   { key:'inventory', icon:'📦', label:'Inventory' },
   { key:'stock',     icon:'🏭', label:'My Stock' },
@@ -43,6 +43,90 @@ function Badge({ status }) {
   )
 }
 
+// FIX #5: proper modal replaces prompt() for stock updates
+function StockUpdateModal({ product, branch, onClose, onSaved }) {
+  const [type, setType]     = useState('add')
+  const [bags, setBags]     = useState('')
+  const [note, setNote]     = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    const n = parseInt(bags)
+    if (!n || n <= 0) return
+    setSaving(true)
+    try {
+      const delta = type === 'add' ? n : -n
+      const newStock = Math.max(0, (product.stock_bags||0) + delta)
+      await supabase.from('branch_stock').upsert({
+        branch_name: branch, product_id: product.product_id || product.id,
+        product_name: product.product_name || product.name, stock_bags: newStock,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'branch_name,product_id' })
+      await supabase.from('branch_stock_movements').insert({
+        branch_name: branch, product_id: product.product_id || product.id,
+        product_name: product.product_name || product.name, change_bags: delta,
+        type, note: note || null, created_at: new Date().toISOString()
+      })
+      onSaved(); onClose()
+    } catch(e) { alert(e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
+      <div style={{ background:G.white,borderRadius:20,width:'100%',maxWidth:400,padding:26 }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18 }}>
+          <div>
+            <h3 style={{ margin:0,fontSize:17,fontWeight:700 }}>Update Branch Stock</h3>
+            <p style={{ margin:'4px 0 0',fontSize:12,color:G.muted }}>{branch} · {product.product_name||product.name}</p>
+          </div>
+          <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:G.muted }}>✕</button>
+        </div>
+        <p style={{ margin:'0 0 16px',fontSize:13,color:G.muted }}>
+          Current: <strong style={{ color:G.green }}>{product.stock_bags||0} bags</strong>
+        </p>
+        <div style={{ display:'flex',gap:8,marginBottom:16 }}>
+          {[['add','➕ Add'],['subtract','➖ Remove']].map(([val,label])=>(
+            <button key={val} onClick={()=>setType(val)} style={{
+              flex:1,padding:'9px',borderRadius:9,cursor:'pointer',fontSize:12,fontWeight:600,
+              border:`2px solid ${type===val?G.green:G.border}`,
+              background:type===val?G.greenLight:G.white,
+              color:type===val?G.greenDark:G.muted
+            }}>{label}</button>
+          ))}
+        </div>
+        <div style={{ marginBottom:12 }}>
+          <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:5 }}>Number of Bags</label>
+          <input type="number" min={1} value={bags} onChange={e=>setBags(e.target.value)} placeholder="Enter quantity"
+            style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box' }}
+            onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+        </div>
+        <div style={{ marginBottom:16 }}>
+          <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:5 }}>Note (optional)</label>
+          <input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="e.g. Received from HQ"
+            style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box' }}
+            onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+        </div>
+        {bags && parseInt(bags) > 0 && (
+          <div style={{ background:G.greenLight,borderRadius:10,padding:'8px 14px',marginBottom:14,display:'flex',justifyContent:'space-between',fontSize:13 }}>
+            <span style={{ color:G.greenDark }}>New stock will be:</span>
+            <strong style={{ color:G.green }}>
+              {Math.max(0,(product.stock_bags||0)+(type==='add'?parseInt(bags):-parseInt(bags)))} bags
+            </strong>
+          </div>
+        )}
+        <button onClick={save} disabled={saving||!bags} style={{
+          width:'100%',padding:12,
+          background:saving||!bags?'#9CA3AF':type==='add'?G.green:G.red,
+          color:G.white,border:'none',borderRadius:12,fontSize:14,fontWeight:700,cursor:'pointer'
+        }}>
+          {saving ? 'Saving...' : `${type==='add'?'Add':'Remove'} ${bags||0} Bags`}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function BranchDashboard() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
@@ -58,16 +142,19 @@ export default function BranchDashboard() {
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
   const [statusFilter, setSF]   = useState('all')
-  const [updateModal, setUpdate]= useState(null)
   const [showProfile, setShowProfile] = useState(false)
+  // FIX #5: proper modal state replacing prompt()
+  const [stockModal, setStockModal] = useState(null) // {product}
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
     const [oRes, pRes, bRes] = await Promise.all([
+      // FIX #7: filter orders by branch (pickup_branch or branch column)
       supabase.from('orders')
         .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
+        .or(`pickup_branch.eq.${branch},branch.eq.${branch}`)
         .order('created_at', { ascending: false }),
       supabase.from('products').select('*').eq('active', true).order('weight_kg'),
       supabase.from('branch_stock').select('*').eq('branch_name', branch),
@@ -88,7 +175,6 @@ export default function BranchDashboard() {
       delivered: o.filter(x => x.status === 'delivered').length,
     })
 
-    // Chart — last 7 days
     const now = new Date()
     const chartData = []
     for (let i = 6; i >= 0; i--) {
@@ -109,20 +195,13 @@ export default function BranchDashboard() {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o))
   }
 
-  async function updateBranchStock(productId, productName, delta, type, note) {
-    const existing = branchStock.find(b => b.product_id === productId)
-    const newStock = Math.max(0, (existing?.stock_bags || 0) + delta)
-    await supabase.from('branch_stock').upsert({
-      branch_name: branch, product_id: productId,
-      product_name: productName, stock_bags: newStock,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'branch_name,product_id' })
-    await supabase.from('branch_stock_movements').insert({
-      branch_name: branch, product_id: productId,
-      product_name: productName, change_bags: delta,
-      type, note: note || null, created_at: new Date().toISOString()
-    })
-    load()
+  async function markPaymentCollected(order) {
+    await supabase.from('orders').update({
+      payment_status: 'paid',
+      status: 'delivered',
+      notes: (order.notes ? order.notes + ' · ' : '') + `Cash collected at ${branch} branch`
+    }).eq('id', order.id)
+    setOrders(prev => prev.map(o => o.id === order.id ? { ...o, payment_status:'paid', status:'delivered' } : o))
   }
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
@@ -146,6 +225,17 @@ export default function BranchDashboard() {
           .branch-overlay { display:none!important; }
         }
       `}</style>
+
+      {/* FIX #5: render stock modal */}
+      {stockModal && (
+        <StockUpdateModal
+          product={stockModal}
+          branch={branch}
+          onClose={() => setStockModal(null)}
+          onSaved={() => { setStockModal(null); load() }}
+        />
+      )}
+
       <div className="branch-overlay" style={{ display:'none' }} onClick={()=>setCol(true)} />
       {showProfile && <ProfilePage onClose={() => setShowProfile(false)} />}
 
@@ -162,7 +252,7 @@ export default function BranchDashboard() {
         </div>
         <nav style={{ flex:1, padding:'10px 6px' }}>
           {PAGES.map(item => (
-            <button key={item.key} onClick={() => setPage(item.key)} style={{
+            <button key={item.key} onClick={() => { setPage(item.key); setCol(true) }} style={{
               width:'100%', display:'flex', alignItems:'center', gap:10,
               padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none',
               cursor:'pointer', marginBottom:2,
@@ -191,7 +281,7 @@ export default function BranchDashboard() {
           )}
           <button onClick={async()=>{ await signOut(); navigate('/login') }} style={{
             width:'100%', padding:collapsed?'8px':'8px 12px', borderRadius:10, border:'none',
-            background:'transparent', color:G.red, fontSize:12, fontWeight:600, cursor:'pointer',
+            background:G.redLight, color:G.red, fontSize:12, fontWeight:600, cursor:'pointer',
             display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:6
           }}>
             <span>↩</span>{!collapsed && 'Logout'}
@@ -201,8 +291,6 @@ export default function BranchDashboard() {
 
       {/* MAIN */}
       <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
-
-        {/* TOPBAR */}
         <header style={{ background:G.white, borderBottom:`1px solid ${G.border}`, height:56, padding:'0 22px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:10 }}>
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
             <button onClick={() => setCol(!collapsed)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:G.muted }}>☰</button>
@@ -240,9 +328,8 @@ export default function BranchDashboard() {
               ))}
             </div>
 
-            {/* Chart */}
             <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', marginBottom:20 }}>
-              <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Orders — Last 7 Days</p>
+              <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Orders — Last 7 Days ({branch})</p>
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={chart} barSize={28}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
@@ -256,9 +343,8 @@ export default function BranchDashboard() {
               </ResponsiveContainer>
             </div>
 
-            {/* Recent orders */}
             <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-              <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Recent Orders</p>
+              <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Recent Orders — {branch}</p>
               {orders.slice(0,5).map((o,i) => (
                 <div key={o.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 0', borderBottom:i<4?`1px solid ${G.border}`:'none' }}>
                   <div>
@@ -271,7 +357,7 @@ export default function BranchDashboard() {
                   </div>
                 </div>
               ))}
-              {orders.length === 0 && <p style={{ textAlign:'center', color:G.muted, fontSize:13 }}>No orders yet</p>}
+              {orders.length === 0 && <p style={{ textAlign:'center', color:G.muted, fontSize:13 }}>No orders yet for {branch}</p>}
             </div>
           </>}
 
@@ -295,10 +381,9 @@ export default function BranchDashboard() {
             </div>
 
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              {filteredOrders.map((o,i) => (
+              {filteredOrders.map((o) => (
                 <div key={o.id} style={{ background:G.white, borderRadius:14, overflow:'hidden', border:`1px solid ${G.border}`, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
                   <div style={{ display:'flex' }}>
-                    {/* Left — items */}
                     <div style={{ width:200, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'12px 14px' }}>
                       <p style={{ margin:'0 0 8px', fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase' }}>Items</p>
                       {(o.order_items||[]).map((item,idx) => (
@@ -315,7 +400,6 @@ export default function BranchDashboard() {
                         <span style={{ fontSize:13, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
                       </div>
                     </div>
-                    {/* Right — details */}
                     <div style={{ flex:1, padding:'12px 14px' }}>
                       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
                         <div>
@@ -326,20 +410,34 @@ export default function BranchDashboard() {
                       </div>
                       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:10, fontSize:12 }}>
                         <div><p style={{ margin:'0 0 1px', fontSize:10, color:G.muted, textTransform:'uppercase', fontWeight:600 }}>Customer</p><p style={{ margin:0, fontWeight:600 }}>{o.customer_name||'—'}</p></div>
-                        <div><p style={{ margin:'0 0 1px', fontSize:10, color:G.muted, textTransform:'uppercase', fontWeight:600 }}>Payment</p><p style={{ margin:0, fontWeight:600, textTransform:'uppercase' }}>{o.payment_method||'—'} · <span style={{ color:o.payment_status==='paid'?G.green:G.amber }}>{o.payment_status}</span></p></div>
+                        <div>
+                          <p style={{ margin:'0 0 1px', fontSize:10, color:G.muted, textTransform:'uppercase', fontWeight:600 }}>Payment</p>
+                          <p style={{ margin:0, fontWeight:600, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
+                          <span style={{ fontSize:10, fontWeight:600, padding:'1px 7px', borderRadius:10,
+                            background: o.payment_status==='paid' ? G.greenLight : G.amberLight,
+                            color: o.payment_status==='paid' ? G.green : G.amber }}>
+                            {o.payment_status==='paid' ? '✅ Paid' : '⏳ Pending'}
+                          </span>
+                        </div>
                         <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 1px', fontSize:10, color:G.muted, textTransform:'uppercase', fontWeight:600 }}>Address</p><p style={{ margin:0 }}>{o.delivery_address||'—'}</p></div>
                       </div>
+                      {/* FIX #14: added payment collection button for branch orders */}
                       <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
                         {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
                         {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
                         {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
                         {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
+                        {o.payment_method==='cod' && o.payment_status!=='paid' && (
+                          <button onClick={()=>markPaymentCollected(o)} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
+                            💵 Collect Cash
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
                 </div>
               ))}
-              {filteredOrders.length === 0 && <div style={{ textAlign:'center', padding:40, color:G.muted, background:G.white, borderRadius:14 }}>No orders found</div>}
+              {filteredOrders.length === 0 && <div style={{ textAlign:'center', padding:40, color:G.muted, background:G.white, borderRadius:14 }}>No orders found for {branch}</div>}
             </div>
           </>}
 
@@ -375,13 +473,10 @@ export default function BranchDashboard() {
             </div>
           )}
 
-          {/* ── WALK-IN BILLING ── */}
           {page === 'walkin' && <WalkInBilling branch={branch} />}
-
-          {/* ── PICKUP QUEUE ── */}
           {page === 'pickup' && <PickupQueue defaultBranch={branch} />}
 
-          {/* ── MY BRANCH STOCK ── */}
+          {/* ── MY BRANCH STOCK ── FIX #5: no more prompt() */}
           {page === 'stock' && (
             <div>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:20 }}>
@@ -391,7 +486,9 @@ export default function BranchDashboard() {
                 </div>
                 <div style={{ background:G.white, borderRadius:14, padding:'16px 18px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${G.red}` }}>
                   <p style={{ margin:'0 0 6px', fontSize:12, color:G.muted }}>Low Stock Products</p>
-                  <p style={{ margin:0, fontSize:26, fontWeight:800, color:G.red }}>{products.filter(p=>{ const bs=branchStock.find(b=>b.product_id===p.id); return (bs?.stock_bags||0)<=p.low_stock_threshold }).length}</p>
+                  <p style={{ margin:0, fontSize:26, fontWeight:800, color:G.red }}>
+                    {products.filter(p=>{ const bs=branchStock.find(b=>b.product_id===p.id); return (bs?.stock_bags||0)<=p.low_stock_threshold }).length}
+                  </p>
                 </div>
               </div>
 
@@ -417,12 +514,15 @@ export default function BranchDashboard() {
                         <div style={{ height:'100%', width:`${pct}%`, background:isLow?G.red:stock>p.low_stock_threshold*2?G.green:G.amber, borderRadius:3 }} />
                       </div>
                       {isLow && <p style={{ margin:'0 0 10px', fontSize:11, color:G.red, fontWeight:600 }}>⚠ Stock running low — request refill from HQ</p>}
+                      {/* FIX #5: proper modal buttons instead of prompt() */}
                       <div style={{ display:'flex', gap:6 }}>
-                        <button onClick={()=>{ const n=prompt(`Add bags to ${p.name} at ${branch}:`); if(n&&parseInt(n)>0) updateBranchStock(p.id,p.name,parseInt(n),'add','Stock added') }}
+                        <button
+                          onClick={() => setStockModal(bs || { product_id: p.id, product_name: p.name, stock_bags: 0 })}
                           style={{ flex:1, padding:'7px', background:G.greenLight, border:'none', borderRadius:8, fontSize:12, fontWeight:700, color:G.green, cursor:'pointer' }}>
                           + Add Stock
                         </button>
-                        <button onClick={()=>{ const n=prompt(`Remove bags from ${p.name} at ${branch}:`); if(n&&parseInt(n)>0) updateBranchStock(p.id,p.name,-parseInt(n),'sale','Dispatched') }}
+                        <button
+                          onClick={() => setStockModal(bs || { product_id: p.id, product_name: p.name, stock_bags: 0 })}
                           style={{ flex:1, padding:'7px', background:G.amberLight, border:'none', borderRadius:8, fontSize:12, fontWeight:700, color:G.amber, cursor:'pointer' }}>
                           − Remove
                         </button>
