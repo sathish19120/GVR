@@ -9,6 +9,21 @@ const G = {
   border:'#E5E7EB',text:'#111827',muted:'#6B7280',white:'#fff',surface:'#F4F6F3'
 }
 
+// FIX #6: MAX-based order number — no duplicates when orders are deleted
+async function getNextWalkInNumber() {
+  const { data } = await supabase
+    .from('orders')
+    .select('order_number')
+    .like('order_number', 'GVR-WI-%')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const lastNum = data?.order_number
+    ? parseInt(data.order_number.replace('GVR-WI-', ''), 10) || 0
+    : 0
+  return `GVR-WI-${String(lastNum + 1).padStart(4, '0')}`
+}
+
 export default function WalkInBilling({ branch }) {
   const { user } = useAuth()
   const [products, setProducts]   = useState([])
@@ -42,22 +57,23 @@ export default function WalkInBilling({ branch }) {
     if (totalBags === 0) return
     setPlacing(true)
     try {
-      const { count } = await supabase.from('orders').select('*',{count:'exact',head:true})
-      const orderNumber = `GVR-WI-${String((count||0)+1).padStart(4,'0')}`
+      // FIX #6: use MAX-based order number
+      const orderNumber = await getNextWalkInNumber()
+
       const { data: order, error: oErr } = await supabase.from('orders').insert({
-        order_number:   orderNumber,
-        customer_id:    null,
-        customer_name:  custName || 'Walk-in Customer',
+        order_number:     orderNumber,
+        customer_id:      null,
+        customer_name:    custName || 'Walk-in Customer',
         delivery_address: `Walk-in — ${branch} Branch`,
-        total_amount:   grand,
-        status:         'delivered',
-        order_type:     'walkin',
-        pickup_branch:  branch,
-        pickup_ready:   true,
-        payment_status: 'paid',
-        payment_method: payMethod,
-        notes:          `Walk-in billing by ${user?.full_name || user?.username}${custPhone ? ` · Phone: ${custPhone}` : ''}`,
-        created_at:     new Date().toISOString()
+        total_amount:     grand,
+        status:           'delivered',
+        order_type:       'walkin',
+        pickup_branch:    branch,
+        pickup_ready:     true,
+        payment_status:   'paid',
+        payment_method:   payMethod,
+        notes:            `Walk-in billing by ${user?.full_name || user?.username}${custPhone ? ` · Phone: ${custPhone}` : ''}`,
+        created_at:       new Date().toISOString()
       }).select().single()
       if (oErr || !order) throw new Error(oErr?.message || 'Failed')
 
@@ -83,6 +99,7 @@ export default function WalkInBilling({ branch }) {
           })
         }
       }
+
       setSuccess({ orderNumber, items: products.filter(p=>cart[p.id]).map(p=>({...p,qty:cart[p.id]})), grand, payMethod })
       setCart({}); setCustName(''); setCustPhone(''); setPay('cash')
     } catch(e) { alert('Error: ' + e.message) }
@@ -121,7 +138,7 @@ export default function WalkInBilling({ branch }) {
         <div style={{ background:G.greenLight, border:`1px solid #97C459`, borderRadius:14, padding:16, marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
           <div>
             <p style={{ margin:'0 0 3px', fontWeight:700, fontSize:15, color:G.greenDark }}>✅ Billed — {success.orderNumber}</p>
-            <p style={{ margin:0, fontSize:13, color:G.green }}>{totalBags === 0 ? `${success.items.reduce((s,i)=>s+i.qty,0)} bags · ₹${success.grand}` : ''}</p>
+            <p style={{ margin:0, fontSize:13, color:G.green }}>{success.items.reduce((s,i)=>s+i.qty,0)} bags · ₹{success.grand}</p>
           </div>
           <div style={{ display:'flex', gap:8 }}>
             <button onClick={() => printReceipt(success)} style={{ padding:'8px 16px', background:G.green, color:G.white, border:'none', borderRadius:9, fontSize:13, fontWeight:700, cursor:'pointer' }}>🖨 Print Receipt</button>
@@ -131,7 +148,6 @@ export default function WalkInBilling({ branch }) {
       )}
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 300px', gap:16, alignItems:'start' }}>
-
         {/* Products */}
         <div>
           <p style={{ margin:'0 0 12px', fontSize:14, fontWeight:700, color:G.text }}>Select Products</p>
@@ -158,7 +174,6 @@ export default function WalkInBilling({ branch }) {
         {/* Bill panel */}
         <div style={{ background:G.white, borderRadius:14, padding:18, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', position:'sticky', top:70 }}>
           <p style={{ margin:'0 0 14px', fontWeight:700, fontSize:15 }}>Bill Summary</p>
-
           {totalBags === 0 ? (
             <p style={{ textAlign:'center', color:G.muted, fontSize:13, padding:'20px 0' }}>No items added yet</p>
           ) : (
