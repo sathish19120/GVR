@@ -38,6 +38,7 @@ const PAGES = [
   { key:'suppliers',   icon:'🏭', label:'Suppliers' },
   { key:'branchstock', icon:'📊', label:'Branch Stock' }, // FIX #8: unique icon
   { key:'home',        icon:'🏠', label:'Home' },         // FIX #9: added to PAGES so it's reachable
+  { key:'walkin',      icon:'🧾', label:'Walk-in Billing' }, // FIX #6: now reachable from sidebar
 ]
 
 function Badge({ status }) {
@@ -379,6 +380,29 @@ export default function Dashboard() {
   }
 
   async function updateOrderStatus(id, status) {
+    // FIX #15: confirmation before cancellation
+    if (status === 'cancelled') {
+      if (!window.confirm('Cancel this order? This cannot be undone.')) return
+      // FIX #4: restore stock — DB trigger handles this automatically
+      // but we also do it in JS as a safety net for old deployments
+      const order = orders.find(o => o.id === id)
+      if (order?.order_items?.length) {
+        for (const item of order.order_items) {
+          if (!item.product_id) continue
+          const product = products.find(p => p.id === item.product_id)
+          if (product) {
+            await supabase.from('products').update({
+              stock_bags: product.stock_bags + item.quantity
+            }).eq('id', item.product_id)
+          }
+        }
+        // Refresh products state to reflect restored stock
+        setProducts(prev => prev.map(p => {
+          const item = order.order_items.find(i => i.product_id === p.id)
+          return item ? { ...p, stock_bags: p.stock_bags + item.quantity } : p
+        }))
+      }
+    }
     await supabase.from('orders').update({ status }).eq('id', id)
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o))
   }
@@ -1039,6 +1063,8 @@ export default function Dashboard() {
           {page==='home'        && <HomePage />}
           {page==='suppliers'   && <SupplierPage />}
           {page==='branchstock' && <BranchStockPage />}
+          {/* FIX #6: WalkInBilling now receives branch prop from profile */}
+          {page==='walkin'      && <WalkInBilling branch={profile?.branch || 'Hyderabad'} />}
 
           {/* BRANCHES */}
           {page==='branches' && <>
