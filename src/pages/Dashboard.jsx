@@ -317,17 +317,6 @@ export default function Dashboard() {
 
   useEffect(() => { load() }, [filter])
 
-  // FIX #10: wire up mobile overlay — toggle body class when sidebar opens
-  useEffect(() => {
-    const overlay = document.querySelector('.dash-overlay')
-    if (!overlay) return
-    if (!collapsed) {
-      overlay.style.display = 'block'
-    } else {
-      overlay.style.display = 'none'
-    }
-  }, [collapsed])
-
   // Auto refresh every 30 seconds
   useEffect(() => {
     if (!autoRefresh || page !== 'orders') return
@@ -515,7 +504,7 @@ export default function Dashboard() {
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
       {/* FIX #10: mobile overlay — display toggled via useEffect above */}
-      <div className="dash-overlay" style={{ display:'none', position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:199 }} onClick={() => setCollapsed(true)} />
+      {/* Overlay removed — not needed on web */}
 
       {/* TOP NAV MODALS */}
       {topModal && (
