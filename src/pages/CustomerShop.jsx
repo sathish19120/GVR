@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
@@ -323,6 +323,7 @@ export default function CustomerShop() {
   const [pickupTime, setPickupTime]     = useState('')
   const [utrRef, setUtrRef]       = useState('')
   const [placing, setPlacing]     = useState(false)
+  const placingRef                = useRef(false)
   const [orderNum, setOrderNum]   = useState('')
   const [myOrders, setMyOrders]   = useState([])
   const [reviews, setReviews]     = useState({})
@@ -572,116 +573,210 @@ export default function CustomerShop() {
   }
 
   async function placeOrder() {
-    if (orderType === 'delivery' && !address.trim()) { setError('Please enter delivery address'); return }
-    if (orderType === 'pickup' && !pickupBranch) { setError('Please select a pickup branch'); return }
-    if (payMethod === 'upi' && !utrRef.trim()) { setError('Please enter UPI transaction ID after payment'); return }
-    setError(''); setPlacing(true)
+    // Prevent double-click / repeated submit from creating duplicate orders
+    if (placingRef.current || placing) return
+
+    if (orderType === 'delivery' && !address.trim()) {
+      setError('Please enter delivery address')
+      return
+    }
+
+    if (orderType === 'pickup' && !pickupBranch) {
+      setError('Please select a pickup branch')
+      return
+    }
+
+    if (payMethod === 'upi' && !utrRef.trim()) {
+      setError('Please enter UPI transaction ID after payment')
+      return
+    }
+
+    placingRef.current = true
+    setError('')
+    setPlacing(true)
+
+    let order = null
+
     try {
-      // FIX #13: check wallet balance and deduct from order total
+      // Check wallet balance and deduct from order total
       let walletDeduction = 0
       let finalTotal = grand
+
       if (user?.id) {
-        const { data: prof } = await supabase.from('profiles').select('wallet_balance,referred_by,total_orders').eq('id', user.id).single()
-        const walletBal = Number(prof?.wallet_balance || 0)
-        if (walletBal > 0) {
-          walletDeduction = Math.min(walletBal, grand) // use up to full wallet balance
-          finalTotal = Math.max(0, grand - walletDeduction)
+        const { data: prof, error: profErr } = await supabase
+          .from('profiles')
+          .select('wallet_balance,referred_by,total_orders')
+          .eq('id', user.id)
+          .single()
+
+        if (!profErr && prof) {
+          const walletBal = Number(prof.wallet_balance || 0)
+          if (walletBal > 0) {
+            walletDeduction = Math.min(walletBal, grand)
+            finalTotal = Math.max(0, grand - walletDeduction)
+          }
         }
       }
 
       const orderNumber = await getNextOrderNumber('GVR')
-      const { data: order, error: oErr } = await supabase.from('orders').insert({
-        order_number:     orderNumber,
-        customer_id:      user?.id || null,
-        customer_name:    user?.full_name || user?.username || 'Customer',
-        delivery_address: orderType==='pickup' ? `Pickup: ${pickupBranch}` : address,
-        total_amount:     finalTotal,
-        status:           'pending',
-        order_type:       orderType,
-        pickup_branch:    orderType==='pickup' ? pickupBranch : null,
-        pickup_time:      orderType==='pickup' ? pickupTime : null,
-        payment_status:   utrRef.trim() ? 'verification_pending' : 'pending',
-        payment_method:   payMethod,
-        notes:            [
-          utrRef.trim() ? `Payment Ref: ${utrRef.trim()}` : null,
-          walletDeduction > 0 ? `Wallet used: ₹${walletDeduction}` : null
-        ].filter(Boolean).join(' · ') || null,
-        created_at:       new Date().toISOString()
-      }).select().single()
-      if (oErr || !order) throw new Error(oErr?.message || 'Failed to create order')
 
+      const { data: newOrder, error: oErr } = await supabase
+        .from('orders')
+        .insert({
+          order_number:     orderNumber,
+          customer_id:      user?.id || null,
+          customer_name:    user?.full_name || user?.username || 'Customer',
+          delivery_address: orderType === 'pickup' ? `Pickup: ${pickupBranch}` : address,
+          total_amount:     finalTotal,
+          status:           'pending',
+          order_type:       orderType,
+          pickup_branch:    orderType === 'pickup' ? pickupBranch : null,
+          pickup_time:      orderType === 'pickup' ? pickupTime : null,
+          payment_status:   utrRef.trim() ? 'verification_pending' : 'pending',
+          payment_method:   payMethod,
+          notes:            [
+            utrRef.trim() ? `Payment Ref: ${utrRef.trim()}` : null,
+            walletDeduction > 0 ? `Wallet used: ₹${walletDeduction}` : null
+          ].filter(Boolean).join(' · ') || null,
+          created_at:       new Date().toISOString()
+        })
+        .select()
+        .single()
+
+      if (oErr || !newOrder) {
+        throw new Error(oErr?.message || 'Failed to create order')
+      }
+
+      order = newOrder
+
+      // Critical step: create order items.
+      // Do NOT reduce product stock here. Stock is deducted only when admin confirms the order.
       for (const p of products.filter(p => cart[p.id])) {
         const { error: itemErr } = await supabase.from('order_items').insert({
-          order_id: order.id,
-          product_id: p.id,
-          name: p.name,
-          weight_kg: p.weight_kg,
-          quantity: cart[p.id],
+          order_id:       order.id,
+          product_id:     p.id,
+          name:           p.name,
+          weight_kg:      p.weight_kg,
+          quantity:       cart[p.id],
           price_per_unit: p.price_per_bag
         })
 
-        if (itemErr) throw itemErr
+        if (itemErr) {
+          throw itemErr
+        }
       }
 
+      // Non-critical updates below must not fail the completed order.
+      // If any of these fail, the order still remains created and customer sees success.
       if (user?.id) {
-        // FIX #13: deduct wallet balance and record transaction
         if (walletDeduction > 0) {
-          const { data: prof } = await supabase.from('profiles').select('wallet_balance').eq('id', user.id).single()
-          const newBal = Math.max(0, Number(prof?.wallet_balance || 0) - walletDeduction)
-          await supabase.from('profiles').update({ wallet_balance: newBal }).eq('id', user.id)
-          await supabase.from('wallet_transactions').insert({
-            user_id:    user.id,
-            amount:     walletDeduction,
-            type:       'debit',
-            reason:     `Wallet applied to order ${orderNumber}`,
-            order_id:   order.id,
-            created_at: new Date().toISOString()
-          })
-        }
+          try {
+            const { data: prof } = await supabase
+              .from('profiles')
+              .select('wallet_balance')
+              .eq('id', user.id)
+              .single()
 
-        // Update total_spent and total_orders for loyalty points
-        const { error: statsErr } = await supabase.rpc('increment_customer_stats', {
-          user_id: user.id,
-          order_amount: finalTotal
-        })
+            const newBal = Math.max(0, Number(prof?.wallet_balance || 0) - walletDeduction)
 
-        if (statsErr) {
-          const { data: statsProfile } = await supabase
-            .from('profiles')
-            .select('total_spent,total_orders')
-            .eq('id', user.id)
-            .single()
+            await supabase
+              .from('profiles')
+              .update({ wallet_balance: newBal })
+              .eq('id', user.id)
 
-          if (statsProfile) {
-            await supabase.from('profiles').update({
-              total_spent: (statsProfile.total_spent || 0) + finalTotal,
-              total_orders: (statsProfile.total_orders || 0) + 1
-            }).eq('id', user.id)
+            await supabase.from('wallet_transactions').insert({
+              user_id:    user.id,
+              amount:     walletDeduction,
+              type:       'debit',
+              reason:     `Wallet applied to order ${orderNumber}`,
+              order_id:   order.id,
+              created_at: new Date().toISOString()
+            })
+          } catch (walletErr) {
+            console.error('Wallet update failed:', walletErr)
           }
         }
 
-        // FIX #3: credit referral reward on first order
-        // Check if this user was referred and this is their first order
-        const { data: profCheck } = await supabase.from('profiles')
-          .select('referred_by,total_orders').eq('id', user.id).single()
-        if (profCheck?.referred_by && (profCheck.total_orders || 0) <= 1) {
-          await supabase.rpc('credit_referral_reward', {
-            new_customer_id: user.id,
-            referrer_code:   profCheck.referred_by
+        try {
+          const { error: statsErr } = await supabase.rpc('increment_customer_stats', {
+            user_id: user.id,
+            order_amount: finalTotal
           })
+
+          if (statsErr) {
+            const { data: statsProfile } = await supabase
+              .from('profiles')
+              .select('total_spent,total_orders')
+              .eq('id', user.id)
+              .single()
+
+            if (statsProfile) {
+              await supabase
+                .from('profiles')
+                .update({
+                  total_spent: Number(statsProfile.total_spent || 0) + finalTotal,
+                  total_orders: Number(statsProfile.total_orders || 0) + 1
+                })
+                .eq('id', user.id)
+            }
+          }
+        } catch (statsErr) {
+          console.error('Customer stats update failed:', statsErr)
+        }
+
+        try {
+          const { data: profCheck } = await supabase
+            .from('profiles')
+            .select('referred_by,total_orders')
+            .eq('id', user.id)
+            .single()
+
+          if (profCheck?.referred_by && Number(profCheck.total_orders || 0) <= 1) {
+            await supabase.rpc('credit_referral_reward', {
+              new_customer_id: user.id,
+              referrer_code:   profCheck.referred_by
+            })
+          }
+        } catch (referralErr) {
+          console.error('Referral reward failed:', referralErr)
         }
       }
 
-      // FIX #14: clear this user's cart key from localStorage
       try { localStorage.removeItem(cartKey) } catch {}
+
       try {
-        if (Notification.permission === 'granted') {
-          new Notification('🌾 Order Placed! ✅', { body: `Order ${orderNumber} for ₹${grand} confirmed.` })
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('🌾 Order Placed! ✅', {
+            body: `Order ${orderNumber} for ₹${finalTotal} received.`
+          })
         }
-      } catch(e) {}
-      setOrderNum(orderNumber); setCart({}); setAddress(''); setStep('success')
-    } catch(e) { setError(e.message || 'Failed to place order') }
-    finally { setPlacing(false) }
+      } catch (notificationErr) {
+        console.error('Notification failed:', notificationErr)
+      }
+
+      setOrderNum(orderNumber)
+      setCart({})
+      setAddress('')
+      setUtrRef('')
+      setStep('success')
+    } catch (e) {
+      console.error('Place order failed:', e)
+
+      // Roll back only if the critical item insert failed after the order was created.
+      if (order?.id) {
+        try {
+          await supabase.from('order_items').delete().eq('order_id', order.id)
+          await supabase.from('orders').delete().eq('id', order.id)
+        } catch (rollbackErr) {
+          console.error('Order rollback failed:', rollbackErr)
+        }
+      }
+
+      setError(e.message || 'Failed to place order')
+    } finally {
+      placingRef.current = false
+      setPlacing(false)
+    }
   }
 
   const UPI_ID = import.meta.env.VITE_UPI_ID || '19120sathish.ss1@ybl'
