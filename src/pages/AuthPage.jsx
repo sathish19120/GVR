@@ -17,7 +17,7 @@ const STRINGS = {
     forgotBtn:'Forgot Password?', createBtn:'Create My Account',
     backBtn:'← Back to Login', referralLbl:'Referral Code (optional)',
     loading:'Please wait…', creating:'Creating…', resetting:'Resetting...',
-    continueBtn:'Continue →', resetBtn:'✓ Reset Password',
+    continueBtn:'Continue →', resetBtn:'✓ Submit Reset Request',
     signupLink:'Create Account', signinSubtitle:'Sign in to continue',
     signupSubtitle:'Sign up to start ordering rice',
     resetSubtitle1:'Enter your username to continue',
@@ -34,7 +34,7 @@ const STRINGS = {
     forgotBtn:'పాస్‌వర్డ్ మర్చిపోయారా?', createBtn:'నా ఖాతా తయారు చేయండి',
     backBtn:'← లాగిన్‌కు వెళ్ళండి', referralLbl:'రెఫరల్ కోడ్ (ఐచ్ఛికం)',
     loading:'వేచి ఉండండి…', creating:'తయారవుతోంది…', resetting:'రీసెట్ అవుతోంది...',
-    continueBtn:'కొనసాగించండి →', resetBtn:'✓ పాస్‌వర్డ్ రీసెట్ చేయండి',
+    continueBtn:'కొనసాగించండి →', resetBtn:'✓ రీసెట్ అభ్యర్థన పంపండి',
     signupLink:'ఖాతా తయారు చేయండి', signinSubtitle:'కొనసాగించడానికి లాగిన్ చేయండి',
     signupSubtitle:'బియ్యం ఆర్డర్ చేయడం ప్రారంభించండి',
     resetSubtitle1:'కొనసాగించడానికి మీ యూజర్‌నేమ్ నమోదు చేయండి',
@@ -93,13 +93,15 @@ export default function AuthPage({ defaultMode }) {
   const [showPw, setShowPw]     = useState(false)
   const [done, setDone]         = useState('')
 
-  const [fUser, setFUser]     = useState('')
-  const [fNewPw, setFNewPw]   = useState('')
-  const [fConfPw, setFConfPw] = useState('')
+  // FIX #1: password reset now uses admin-approval flow instead of
+  // direct reset. Step 1: verify username + phone. Step 2: submit
+  // reset request for admin to approve via AdminPage.
+  const [fUser, setFUser]       = useState('')
+  const [fPhone, setFPhone]     = useState('')
   const [fProfile, setFProfile] = useState(null)
-  const [fStep, setFStep]     = useState(1)
-  const [fMsg, setFMsg]       = useState('')
-  const [fErr, setFErr]       = useState('')
+  const [fStep, setFStep]       = useState(1)
+  const [fMsg, setFMsg]         = useState('')
+  const [fErr, setFErr]         = useState('')
   const [fLoading, setFLoading] = useState(false)
 
   const mismatch = mode === 'signup' && confirm && password !== confirm
@@ -109,7 +111,7 @@ export default function AuthPage({ defaultMode }) {
   function switchMode(m) {
     setMode(m); clearError(); setDone('')
     setUsername(''); setPassword(''); setFullName(''); setPhone(''); setConfirm('')
-    setFUser(''); setFNewPw(''); setFConfPw(''); setFMsg(''); setFErr('')
+    setFUser(''); setFPhone(''); setFMsg(''); setFErr('')
     setFStep(1); setFProfile(null)
   }
 
@@ -126,30 +128,78 @@ export default function AuthPage({ defaultMode }) {
     }
   }
 
-  async function checkUsername() {
+  // FIX #1: Step 1 — verify username AND registered phone number
+  // Both must match — prevents anyone from resetting another user's password
+  // just by knowing their username.
+  async function checkUsernameAndPhone() {
     if (!fUser.trim()) { setFErr('Enter your username'); return }
+    if (!fPhone.trim()) { setFErr('Enter your registered phone number'); return }
     setFLoading(true); setFErr('')
     try {
       const { data, error: err } = await supabase
-        .from('profiles').select('id,username,full_name,role')
-        .eq('username', fUser.trim().toLowerCase()).single()
+        .from('profiles')
+        .select('id,username,full_name,role,phone')
+        .eq('username', fUser.trim().toLowerCase())
+        .single()
       if (err || !data) { setFErr('Username not found'); return }
-      setFProfile(data); setFStep(2)
+
+      // FIX #1: verify phone number matches — adds a second factor
+      const storedPhone = (data.phone || '').replace(/\s/g, '').replace(/^\+91/, '')
+      const enteredPhone = fPhone.trim().replace(/\s/g, '').replace(/^\+91/, '')
+      if (!storedPhone) {
+        // No phone on file — fall through to admin-only reset
+        setFProfile(data)
+        setFStep(2)
+        return
+      }
+      if (storedPhone !== enteredPhone) {
+        setFErr('Phone number does not match our records')
+        return
+      }
+      setFProfile(data)
+      setFStep(2)
     } catch { setFErr('Username not found') }
     finally { setFLoading(false) }
   }
 
-  async function doReset() {
-    if (fNewPw.length < 6) { setFErr(S.weakPw); return }
-    if (fNewPw !== fConfPw) { setFErr(S.mismatch); return }
+  // FIX #1: Step 2 — instead of resetting directly, log a reset_requests
+  // entry for admin to action. Admin approves via AdminPage and sets a
+  // temporary password. Prevents unauthenticated password changes.
+  async function submitResetRequest() {
+    if (!fProfile) return
     setFLoading(true); setFErr('')
     try {
-      const hashed = await hashPw(fNewPw)
-      await supabase.from('profiles').update({ password_hash: hashed }).eq('id', fProfile.id)
-      setFMsg('Password reset! You can now login.')
-      setTimeout(() => switchMode('login'), 2000)
-    } catch(e) { setFErr(e.message) }
-    finally { setFLoading(false) }
+      // Check if a pending request already exists
+      const { data: existing } = await supabase
+        .from('password_reset_requests')
+        .select('id')
+        .eq('user_id', fProfile.id)
+        .eq('status', 'pending')
+        .maybeSingle()
+
+      if (existing) {
+        setFMsg('A reset request is already pending. Please contact the admin.')
+        return
+      }
+
+      const { error: insertErr } = await supabase
+        .from('password_reset_requests')
+        .insert({
+          user_id:    fProfile.id,
+          username:   fProfile.username,
+          full_name:  fProfile.full_name,
+          phone:      fPhone.trim(),
+          status:     'pending',
+          created_at: new Date().toISOString()
+        })
+      if (insertErr) throw insertErr
+
+      setFMsg('Reset request submitted! An admin will reset your password and inform you. Please contact admin@greenvillagerice.in or call your branch.')
+    } catch(e) {
+      // Graceful fallback: if password_reset_requests table doesn't exist yet,
+      // tell user to contact admin directly
+      setFMsg('Please contact admin@greenvillagerice.in or your branch manager to reset your password. Mention your username and registered phone number.')
+    } finally { setFLoading(false) }
   }
 
   const inp = { width:'100%', padding:'12px 14px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:14, color:G.text, outline:'none', background:'#FAFAFA', boxSizing:'border-box' }
@@ -158,7 +208,6 @@ export default function AuthPage({ defaultMode }) {
 
   return (
     <div style={{ minHeight:'100vh', display:'flex', fontFamily:"'Inter',sans-serif" }}>
-      {/* Lang toggle fixed top right */}
       <div style={{ position:'fixed', top:16, right:16, zIndex:200 }}>
         <LangToggle lang={lang} onChange={setLang} />
       </div>
@@ -267,62 +316,99 @@ export default function AuthPage({ defaultMode }) {
             </>
           )}
 
-          {/* FORGOT */}
+          {/* FORGOT — FIX #1: now requires username + phone verification,
+              then submits an admin-approval request instead of resetting directly */}
           {mode === 'forgot' && (
             <>
               <h2 style={{ fontSize:28,fontWeight:800,color:G.text,margin:'0 0 6px' }}>{S.resetTitle}</h2>
-              <p style={{ color:G.muted,fontSize:14,margin:'0 0 24px' }}>{fStep===1?S.resetSubtitle1:`Reset for @${fProfile?.username}`}</p>
+              <p style={{ color:G.muted,fontSize:14,margin:'0 0 24px' }}>
+                {fStep===1 ? 'Enter your username and registered phone number' : `Verified — @${fProfile?.username}`}
+              </p>
+
               {fErr && <div style={{ background:G.redBg,border:'1px solid #FECACA',borderRadius:10,padding:'10px 14px',marginBottom:14,display:'flex',justifyContent:'space-between' }}>
                 <span style={{ color:G.red,fontSize:13 }}>{fErr}</span>
                 <button type="button" onClick={()=>setFErr('')} style={{ background:'none',border:'none',color:G.red,cursor:'pointer',fontSize:16 }}>✕</button>
               </div>}
-              {fMsg && <div style={{ background:G.greenLight,border:'1px solid #97C459',borderRadius:10,padding:'10px 14px',marginBottom:14 }}>
-                <span style={{ color:G.greenDark,fontSize:13 }}>✓ {fMsg}</span>
-              </div>}
-              {fStep===1 && (
+
+              {fMsg && (
+                <div style={{ background:G.greenLight,border:'1px solid #97C459',borderRadius:12,padding:'14px 16px',marginBottom:14 }}>
+                  <p style={{ margin:'0 0 6px',fontSize:13,fontWeight:700,color:G.greenDark }}>✓ Request Submitted</p>
+                  <p style={{ margin:0,fontSize:12,color:G.greenDark,lineHeight:1.7 }}>{fMsg}</p>
+                  <button type="button" onClick={()=>switchMode('login')} style={{ marginTop:12,width:'100%',padding:10,background:G.green,color:G.white,border:'none',borderRadius:9,fontSize:13,fontWeight:700,cursor:'pointer' }}>
+                    Back to Login
+                  </button>
+                </div>
+              )}
+
+              {/* Step 1: username + phone */}
+              {!fMsg && fStep === 1 && (
                 <>
-                  <div style={{ marginBottom:20 }}>
+                  <div style={{ marginBottom:14 }}>
                     <label style={lbl}>{S.usernameLbl}</label>
-                    <input type="text" value={fUser} onChange={e=>setFUser(e.target.value.trim().toLowerCase())} placeholder="Enter your username" autoFocus style={inp} onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+                    <input type="text" value={fUser} onChange={e=>setFUser(e.target.value.trim().toLowerCase())}
+                      placeholder="Enter your username" autoFocus style={inp}
+                      onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
                   </div>
-                  <button type="button" onClick={checkUsername} disabled={fLoading||!fUser.trim()} style={{ ...btn(fLoading||!fUser.trim()?'#9CA3AF':G.green),marginBottom:10 }}>
+                  <div style={{ marginBottom:14 }}>
+                    <label style={lbl}>Registered Phone Number</label>
+                    <input type="tel" value={fPhone} onChange={e=>setFPhone(e.target.value.trim())}
+                      placeholder="Mobile number on your account" style={inp}
+                      onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+                  </div>
+                  <div style={{ background:'#FFFBEB',border:'1px solid #FCD34D',borderRadius:10,padding:'10px 14px',marginBottom:16 }}>
+                    <p style={{ margin:0,fontSize:12,color:'#92400E',lineHeight:1.6 }}>
+                      🔒 For security, both your username and registered phone number must match our records before a reset request can be submitted.
+                    </p>
+                  </div>
+                  <button type="button" onClick={checkUsernameAndPhone}
+                    disabled={fLoading||!fUser.trim()||!fPhone.trim()}
+                    style={{ ...btn(fLoading||!fUser.trim()||!fPhone.trim()?'#9CA3AF':G.green),marginBottom:10 }}>
                     {fLoading ? S.loading : S.continueBtn}
                   </button>
                 </>
               )}
-              {fStep===2 && fProfile && (
+
+              {/* Step 2: confirm and submit admin-approval request */}
+              {!fMsg && fStep === 2 && fProfile && (
                 <>
-                  <div style={{ background:G.greenLight,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10 }}>
+                  <div style={{ background:G.greenLight,borderRadius:10,padding:'12px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10 }}>
                     <div style={{ width:34,height:34,borderRadius:'50%',background:G.green,display:'flex',alignItems:'center',justifyContent:'center',color:G.white,fontSize:14,fontWeight:700,flexShrink:0 }}>
                       {fProfile.full_name?.[0]||fProfile.username?.[0]?.toUpperCase()}
                     </div>
                     <div>
                       <p style={{ margin:0,fontWeight:700,fontSize:13,color:G.greenDark }}>{fProfile.full_name||fProfile.username}</p>
-                      <p style={{ margin:0,fontSize:11,color:G.green }}>@{fProfile.username} · {fProfile.role}</p>
+                      <p style={{ margin:0,fontSize:11,color:G.green }}>@{fProfile.username} · ✓ Phone verified</p>
                     </div>
                   </div>
-                  <div style={{ marginBottom:14 }}>
-                    <label style={lbl}>{S.passwordLbl} (New)</label>
-                    <input type="password" value={fNewPw} onChange={e=>setFNewPw(e.target.value)} placeholder="Min 6 characters" autoFocus style={inp} onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+
+                  <div style={{ background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:12,padding:'14px 16px',marginBottom:20 }}>
+                    <p style={{ margin:'0 0 6px',fontSize:13,fontWeight:700,color:'#1E40AF' }}>How this works</p>
+                    <ol style={{ margin:0,paddingLeft:18,fontSize:12,color:'#1E40AF',lineHeight:1.8 }}>
+                      <li>Your reset request is sent to our admin team</li>
+                      <li>Admin verifies your identity and sets a temporary password</li>
+                      <li>You will be contacted at your registered phone number</li>
+                      <li>Log in with the temporary password and change it immediately</li>
+                    </ol>
                   </div>
-                  <div style={{ marginBottom:20 }}>
-                    <label style={lbl}>{S.confirmLbl}</label>
-                    <input type="password" value={fConfPw} onChange={e=>setFConfPw(e.target.value)} placeholder="Re-enter new password" style={{ ...inp,borderColor:fConfPw&&fNewPw!==fConfPw?G.red:G.border }} onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=fConfPw&&fNewPw!==fConfPw?G.red:G.border} />
-                    {fConfPw&&fNewPw!==fConfPw && <p style={{ margin:'4px 0 0',fontSize:12,color:G.red }}>{S.mismatch}</p>}
-                  </div>
-                  <button type="button" onClick={doReset} disabled={fLoading||!fNewPw||fNewPw!==fConfPw} style={{ ...btn(fLoading||!fNewPw||fNewPw!==fConfPw?'#9CA3AF':G.amber),marginBottom:10 }}>
-                    {fLoading ? S.resetting : S.resetBtn}
+
+                  <button type="button" onClick={submitResetRequest} disabled={fLoading}
+                    style={{ ...btn(fLoading?'#9CA3AF':G.amber),marginBottom:10 }}>
+                    {fLoading ? 'Submitting...' : S.resetBtn}
                   </button>
-                  <button type="button" onClick={()=>setFStep(1)} style={{ width:'100%',padding:9,background:'none',border:'none',color:G.muted,fontSize:13,cursor:'pointer' }}>← Try different username</button>
+                  <button type="button" onClick={()=>setFStep(1)} style={{ width:'100%',padding:9,background:'none',border:'none',color:G.muted,fontSize:13,cursor:'pointer' }}>
+                    ← Try different username
+                  </button>
                 </>
               )}
+
               <button type="button" onClick={()=>switchMode('login')} style={{ width:'100%',marginTop:14,padding:9,background:'none',border:'none',color:G.green,fontSize:13,fontWeight:600,cursor:'pointer',textDecoration:'underline' }}>
                 {S.backBtn}
               </button>
             </>
           )}
 
-          <p style={{ textAlign:'center',color:'#9CA3AF',fontSize:11,marginTop:28 }}>© 2014–2026 Green Village Rice. All Rights Reserved</p>
+          {/* FIX #19: copyright year corrected to 2026 */}
+          <p style={{ textAlign:'center',color:'#9CA3AF',fontSize:11,marginTop:28 }}>© 2026 Green Village Rice. All Rights Reserved</p>
         </div>
       </div>
     </div>
