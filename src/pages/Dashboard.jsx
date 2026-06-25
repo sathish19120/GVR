@@ -11,10 +11,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { supabase } from '../lib/supabase'
-// FIX #9: CSV export
-import { exportOrdersCSV, exportStockCSV } from '../lib/exportCsv'
-// FIX #15: toast notifications
-import { useToast } from '../components/Toast'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid, Cell
@@ -287,7 +283,6 @@ function StockModal({ product, onClose, onSaved }) {
 export default function Dashboard() {
   const { user: profile, signOut } = useAuth()
   const navigate = useNavigate()
-  const toast = useToast() // FIX #15
   const [page, setPage]     = useState('dashboard')
   const [filter, setFilter] = useState('monthly')
   const [collapsed, setCollapsed] = useState(false)
@@ -314,6 +309,7 @@ export default function Dashboard() {
   // FIX #10: pagination state
   const [ordersPage, setOrdersPage] = useState(1)
   const ORDERS_PER_PAGE = 25
+  const statsPendingRef = useRef(0)
 
   // FIX #10: reset to page 1 when any filter changes
   useEffect(() => { setOrdersPage(1) }, [orderSearch, invoiceSearch, orderStatusFilter, orderPayFilter, orderBranchFilter, orderDateFilter])
@@ -435,17 +431,39 @@ export default function Dashboard() {
     return matchSearch && matchInvoice && matchStatus && matchPay && matchBranch && matchDate
   })
 
-  // FIX #9: export orders CSV
+  // FIX #9: export orders CSV — inline, no external dependency
   function handleExportOrders() {
-    if (!filteredOrders.length) { toast.warning('No orders to export'); return }
-    exportOrdersCSV(filteredOrders)
-    toast.success(`Exported ${filteredOrders.length} orders`)
+    if (!filteredOrders.length) { alert('No orders to export'); return }
+    const headers = ['Order Number','Date','Customer','Address','Items','Total','Status','Payment','Payment Status']
+    const rows = filteredOrders.map(o => [
+      o.order_number,
+      o.created_at ? new Date(o.created_at).toLocaleDateString('en-IN') : '',
+      o.customer_name || '',
+      o.delivery_address || '',
+      (o.order_items||[]).map(i=>`${i.name}x${i.quantity}`).join(' | '),
+      Number(o.total_amount||0).toFixed(2),
+      o.status || '',
+      o.payment_method || '',
+      o.payment_status || ''
+    ])
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n')
+    const blob = new Blob(['\uFEFF'+csv], { type:'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `GVR_Orders_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
   }
 
-  // FIX #9: export stock CSV
+  // FIX #9: export stock CSV — inline
   function handleExportStock() {
-    exportStockCSV(products)
-    toast.success('Stock exported to CSV')
+    const headers = ['Product','SKU','Weight(kg)','Price/Bag','Stock(Bags)','Low Stock Threshold','Status']
+    const rows = products.map(p => [p.name, p.sku||'', p.weight_kg, p.price_per_bag, p.stock_bags||0, p.low_stock_threshold||50, p.active?'Active':'Inactive'])
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n')
+    const blob = new Blob(['\uFEFF'+csv], { type:'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `GVR_Stock_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
   }
 
   // FIX #10: paginate filtered orders
