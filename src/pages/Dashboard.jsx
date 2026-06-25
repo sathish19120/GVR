@@ -26,7 +26,7 @@ const G = {
 const PAGES = [
   { key:'dashboard',   icon:'⊞',  label:'Dashboard' },
   { key:'orders',      icon:'📋', label:'Orders' },
-  { key:'inventory',   icon:'📦', label:'Stock' },
+  { key:'inventory',   icon:'📦', label:'Inventory' },
   { key:'analytics',   icon:'📊', label:'Analytics' },
   { key:'users',       icon:'👥', label:'Users' },
   { key:'admin',       icon:'⚙️', label:'Admin' },
@@ -118,11 +118,9 @@ function NewOrderModal({ products, onClose, onSaved }) {
   const grand = total + Math.round(total * 0.05)
 
   const updateCart = (id, delta) => setCart(prev => {
-    const product = products.find(p => p.id === id)
-    const maxStock = Number(product?.stock_bags || 0)
-    const qty = Math.min(maxStock, Math.max(0, (prev[id] || 0) + delta))
+    const qty = Math.max(0, (prev[id]||0) + delta)
     if (qty === 0) { const n={...prev}; delete n[id]; return n }
-    return { ...prev, [id]: qty }
+    return {...prev,[id]:qty}
   })
 
   // FIX #6: wrapped in try/catch with rollback on failure
@@ -159,6 +157,7 @@ function NewOrderModal({ products, onClose, onSaved }) {
           weight_kg: p.weight_kg, quantity: cart[p.id], price_per_unit: p.price_per_bag
         })
         if (itemErr) throw itemErr
+        await supabase.from('products').update({ stock_bags: p.stock_bags - cart[p.id] }).eq('id', p.id)
       }
       onSaved(); onClose()
     } catch(e) {
@@ -205,19 +204,7 @@ function NewOrderModal({ products, onClose, onSaved }) {
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                 <button onClick={()=>updateCart(p.id,-1)} style={{ width:28, height:28, borderRadius:'50%', border:`1px solid ${G.border}`, background:'none', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', color:G.green }}>−</button>
                 <span style={{ fontWeight:700, minWidth:20, textAlign:'center', color:G.text }}>{cart[p.id]||0}</span>
-                <button
-                  onClick={()=>updateCart(p.id,1)}
-                  disabled={(cart[p.id] || 0) >= Number(p.stock_bags || 0)}
-                  style={{
-                    width:28, height:28, borderRadius:'50%',
-                    border:`1px solid ${G.border}`,
-                    background:'none',
-                    cursor:(cart[p.id] || 0) >= Number(p.stock_bags || 0) ? 'not-allowed' : 'pointer',
-                    fontSize:16, display:'flex', alignItems:'center', justifyContent:'center',
-                    color:(cart[p.id] || 0) >= Number(p.stock_bags || 0) ? G.muted : G.green,
-                    opacity:(cart[p.id] || 0) >= Number(p.stock_bags || 0) ? 0.45 : 1
-                  }}
-                >+</button>
+                <button onClick={()=>updateCart(p.id,1)} style={{ width:28, height:28, borderRadius:'50%', border:`1px solid ${G.border}`, background:'none', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', color:G.green }}>+</button>
               </div>
             </div>
           ))}
@@ -298,8 +285,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [page, setPage]     = useState('dashboard')
   const [filter, setFilter] = useState('monthly')
-  const [collapsed, setCollapsed] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false)
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
+  const [collapsed, setCollapsed] = useState(false)
   const [orders, setOrders]   = useState([])
   const [products, setProducts] = useState([])
   const [users, setUsers]     = useState([])
@@ -330,6 +316,17 @@ export default function Dashboard() {
   useEffect(() => { statsPendingRef.current = stats.pending }, [stats.pending])
 
   useEffect(() => { load() }, [filter])
+
+  // FIX #10: wire up mobile overlay — toggle body class when sidebar opens
+  useEffect(() => {
+    const overlay = document.querySelector('.dash-overlay')
+    if (!overlay) return
+    if (!collapsed) {
+      overlay.style.display = 'block'
+    } else {
+      overlay.style.display = 'none'
+    }
+  }, [collapsed])
 
   // Auto refresh every 30 seconds
   useEffect(() => {
@@ -386,128 +383,32 @@ export default function Dashboard() {
     return keys.map((k,i)=>({ name:labels[i], revenue:o.filter(x=>x.created_at?.startsWith(k)).reduce((s,x)=>s+Number(x.total_amount||0),0), orders:o.filter(x=>x.created_at?.startsWith(k)).length }))
   }
 
-  async function deductStockForOrder(order) {
-    const items = order.order_items || []
-    if (!items.length) throw new Error('No order items found for this order.')
-
-    // Check all product stock before changing anything
-    for (const item of items) {
-      if (!item.product_id) throw new Error(`Missing product ID for ${item.name || 'item'}.`)
-      const { data: product, error } = await supabase
-        .from('products')
-        .select('id,name,stock_bags')
-        .eq('id', item.product_id)
-        .single()
-
-      if (error) throw error
-
-      const currentStock = Number(product.stock_bags || 0)
-      const requiredQty = Number(item.quantity || 0)
-
-      if (currentStock < requiredQty) {
-        throw new Error(`${product.name} has only ${currentStock} bags. Required: ${requiredQty} bags.`)
-      }
-    }
-
-    // Deduct stock after validation passes
-    for (const item of items) {
-      const { data: product, error } = await supabase
-        .from('products')
-        .select('id,name,stock_bags')
-        .eq('id', item.product_id)
-        .single()
-
-      if (error) throw error
-
-      const requiredQty = Number(item.quantity || 0)
-      const newStock = Number(product.stock_bags || 0) - requiredQty
-
-      const { error: stockError } = await supabase
-        .from('products')
-        .update({ stock_bags: newStock })
-        .eq('id', item.product_id)
-
-      if (stockError) throw stockError
-
-      await supabase.from('stock_movements').insert({
-        product_id: item.product_id,
-        change_bags: -requiredQty,
-        type: 'order',
-        note: `Stock deducted for order ${order.order_number}`,
-        created_at: new Date().toISOString()
-      })
-    }
-  }
-
-  async function restoreStockForOrder(order) {
-    const items = order.order_items || []
-
-    for (const item of items) {
-      if (!item.product_id) continue
-
-      const { data: product, error } = await supabase
-        .from('products')
-        .select('id,name,stock_bags')
-        .eq('id', item.product_id)
-        .single()
-
-      if (error) throw error
-
-      const restoreQty = Number(item.quantity || 0)
-      const newStock = Number(product.stock_bags || 0) + restoreQty
-
-      const { error: stockError } = await supabase
-        .from('products')
-        .update({ stock_bags: newStock })
-        .eq('id', item.product_id)
-
-      if (stockError) throw stockError
-
-      await supabase.from('stock_movements').insert({
-        product_id: item.product_id,
-        change_bags: restoreQty,
-        type: 'restore',
-        note: `Stock restored after cancelling order ${order.order_number}`,
-        created_at: new Date().toISOString()
-      })
-    }
-  }
-
   async function updateOrderStatus(id, status) {
-    const order = orders.find(o => o.id === id)
-
-    if (!order) {
-      alert('Order not found. Please refresh and try again.')
-      return
-    }
-
-    try {
-      if (status === 'cancelled') {
-        if (!window.confirm('Cancel this order? This cannot be undone.')) return
-
-        // In the new flow, stock is deducted only after confirmation.
-        // So restore stock only when cancelling an already confirmed order.
-        if (order.status === 'confirmed') {
-          await restoreStockForOrder(order)
+    // FIX #15: confirmation before cancellation
+    if (status === 'cancelled') {
+      if (!window.confirm('Cancel this order? This cannot be undone.')) return
+      // FIX #4: restore stock — DB trigger handles this automatically
+      // but we also do it in JS as a safety net for old deployments
+      const order = orders.find(o => o.id === id)
+      if (order?.order_items?.length) {
+        for (const item of order.order_items) {
+          if (!item.product_id) continue
+          const product = products.find(p => p.id === item.product_id)
+          if (product) {
+            await supabase.from('products').update({
+              stock_bags: product.stock_bags + item.quantity
+            }).eq('id', item.product_id)
+          }
         }
+        // Refresh products state to reflect restored stock
+        setProducts(prev => prev.map(p => {
+          const item = order.order_items.find(i => i.product_id === p.id)
+          return item ? { ...p, stock_bags: p.stock_bags + item.quantity } : p
+        }))
       }
-
-      if (status === 'confirmed' && order.status === 'pending') {
-        await deductStockForOrder(order)
-      }
-
-      const { error } = await supabase
-        .from('orders')
-        .update({ status })
-        .eq('id', id)
-
-      if (error) throw error
-
-      await load()
-    } catch (e) {
-      console.error('Status update failed:', e)
-      alert(e.message || 'Unable to update order status. Please try again.')
     }
+    await supabase.from('orders').update({ status }).eq('id', id)
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o))
   }
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
@@ -613,14 +514,8 @@ export default function Dashboard() {
 
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
-      {/* Mobile sidebar overlay */}
-      {isMobile && !collapsed && (
-        <div
-          className="dash-overlay"
-          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:40 }}
-          onClick={() => setCollapsed(true)}
-        />
-      )}
+      {/* FIX #10: mobile overlay — display toggled via useEffect above */}
+      <div className="dash-overlay" style={{ display:'none', position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:199 }} onClick={() => setCollapsed(true)} />
 
       {/* TOP NAV MODALS */}
       {topModal && (
@@ -673,7 +568,7 @@ export default function Dashboard() {
                   { icon:'⚙️', title:'Fresh Milling', desc:'Rice is milled in small batches to preserve freshness. Every pack carries the milling date — you always know how fresh your rice is.' },
                   { icon:'📦', title:'Quality Packing', desc:'Available in 1 kg, 5 kg and 25 kg packs (25 kg coming soon). FSSAI-compliant packaging with best-before dates.' },
                   { icon:'🚪', title:'Doorstep Delivery', desc:'Orders placed through our app are delivered to your home within hours. Track your delivery in real time.' },
-                  { icon:'💰', title:'Fair Pricing', desc:'Transparent pricing for every pack — Sona Masoori 1kg ₹68, Sona Masoori 5kg ₹320, Basmati 1kg ₹95, and Basmati 5kg ₹440.' },
+                  { icon:'💰', title:'Fair Pricing', desc:'By cutting out wholesalers and retailers, we offer premium rice at transparent prices — ₹60/kg for 1 kg packs, ₹50/kg for 5 kg packs.' },
                 ].map(item => (
                   <div key={item.title} style={{ display:'flex', gap:14, padding:'14px 16px', background:'#F9FAF7', borderRadius:12, borderLeft:'3px solid #3B6D11' }}>
                     <span style={{ fontSize:24, flexShrink:0 }}>{item.icon}</span>
@@ -722,7 +617,7 @@ export default function Dashboard() {
               <div style={{ background:'#EAF3DE', borderRadius:12, padding:'14px 18px' }}>
                 <p style={{ margin:'0 0 8px', fontWeight:700, fontSize:13, color:'#27500A' }}>Product Range</p>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Basmati 1kg','₹95'],['Basmati 5kg','₹440']].map(([name,price])=>(
+                  {[['Sona Masoori 1kg','₹60'],['Sona Masoori 5kg','₹250'],['Sona Masoori 25kg','Coming Soon']].map(([name,price])=>(
                     <span key={name} style={{ fontSize:12, padding:'4px 12px', borderRadius:20, background:'#fff', color:'#3B6D11', fontWeight:600 }}>{name} — {price}</span>
                   ))}
                 </div>
@@ -775,7 +670,7 @@ export default function Dashboard() {
           `}</style>
           {PAGES.map(item => (
             <div key={item.key} className="nav-item">
-              <button onClick={()=>{ setPage(item.key); if (isMobile) setCollapsed(true) }} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:collapsed?'center':'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
+              <button onClick={()=>{ setPage(item.key); setCollapsed(true) }} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:collapsed?'center':'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
                 <span style={{ fontSize:17, flexShrink:0 }}>{item.icon}</span>
                 {!collapsed && item.label}
               </button>
@@ -1115,7 +1010,7 @@ export default function Dashboard() {
             )}
           </>}
 
-          {/* STOCK */}
+          {/* INVENTORY */}
           {page==='inventory' && <>
             <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
               <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
@@ -1170,7 +1065,7 @@ export default function Dashboard() {
                   <tr key={m.id} style={{ borderTop:`1px solid ${G.border}`, background:i%2?'#FAFAFA':G.white }}>
                     <td style={{ padding:'11px 14px', fontWeight:600 }}>{m.products?.name||'—'}</td>
                     <td style={{ padding:'11px 14px', fontWeight:700, color:m.change_bags>0?G.green:G.red }}>{m.change_bags>0?'+':''}{m.change_bags} bags</td>
-                    <td style={{ padding:'11px 14px' }}><span style={{ fontSize:11, padding:'2px 8px', borderRadius:20, background:m.change_bags > 0 ? G.greenLight : G.redLight, color:m.change_bags > 0 ? G.green : G.red, fontWeight:600 }}>{m.type}</span></td>
+                    <td style={{ padding:'11px 14px' }}><span style={{ fontSize:11, padding:'2px 8px', borderRadius:20, background:m.type==='add'?G.greenLight:G.redLight, color:m.type==='add'?G.green:G.red, fontWeight:600 }}>{m.type}</span></td>
                     <td style={{ padding:'11px 14px', color:G.muted, fontSize:12 }}>{m.note||'—'}</td>
                     <td style={{ padding:'11px 14px', color:G.muted, fontSize:12 }}>{new Date(m.created_at).toLocaleDateString('en-IN')}</td>
                   </tr>
