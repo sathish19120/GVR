@@ -67,7 +67,7 @@ function TopNavModal({ modal, onClose }) {
             <h2 style={{ margin:0,fontSize:20,fontWeight:800,color:'#27500A' }}>🌾 What We Do</h2>
             <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#6B7280' }}>✕</button>
           </div>
-          {[{icon:'🌱',title:'Farm Sourcing',desc:'Directly from certified paddy farmers in Nalgonda, Khammam, and Warangal.'},{icon:'⚙️',title:'Fresh Milling',desc:'Milled in small batches with packing date on every pack.'},{icon:'📦',title:'Quality Packing',desc:'1kg and 5kg packs. FSSAI-compliant with best-before dates.'},{icon:'🚪',title:'Doorstep Delivery',desc:'Orders delivered to your home within hours.'},{icon:'💰',title:'Fair Pricing',desc:'₹68/kg for 1kg, ₹64/kg for 5kg packs.'}].map(item=>(
+          {[{icon:'🌱',title:'Farm Sourcing',desc:'Directly from certified paddy farmers in Nalgonda, Khammam, and Warangal.'},{icon:'⚙️',title:'Fresh Milling',desc:'Milled in small batches with packing date on every pack.'},{icon:'📦',title:'Quality Packing',desc:'1kg and 5kg packs. FSSAI-compliant with best-before dates.'},{icon:'🚪',title:'Doorstep Delivery',desc:'Orders delivered to your home within hours.'},{icon:'💰',title:'Fair Pricing',desc:'Sona Masoori 1kg ₹68, Sona Masoori 5kg ₹320, Basmati 1kg ₹95, and Basmati 5kg ₹440.'}].map(item=>(
             <div key={item.title} style={{ display:'flex',gap:12,padding:'12px 14px',background:'#F9FAF7',borderRadius:12,borderLeft:'3px solid #3B6D11',marginBottom:8 }}>
               <span style={{ fontSize:22,flexShrink:0 }}>{item.icon}</span>
               <div><p style={{ margin:'0 0 3px',fontWeight:700,fontSize:14 }}>{item.title}</p><p style={{ margin:0,fontSize:13,color:'#6B7280',lineHeight:1.6 }}>{item.desc}</p></div>
@@ -83,7 +83,7 @@ function TopNavModal({ modal, onClose }) {
           <div style={{ background:'#EAF3DE',borderRadius:12,padding:'12px 16px' }}>
             <p style={{ margin:'0 0 8px',fontWeight:700,fontSize:13,color:'#27500A' }}>Our Products</p>
             <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-              {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Basmati 1kg','₹95']].map(([name,price])=>(
+              {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Basmati 1kg','₹95'],['Basmati 5kg','₹440']].map(([name,price])=>(
                 <span key={name} style={{ fontSize:12,padding:'4px 12px',borderRadius:20,background:'#fff',color:'#3B6D11',fontWeight:600 }}>{name} — {price}</span>
               ))}
             </div>
@@ -101,10 +101,18 @@ function ReferralSection({ user, D }) {
 
   useEffect(() => {
     if (!user?.id) return
-    supabase.from('profiles').select('referral_code,wallet_balance')
-      .eq('id', user.id).single()
-      .then(({ data }) => setProfile(data))
-      .catch(() => {})
+
+    async function loadReferralProfile() {
+      const { data } = await supabase
+        .from('profiles')
+        .select('referral_code,wallet_balance')
+        .eq('id', user.id)
+        .single()
+
+      setProfile(data || null)
+    }
+
+    loadReferralProfile()
   }, [user])
 
   function share() {
@@ -548,15 +556,25 @@ export default function CustomerShop() {
 
   const updateCart = (id, delta) => {
     setCart(prev => {
-      const qty = Math.max(0, (prev[id]||0) + delta)
-      if (qty === 0) { const n = {...prev}; delete n[id]; return n }
-      return {...prev, [id]: qty}
+      const product = products.find(p => p.id === id)
+      const maxStock = Number(product?.stock_bags || 0)
+      const nextQty = Math.max(0, (prev[id] || 0) + delta)
+      const qty = Math.min(nextQty, maxStock)
+
+      if (qty === 0) {
+        const n = { ...prev }
+        delete n[id]
+        return n
+      }
+
+      return { ...prev, [id]: qty }
     })
   }
 
   async function placeOrder() {
     if (orderType === 'delivery' && !address.trim()) { setError('Please enter delivery address'); return }
     if (orderType === 'pickup' && !pickupBranch) { setError('Please select a pickup branch'); return }
+    if (payMethod === 'upi' && !utrRef.trim()) { setError('Please enter UPI transaction ID after payment'); return }
     setError(''); setPlacing(true)
     try {
       // FIX #13: check wallet balance and deduct from order total
@@ -582,7 +600,7 @@ export default function CustomerShop() {
         order_type:       orderType,
         pickup_branch:    orderType==='pickup' ? pickupBranch : null,
         pickup_time:      orderType==='pickup' ? pickupTime : null,
-        payment_status:   utrRef.trim() ? 'paid' : 'pending',
+        payment_status:   utrRef.trim() ? 'verification_pending' : 'pending',
         payment_method:   payMethod,
         notes:            [
           utrRef.trim() ? `Payment Ref: ${utrRef.trim()}` : null,
@@ -593,8 +611,16 @@ export default function CustomerShop() {
       if (oErr || !order) throw new Error(oErr?.message || 'Failed to create order')
 
       for (const p of products.filter(p => cart[p.id])) {
-        await supabase.from('order_items').insert({ order_id:order.id, product_id:p.id, name:p.name, weight_kg:p.weight_kg, quantity:cart[p.id], price_per_unit:p.price_per_bag })
-        await supabase.from('products').update({ stock_bags: Math.max(0, p.stock_bags - cart[p.id]) }).eq('id', p.id)
+        const { error: itemErr } = await supabase.from('order_items').insert({
+          order_id: order.id,
+          product_id: p.id,
+          name: p.name,
+          weight_kg: p.weight_kg,
+          quantity: cart[p.id],
+          price_per_unit: p.price_per_bag
+        })
+
+        if (itemErr) throw itemErr
       }
 
       if (user?.id) {
@@ -610,19 +636,29 @@ export default function CustomerShop() {
             reason:     `Wallet applied to order ${orderNumber}`,
             order_id:   order.id,
             created_at: new Date().toISOString()
-          }).catch(() => {}) // ignore if wallet_transactions table not yet created
+          })
         }
 
         // Update total_spent and total_orders for loyalty points
-        await supabase.rpc('increment_customer_stats', { user_id: user.id, order_amount: finalTotal }).catch(() => {
-          supabase.from('profiles').select('total_spent,total_orders').eq('id', user.id).single()
-            .then(({ data }) => {
-              if (data) supabase.from('profiles').update({
-                total_spent: (data.total_spent||0) + finalTotal,
-                total_orders: (data.total_orders||0) + 1
-              }).eq('id', user.id)
-            })
+        const { error: statsErr } = await supabase.rpc('increment_customer_stats', {
+          user_id: user.id,
+          order_amount: finalTotal
         })
+
+        if (statsErr) {
+          const { data: statsProfile } = await supabase
+            .from('profiles')
+            .select('total_spent,total_orders')
+            .eq('id', user.id)
+            .single()
+
+          if (statsProfile) {
+            await supabase.from('profiles').update({
+              total_spent: (statsProfile.total_spent || 0) + finalTotal,
+              total_orders: (statsProfile.total_orders || 0) + 1
+            }).eq('id', user.id)
+          }
+        }
 
         // FIX #3: credit referral reward on first order
         // Check if this user was referred and this is their first order
@@ -632,7 +668,7 @@ export default function CustomerShop() {
           await supabase.rpc('credit_referral_reward', {
             new_customer_id: user.id,
             referrer_code:   profCheck.referred_by
-          }).catch(() => {}) // ignore if RPC not created yet
+          })
         }
       }
 
@@ -764,7 +800,7 @@ export default function CustomerShop() {
         </div>
 
         {payMethod!=='cod' && (
-          <button onClick={placeOrder} disabled={placing||(orderType==='delivery'&&!address.trim())} style={{ width:'100%',padding:14,background:placing||(orderType==='delivery'&&!address.trim())?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:14,fontSize:15,fontWeight:700,cursor:'pointer' }}>
+          <button onClick={placeOrder} disabled={placing||(orderType==='delivery'&&!address.trim())||(payMethod==='upi'&&!utrRef.trim())} style={{ width:'100%',padding:14,background:placing||(orderType==='delivery'&&!address.trim())||(payMethod==='upi'&&!utrRef.trim())?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:14,fontSize:15,fontWeight:700,cursor:'pointer' }}>
             {placing?'⏳ Placing...':`${orderType==='pickup'?'🏪 Place Pickup Order':'✅ Place Order'} — ₹${grand}`}
           </button>
         )}
@@ -921,7 +957,7 @@ export default function CustomerShop() {
                     : <div style={{ display:'flex',alignItems:'center',gap:10,background:G.greenLight,borderRadius:8,padding:'5px 10px' }}>
                         <button onClick={()=>updateCart(p.id,-1)} style={{ background:'none',border:'none',color:G.green,fontSize:22,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>−</button>
                         <span style={{ fontWeight:700,color:G.greenDark,minWidth:20,textAlign:'center',fontSize:15 }}>{cart[p.id]}</span>
-                        <button onClick={()=>updateCart(p.id,1)} style={{ background:'none',border:'none',color:G.green,fontSize:22,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>+</button>
+                        <button disabled={(cart[p.id] || 0) >= Number(p.stock_bags || 0)} onClick={()=>updateCart(p.id,1)} style={{ background:'none',border:'none',color:(cart[p.id] || 0) >= Number(p.stock_bags || 0)?G.muted:G.green,fontSize:22,cursor:(cart[p.id] || 0) >= Number(p.stock_bags || 0)?'not-allowed':'pointer',fontWeight:700,lineHeight:1,padding:0 }}>+</button>
                       </div>
                 }
               </div>
