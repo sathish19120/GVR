@@ -559,21 +559,35 @@ export default function CustomerShop() {
     if (orderType === 'pickup' && !pickupBranch) { setError('Please select a pickup branch'); return }
     setError(''); setPlacing(true)
     try {
-      // FIX #5: use MAX-based order number, not COUNT
+      // FIX #13: check wallet balance and deduct from order total
+      let walletDeduction = 0
+      let finalTotal = grand
+      if (user?.id) {
+        const { data: prof } = await supabase.from('profiles').select('wallet_balance,referred_by,total_orders').eq('id', user.id).single()
+        const walletBal = Number(prof?.wallet_balance || 0)
+        if (walletBal > 0) {
+          walletDeduction = Math.min(walletBal, grand) // use up to full wallet balance
+          finalTotal = Math.max(0, grand - walletDeduction)
+        }
+      }
+
       const orderNumber = await getNextOrderNumber('GVR')
       const { data: order, error: oErr } = await supabase.from('orders').insert({
         order_number:     orderNumber,
         customer_id:      user?.id || null,
         customer_name:    user?.full_name || user?.username || 'Customer',
         delivery_address: orderType==='pickup' ? `Pickup: ${pickupBranch}` : address,
-        total_amount:     grand,
+        total_amount:     finalTotal,
         status:           'pending',
         order_type:       orderType,
         pickup_branch:    orderType==='pickup' ? pickupBranch : null,
         pickup_time:      orderType==='pickup' ? pickupTime : null,
         payment_status:   utrRef.trim() ? 'paid' : 'pending',
         payment_method:   payMethod,
-        notes:            utrRef.trim() ? `Payment Ref: ${utrRef.trim()}` : null,
+        notes:            [
+          utrRef.trim() ? `Payment Ref: ${utrRef.trim()}` : null,
+          walletDeduction > 0 ? `Wallet used: ₹${walletDeduction}` : null
+        ].filter(Boolean).join(' · ') || null,
         created_at:       new Date().toISOString()
       }).select().single()
       if (oErr || !order) throw new Error(oErr?.message || 'Failed to create order')
@@ -583,20 +597,43 @@ export default function CustomerShop() {
         await supabase.from('products').update({ stock_bags: Math.max(0, p.stock_bags - cart[p.id]) }).eq('id', p.id)
       }
 
-      // FIX #16: update total_spent and total_orders for loyalty points
       if (user?.id) {
-        await supabase.rpc('increment_customer_stats', { user_id: user.id, order_amount: grand }).catch(() => {
-          // fallback if RPC not available
+        // FIX #13: deduct wallet balance and record transaction
+        if (walletDeduction > 0) {
+          const { data: prof } = await supabase.from('profiles').select('wallet_balance').eq('id', user.id).single()
+          const newBal = Math.max(0, Number(prof?.wallet_balance || 0) - walletDeduction)
+          await supabase.from('profiles').update({ wallet_balance: newBal }).eq('id', user.id)
+          await supabase.from('wallet_transactions').insert({
+            user_id:    user.id,
+            amount:     walletDeduction,
+            type:       'debit',
+            reason:     `Wallet applied to order ${orderNumber}`,
+            order_id:   order.id,
+            created_at: new Date().toISOString()
+          }).catch(() => {}) // ignore if wallet_transactions table not yet created
+        }
+
+        // Update total_spent and total_orders for loyalty points
+        await supabase.rpc('increment_customer_stats', { user_id: user.id, order_amount: finalTotal }).catch(() => {
           supabase.from('profiles').select('total_spent,total_orders').eq('id', user.id).single()
             .then(({ data }) => {
-              if (data) {
-                supabase.from('profiles').update({
-                  total_spent: (data.total_spent||0) + grand,
-                  total_orders: (data.total_orders||0) + 1
-                }).eq('id', user.id)
-              }
+              if (data) supabase.from('profiles').update({
+                total_spent: (data.total_spent||0) + finalTotal,
+                total_orders: (data.total_orders||0) + 1
+              }).eq('id', user.id)
             })
         })
+
+        // FIX #3: credit referral reward on first order
+        // Check if this user was referred and this is their first order
+        const { data: profCheck } = await supabase.from('profiles')
+          .select('referred_by,total_orders').eq('id', user.id).single()
+        if (profCheck?.referred_by && (profCheck.total_orders || 0) <= 1) {
+          await supabase.rpc('credit_referral_reward', {
+            new_customer_id: user.id,
+            referrer_code:   profCheck.referred_by
+          }).catch(() => {}) // ignore if RPC not created yet
+        }
       }
 
       // FIX #14: clear this user's cart key from localStorage
