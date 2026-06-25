@@ -900,7 +900,6 @@ export default function Dashboard() {
                 <button onClick={handleExportOrders} style={{ padding:'5px 12px',borderRadius:20,border:`1px solid ${G.border}`,background:G.white,cursor:'pointer',fontSize:11,fontWeight:600,color:G.blue,display:'flex',alignItems:'center',gap:4 }}>
                   ⬇ Export CSV
                 </button>
-                </span>
               </div>
             </div>
 
