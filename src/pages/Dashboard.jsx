@@ -11,6 +11,10 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { supabase } from '../lib/supabase'
+// FIX #9: CSV export
+import { exportOrdersCSV, exportStockCSV } from '../lib/exportCsv'
+// FIX #15: toast notifications
+import { useToast } from '../components/Toast'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid, Cell
@@ -283,6 +287,7 @@ function StockModal({ product, onClose, onSaved }) {
 export default function Dashboard() {
   const { user: profile, signOut } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast() // FIX #15
   const [page, setPage]     = useState('dashboard')
   const [filter, setFilter] = useState('monthly')
   const [collapsed, setCollapsed] = useState(false)
@@ -299,16 +304,19 @@ export default function Dashboard() {
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [newOrderAlert, setNewOrderAlert] = useState(0)
   const [orderSearch, setOrderSearch] = useState('')
-  const [orderBranchFilter, setOrderBranchFilter] = useState('all') // FIX #4: separate state for order branch filter
+  const [orderBranchFilter, setOrderBranchFilter] = useState('all')
   const [orderStatusFilter, setOrderStatusFilter] = useState('all')
   const [orderPayFilter, setOrderPayFilter] = useState('all')
   const [orderDateFilter, setOrderDateFilter] = useState('all')
   const [invoiceSearch, setInvoiceSearch] = useState('')
-  const [stockBranchFilter, setStockBranchFilter] = useState('all') // inventory-only branch filter
+  const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
+  // FIX #10: pagination state
+  const [ordersPage, setOrdersPage] = useState(1)
+  const ORDERS_PER_PAGE = 25
 
-  // FIX #7: use a ref so auto-refresh always reads the latest pending count
-  const statsPendingRef = useRef(stats.pending)
+  // FIX #10: reset to page 1 when any filter changes
+  useEffect(() => { setOrdersPage(1) }, [orderSearch, invoiceSearch, orderStatusFilter, orderPayFilter, orderBranchFilter, orderDateFilter])
   useEffect(() => { statsPendingRef.current = stats.pending }, [stats.pending])
 
   useEffect(() => { load() }, [filter])
@@ -349,7 +357,7 @@ export default function Dashboard() {
   async function load() {
     setLoading(true)
     const [oRes, pRes, uRes, mRes] = await Promise.all([
-      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,notes,created_at,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(200),
+      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,notes,created_at,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(500),
       supabase.from('products').select('*').order('weight_kg'),
       supabase.from('profiles').select('id,username,full_name,role,phone,branch,created_at,active').order('created_at',{ascending:false}),
       supabase.from('stock_movements').select('id,product_id,change_bags,type,note,created_at,products(name)').order('created_at',{ascending:false}).limit(30),
@@ -427,7 +435,25 @@ export default function Dashboard() {
     return matchSearch && matchInvoice && matchStatus && matchPay && matchBranch && matchDate
   })
 
-  // Reusable order action buttons
+  // FIX #9: export orders CSV
+  function handleExportOrders() {
+    if (!filteredOrders.length) { toast.warning('No orders to export'); return }
+    exportOrdersCSV(filteredOrders)
+    toast.success(`Exported ${filteredOrders.length} orders`)
+  }
+
+  // FIX #9: export stock CSV
+  function handleExportStock() {
+    exportStockCSV(products)
+    toast.success('Stock exported to CSV')
+  }
+
+  // FIX #10: paginate filtered orders
+  const totalOrderPages  = Math.ceil(filteredOrders.length / ORDERS_PER_PAGE)
+  const paginatedOrders  = filteredOrders.slice(
+    (ordersPage - 1) * ORDERS_PER_PAGE,
+    ordersPage * ORDERS_PER_PAGE
+  )
   function OrderActions({ o }) {
     return (
       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
@@ -870,6 +896,11 @@ export default function Dashboard() {
                 <span style={{ marginLeft:'auto', fontSize:12, color:G.muted, fontWeight:500 }}>
                   {filteredOrders.length} of {orders.length} orders
                 </span>
+                {/* FIX #9: export button */}
+                <button onClick={handleExportOrders} style={{ padding:'5px 12px',borderRadius:20,border:`1px solid ${G.border}`,background:G.white,cursor:'pointer',fontSize:11,fontWeight:600,color:G.blue,display:'flex',alignItems:'center',gap:4 }}>
+                  ⬇ Export CSV
+                </button>
+                </span>
               </div>
             </div>
 
@@ -886,7 +917,7 @@ export default function Dashboard() {
               </div>
             )}
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-            {filteredOrders.map((o)=>(
+            {paginatedOrders.map((o)=>(
               <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
                 <div style={{ display:'flex' }}>
                   <div style={{ width:220, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'14px 16px' }}>
@@ -939,6 +970,27 @@ export default function Dashboard() {
               </div>
             ))}
             </div>
+            {/* FIX #10: pagination controls */}
+            {totalOrderPages > 1 && (
+              <div style={{ display:'flex',justifyContent:'center',alignItems:'center',gap:8,padding:'20px 0',flexWrap:'wrap' }}>
+                <button onClick={()=>setOrdersPage(1)} disabled={ordersPage===1} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===1?'#F3F4F6':G.white,cursor:ordersPage===1?'not-allowed':'pointer',fontSize:12,color:ordersPage===1?G.muted:G.text }}>«</button>
+                <button onClick={()=>setOrdersPage(p=>Math.max(1,p-1))} disabled={ordersPage===1} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===1?'#F3F4F6':G.white,cursor:ordersPage===1?'not-allowed':'pointer',fontSize:12,color:ordersPage===1?G.muted:G.text }}>‹ Prev</button>
+                {Array.from({length:Math.min(5,totalOrderPages)},(_,i)=>{
+                  let p = i+1
+                  if(totalOrderPages>5){
+                    if(ordersPage<=3) p=i+1
+                    else if(ordersPage>=totalOrderPages-2) p=totalOrderPages-4+i
+                    else p=ordersPage-2+i
+                  }
+                  return(
+                    <button key={p} onClick={()=>setOrdersPage(p)} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${ordersPage===p?G.green:G.border}`,background:ordersPage===p?G.green:G.white,cursor:'pointer',fontSize:12,fontWeight:ordersPage===p?700:400,color:ordersPage===p?G.white:G.text }}>{p}</button>
+                  )
+                })}
+                <button onClick={()=>setOrdersPage(p=>Math.min(totalOrderPages,p+1))} disabled={ordersPage===totalOrderPages} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===totalOrderPages?'#F3F4F6':G.white,cursor:ordersPage===totalOrderPages?'not-allowed':'pointer',fontSize:12,color:ordersPage===totalOrderPages?G.muted:G.text }}>Next ›</button>
+                <button onClick={()=>setOrdersPage(totalOrderPages)} disabled={ordersPage===totalOrderPages} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===totalOrderPages?'#F3F4F6':G.white,cursor:ordersPage===totalOrderPages?'not-allowed':'pointer',fontSize:12,color:ordersPage===totalOrderPages?G.muted:G.text }}>»</button>
+                <span style={{ fontSize:12,color:G.muted }}>Page {ordersPage} of {totalOrderPages} · {filteredOrders.length} orders</span>
+              </div>
+            )}
           </>}
 
           {/* INVENTORY */}
@@ -952,6 +1004,10 @@ export default function Dashboard() {
                   </button>
                 ))}
               </div>
+              {/* FIX #9: export stock */}
+              <button onClick={handleExportStock} style={{ marginLeft:'auto',padding:'6px 14px',borderRadius:20,border:`1px solid ${G.border}`,background:G.white,cursor:'pointer',fontSize:11,fontWeight:600,color:G.blue }}>
+                ⬇ Export CSV
+              </button>
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:16, marginBottom:24 }}>
               {products.map(p=>{
