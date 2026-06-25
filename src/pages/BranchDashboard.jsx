@@ -1,8 +1,14 @@
+// FIX #11: <style> block extracted — injected once via useEffect, not on every render
+// FIX #5 (carry-over): prompt() replaced with proper StockUpdateModal
+// FIX #7 (carry-over): orders now filtered by branch
+// FIX #9: CSV export button added to Orders page
 import { useState, useEffect } from 'react'
 import ProfilePage from './ProfilePage'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
+import { exportOrdersCSV, exportBranchStockCSV } from '../lib/exportCsv'
+import { useToast } from '../components/Toast'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Cell
@@ -26,6 +32,25 @@ const PAGES = [
   { key:'pickup',    icon:'🏪', label:'Pickup Queue' },
 ]
 
+// FIX #11: CSS extracted — injected once, never re-inserts on re-render
+const BRANCH_CSS = `
+  @media (max-width: 640px) {
+    .branch-sidebar {
+      position:fixed!important; z-index:200!important; height:100vh!important;
+      transform:translateX(-100%)!important; transition:transform 0.25s ease!important;
+    }
+    .branch-sidebar.open { transform:translateX(0)!important; }
+    .branch-overlay {
+      display:block!important; position:fixed; inset:0;
+      background:rgba(0,0,0,0.4); z-index:199;
+    }
+    .branch-main { padding:12px!important; }
+  }
+  @media (min-width: 641px) {
+    .branch-overlay { display:none!important; }
+  }
+`
+
 function Badge({ status }) {
   const map = {
     pending:   [G.amber,  G.amberLight],
@@ -43,8 +68,9 @@ function Badge({ status }) {
   )
 }
 
-// FIX #5: proper modal replaces prompt() for stock updates
-function StockUpdateModal({ product, branch, onClose, onSaved }) {
+// FIX #5 carry-over: proper modal instead of prompt()
+function StockUpdateModal({ branch, product, onClose, onSaved }) {
+  const toast = useToast()
   const [type, setType]     = useState('add')
   const [bags, setBags]     = useState('')
   const [note, setNote]     = useState('')
@@ -55,21 +81,36 @@ function StockUpdateModal({ product, branch, onClose, onSaved }) {
     if (!n || n <= 0) return
     setSaving(true)
     try {
-      const delta = type === 'add' ? n : -n
-      const newStock = Math.max(0, (product.stock_bags||0) + delta)
+      const delta    = type === 'add' || type === 'transfer_in' ? n : -n
+      const newStock = Math.max(0, (product.stock_bags || 0) + delta)
       await supabase.from('branch_stock').upsert({
-        branch_name: branch, product_id: product.product_id || product.id,
-        product_name: product.product_name || product.name, stock_bags: newStock,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'branch_name,product_id' })
+        branch_name:  branch,
+        product_id:   product.product_id || product.id,
+        product_name: product.product_name || product.name,
+        stock_bags:   newStock,
+        updated_at:   new Date().toISOString()
+      }, { onConflict:'branch_name,product_id' })
       await supabase.from('branch_stock_movements').insert({
-        branch_name: branch, product_id: product.product_id || product.id,
-        product_name: product.product_name || product.name, change_bags: delta,
-        type, note: note || null, created_at: new Date().toISOString()
+        branch_name:  branch,
+        product_id:   product.product_id || product.id,
+        product_name: product.product_name || product.name,
+        change_bags:  delta, type,
+        note:         note || null,
+        created_at:   new Date().toISOString()
       })
+      toast.success(`Stock updated — ${product.product_name || product.name}`)
       onSaved(); onClose()
-    } catch(e) { alert(e.message) }
-    finally { setSaving(false) }
+    } catch(e) {
+      toast.error('Failed to update stock: ' + e.message)
+    } finally { setSaving(false) }
+  }
+
+  const typeConfig = {
+    add:          { label:'Add Stock',       color:G.green  },
+    sale:         { label:'Sale / Dispatch', color:G.amber  },
+    transfer_in:  { label:'Transfer In',     color:G.blue   },
+    transfer_out: { label:'Transfer Out',    color:G.purple },
+    adjustment:   { label:'Adjustment',      color:G.muted  },
   }
 
   return (
@@ -82,17 +123,14 @@ function StockUpdateModal({ product, branch, onClose, onSaved }) {
           </div>
           <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:G.muted }}>✕</button>
         </div>
-        <p style={{ margin:'0 0 16px',fontSize:13,color:G.muted }}>
+        <p style={{ margin:'0 0 14px',fontSize:13,color:G.muted }}>
           Current: <strong style={{ color:G.green }}>{product.stock_bags||0} bags</strong>
         </p>
-        <div style={{ display:'flex',gap:8,marginBottom:16 }}>
-          {[['add','➕ Add'],['subtract','➖ Remove']].map(([val,label])=>(
-            <button key={val} onClick={()=>setType(val)} style={{
-              flex:1,padding:'9px',borderRadius:9,cursor:'pointer',fontSize:12,fontWeight:600,
-              border:`2px solid ${type===val?G.green:G.border}`,
-              background:type===val?G.greenLight:G.white,
-              color:type===val?G.greenDark:G.muted
-            }}>{label}</button>
+        <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16 }}>
+          {Object.entries(typeConfig).map(([val,cfg]) => (
+            <button key={val} onClick={()=>setType(val)} style={{ padding:'9px',borderRadius:9,cursor:'pointer',fontSize:11,fontWeight:600,border:`2px solid ${type===val?cfg.color:G.border}`,background:type===val?cfg.color+'18':G.white,color:type===val?cfg.color:G.muted }}>
+              {cfg.label}
+            </button>
           ))}
         </div>
         <div style={{ marginBottom:12 }}>
@@ -101,7 +139,7 @@ function StockUpdateModal({ product, branch, onClose, onSaved }) {
             style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box' }}
             onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
         </div>
-        <div style={{ marginBottom:16 }}>
+        <div style={{ marginBottom:14 }}>
           <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:5 }}>Note (optional)</label>
           <input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="e.g. Received from HQ"
             style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box' }}
@@ -109,18 +147,16 @@ function StockUpdateModal({ product, branch, onClose, onSaved }) {
         </div>
         {bags && parseInt(bags) > 0 && (
           <div style={{ background:G.greenLight,borderRadius:10,padding:'8px 14px',marginBottom:14,display:'flex',justifyContent:'space-between',fontSize:13 }}>
-            <span style={{ color:G.greenDark }}>New stock will be:</span>
+            <span style={{ color:G.greenDark }}>New stock:</span>
             <strong style={{ color:G.green }}>
-              {Math.max(0,(product.stock_bags||0)+(type==='add'?parseInt(bags):-parseInt(bags)))} bags
+              {Math.max(0,(product.stock_bags||0)+(
+                type==='add'||type==='transfer_in' ? parseInt(bags) : -parseInt(bags)
+              ))} bags
             </strong>
           </div>
         )}
-        <button onClick={save} disabled={saving||!bags} style={{
-          width:'100%',padding:12,
-          background:saving||!bags?'#9CA3AF':type==='add'?G.green:G.red,
-          color:G.white,border:'none',borderRadius:12,fontSize:14,fontWeight:700,cursor:'pointer'
-        }}>
-          {saving ? 'Saving...' : `${type==='add'?'Add':'Remove'} ${bags||0} Bags`}
+        <button onClick={save} disabled={saving||!bags} style={{ width:'100%',padding:12,background:saving||!bags?'#9CA3AF':typeConfig[type].color,color:G.white,border:'none',borderRadius:12,fontSize:14,fontWeight:700,cursor:'pointer' }}>
+          {saving ? 'Saving...' : `${typeConfig[type].label} — ${bags||0} Bags`}
         </button>
       </div>
     </div>
@@ -129,8 +165,9 @@ function StockUpdateModal({ product, branch, onClose, onSaved }) {
 
 export default function BranchDashboard() {
   const { user, signOut } = useAuth()
-  const navigate = useNavigate()
-  const branch = user?.branch || 'Hyderabad'
+  const navigate          = useNavigate()
+  const toast             = useToast()
+  const branch            = user?.branch || 'Hyderabad'
 
   const [page, setPage]         = useState('dashboard')
   const [collapsed, setCol]     = useState(false)
@@ -142,16 +179,29 @@ export default function BranchDashboard() {
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
   const [statusFilter, setSF]   = useState('all')
+  const [stockModal, setStockModal] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
-  // FIX #5: proper modal state replacing prompt()
-  const [stockModal, setStockModal] = useState(null) // {product}
+
+  // FIX #11: inject CSS once on mount — never re-inserts on re-render
+  useEffect(() => {
+    const id  = 'branch-dashboard-styles'
+    if (document.getElementById(id)) return
+    const tag = document.createElement('style')
+    tag.id    = id
+    tag.textContent = BRANCH_CSS
+    document.head.appendChild(tag)
+    return () => {
+      const el = document.getElementById(id)
+      if (el) el.remove()
+    }
+  }, [])
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
     const [oRes, pRes, bRes] = await Promise.all([
-      // FIX #7: filter orders by branch (pickup_branch or branch column)
+      // FIX #7 carry-over: filter orders by branch
       supabase.from('orders')
         .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
         .or(`pickup_branch.eq.${branch},branch.eq.${branch}`)
@@ -162,370 +212,302 @@ export default function BranchDashboard() {
     const o = oRes.data || []
     const p = pRes.data || []
     const b = bRes.data || []
-
-    setOrders(o)
-    setProducts(p)
-    setBStock(b)
-
-    const revenue = o.filter(x => x.payment_status === 'paid').reduce((s,x) => s+Number(x.total_amount||0), 0)
-    setStats({
-      orders: o.length,
-      revenue,
-      pending: o.filter(x => x.status === 'pending').length,
-      delivered: o.filter(x => x.status === 'delivered').length,
-    })
-
+    setOrders(o); setProducts(p); setBStock(b)
+    const revenue = o.filter(x=>x.payment_status==='paid').reduce((s,x)=>s+Number(x.total_amount||0),0)
+    setStats({ orders:o.length, revenue, pending:o.filter(x=>x.status==='pending').length, delivered:o.filter(x=>x.status==='delivered').length })
     const now = new Date()
     const chartData = []
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now); d.setDate(d.getDate() - i)
+    for (let i=6;i>=0;i--) {
+      const d = new Date(now); d.setDate(d.getDate()-i)
       const key = d.toISOString().split('T')[0]
-      chartData.push({
-        name: d.toLocaleDateString('en-IN', { weekday: 'short' }),
-        orders: o.filter(x => x.created_at?.startsWith(key)).length,
-        revenue: o.filter(x => x.created_at?.startsWith(key)).reduce((s,x) => s+Number(x.total_amount||0), 0),
-      })
+      chartData.push({ name:d.toLocaleDateString('en-IN',{weekday:'short'}), orders:o.filter(x=>x.created_at?.startsWith(key)).length, revenue:o.filter(x=>x.created_at?.startsWith(key)).reduce((s,x)=>s+Number(x.total_amount||0),0) })
     }
     setChart(chartData)
     setLoading(false)
   }
 
   async function updateOrderStatus(id, status) {
+    if (status==='cancelled' && !window.confirm('Cancel this order?')) return
     await supabase.from('orders').update({ status }).eq('id', id)
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o))
+    setOrders(prev => prev.map(o => o.id===id ? {...o,status} : o))
+    toast.success(status==='cancelled' ? 'Order cancelled' : `Order marked ${status}`)
   }
 
-  async function markPaymentCollected(order) {
-    await supabase.from('orders').update({
-      payment_status: 'paid',
-      status: 'delivered',
-      notes: (order.notes ? order.notes + ' · ' : '') + `Cash collected at ${branch} branch`
-    }).eq('id', order.id)
-    setOrders(prev => prev.map(o => o.id === order.id ? { ...o, payment_status:'paid', status:'delivered' } : o))
+  async function markCashCollected(order) {
+    await supabase.from('orders').update({ payment_status:'paid', status:'delivered', notes:(order.notes?order.notes+' · ':'')+'Cash collected at branch' }).eq('id',order.id)
+    setOrders(prev=>prev.map(o=>o.id===order.id?{...o,payment_status:'paid',status:'delivered'}:o))
+    toast.success('Cash collected and order delivered!')
+  }
+
+  // FIX #9: export orders CSV
+  function handleExportOrders() {
+    const visible = filteredOrders
+    if (!visible.length) { toast.warning('No orders to export'); return }
+    exportOrdersCSV(visible, `GVR_${branch}_Orders_${new Date().toISOString().split('T')[0]}.csv`)
+    toast.success(`Exported ${visible.length} orders`)
+  }
+
+  // FIX #9: export branch stock CSV
+  function handleExportStock() {
+    exportBranchStockCSV(branchStock, products, branch)
+    toast.success('Branch stock exported')
   }
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
 
   const filteredOrders = orders.filter(o => {
-    const ms = !search || o.order_number?.toLowerCase().includes(search.toLowerCase()) || o.customer_name?.toLowerCase().includes(search.toLowerCase())
-    const mst = statusFilter === 'all' || o.status === statusFilter
+    const ms  = !search || o.order_number?.toLowerCase().includes(search.toLowerCase()) || o.customer_name?.toLowerCase().includes(search.toLowerCase())
+    const mst = statusFilter==='all' || o.status===statusFilter
     return ms && mst
   })
 
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
-      <style>{`
-        @media (max-width: 640px) {
-          .branch-sidebar { position:fixed!important;z-index:200!important;height:100vh!important;transform:translateX(-100%)!important;transition:transform 0.25s ease!important; }
-          .branch-sidebar.open { transform:translateX(0)!important; }
-          .branch-overlay { display:block!important;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:199; }
-          .branch-main { padding:12px!important; }
-        }
-        @media (min-width: 641px) {
-          .branch-overlay { display:none!important; }
-        }
-      `}</style>
+      {/* FIX #11: no <style> tag here — injected via useEffect above */}
 
-      {/* FIX #5: render stock modal */}
       {stockModal && (
         <StockUpdateModal
-          product={stockModal}
           branch={branch}
-          onClose={() => setStockModal(null)}
-          onSaved={() => { setStockModal(null); load() }}
+          product={stockModal}
+          onClose={()=>setStockModal(null)}
+          onSaved={load}
         />
       )}
-
       <div className="branch-overlay" style={{ display:'none' }} onClick={()=>setCol(true)} />
-      {showProfile && <ProfilePage onClose={() => setShowProfile(false)} />}
+      {showProfile && <ProfilePage onClose={()=>setShowProfile(false)} />}
 
       {/* SIDEBAR */}
       <aside className={`branch-sidebar${!collapsed?' open':''}`} style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s, transform 0.25s', position:'sticky', top:0, height:'100vh', overflow:'hidden', zIndex:200 }}>
         <div style={{ padding:collapsed?'16px 10px':'16px 16px', borderBottom:`1px solid ${G.border}`, display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:36, height:36, borderRadius:9, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌾</div>
-          {!collapsed && (
-            <div>
-              <p style={{ margin:0, fontSize:12, fontWeight:700, color:G.greenDark }}>GVR — {branch}</p>
-              <p style={{ margin:0, fontSize:10, color:G.green2 }}>Branch Portal</p>
-            </div>
-          )}
+          <div style={{ width:36,height:36,borderRadius:9,background:G.green,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0 }}>🌾</div>
+          {!collapsed && <div><p style={{ margin:0,fontSize:12,fontWeight:700,color:G.greenDark }}>GVR — {branch}</p><p style={{ margin:0,fontSize:10,color:G.green2 }}>Branch Portal</p></div>}
         </div>
-        <nav style={{ flex:1, padding:'10px 6px' }}>
+        <nav style={{ flex:1, padding:'10px 6px', position:'relative' }}>
+          {/* Sidebar tooltips */}
+          <style>{`
+            .branch-nav-item { position:relative; }
+            .branch-nav-tooltip { position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);background:#1F2937;color:#fff;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.15s;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.25); }
+            .branch-nav-tooltip::before { content:'';position:absolute;right:100%;top:50%;transform:translateY(-50%);border:5px solid transparent;border-right-color:#1F2937; }
+            .branch-nav-item:hover .branch-nav-tooltip { opacity:1; }
+          `}</style>
           {PAGES.map(item => (
-            <button key={item.key} onClick={() => { setPage(item.key); setCol(true) }} style={{
-              width:'100%', display:'flex', alignItems:'center', gap:10,
-              padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none',
-              cursor:'pointer', marginBottom:2,
-              justifyContent:collapsed?'center':'flex-start',
-              background: page===item.key ? G.greenLight : 'transparent',
-              color: page===item.key ? G.greenDark : G.muted,
-              fontWeight: page===item.key ? 600 : 500, fontSize:13,
-            }}>
-              <span style={{ fontSize:17, flexShrink:0 }}>{item.icon}</span>
-              {!collapsed && item.label}
-            </button>
+            <div key={item.key} className="branch-nav-item">
+              <button onClick={()=>{ setPage(item.key); setCol(true) }} style={{ width:'100%',display:'flex',alignItems:'center',gap:10,padding:collapsed?'10px':'10px 12px',borderRadius:10,border:'none',cursor:'pointer',marginBottom:2,justifyContent:collapsed?'center':'flex-start',background:page===item.key?G.greenLight:'transparent',color:page===item.key?G.greenDark:G.muted,fontWeight:page===item.key?600:500,fontSize:13 }}>
+                <span style={{ fontSize:17,flexShrink:0 }}>{item.icon}</span>
+                {!collapsed && item.label}
+              </button>
+              {collapsed && <span className="branch-nav-tooltip">{item.label}</span>}
+            </div>
           ))}
         </nav>
         <div style={{ padding:'10px 6px', borderTop:`1px solid ${G.border}` }}>
           {!collapsed && (
             <div style={{ padding:'8px 12px', marginBottom:4 }}>
-              <button type="button" onClick={() => setShowProfile(true)} style={{ width:34, height:34, borderRadius:'50%', background:G.greenLight, border:`2px solid ${G.border}`, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', overflow:'hidden', padding:0, marginBottom:4 }}>
-                {user?.avatar_url
-                  ? <img src={user.avatar_url} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                  : <span style={{ fontSize:12, fontWeight:700, color:G.greenDark }}>{user?.full_name?.[0] || user?.username?.[0]?.toUpperCase() || 'E'}</span>
-                }
+              <button type="button" onClick={()=>setShowProfile(true)} style={{ width:34,height:34,borderRadius:'50%',background:G.greenLight,border:`2px solid ${G.border}`,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',overflow:'hidden',padding:0,marginBottom:4 }}>
+                {user?.avatar_url ? <img src={user.avatar_url} alt="avatar" style={{ width:'100%',height:'100%',objectFit:'cover' }} /> : <span style={{ fontSize:12,fontWeight:700,color:G.greenDark }}>{user?.full_name?.[0]||user?.username?.[0]?.toUpperCase()||'E'}</span>}
               </button>
-              <p style={{ margin:0, fontSize:12, fontWeight:600, color:G.text }}>{user?.full_name || user?.username}</p>
-              <p style={{ margin:0, fontSize:10, color:G.muted }}>Branch Executive · {branch}</p>
+              <p style={{ margin:0,fontSize:12,fontWeight:600,color:G.text }}>{user?.full_name||user?.username}</p>
+              <p style={{ margin:0,fontSize:10,color:G.muted }}>Branch Executive · {branch}</p>
             </div>
           )}
-          <button onClick={async()=>{ await signOut(); navigate('/login') }} style={{
-            width:'100%', padding:collapsed?'8px':'8px 12px', borderRadius:10, border:'none',
-            background:G.redLight, color:G.red, fontSize:12, fontWeight:600, cursor:'pointer',
-            display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:6
-          }}>
+          <button onClick={async()=>{ await signOut(); navigate('/login') }} style={{ width:'100%',padding:collapsed?'8px':'8px 12px',borderRadius:10,border:'none',background:G.redLight,color:G.red,fontSize:12,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:collapsed?'center':'flex-start',gap:6 }}>
             <span>↩</span>{!collapsed && 'Logout'}
           </button>
         </div>
       </aside>
 
       {/* MAIN */}
-      <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
-        <header style={{ background:G.white, borderBottom:`1px solid ${G.border}`, height:56, padding:'0 22px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:10 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-            <button onClick={() => setCol(!collapsed)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:G.muted }}>☰</button>
-            <span style={{ fontSize:15, fontWeight:700, color:G.text }}>
-              {PAGES.find(p => p.key === page)?.label} — {branch}
-            </span>
+      <div style={{ flex:1,display:'flex',flexDirection:'column',minWidth:0 }}>
+        <header style={{ background:G.white,borderBottom:`1px solid ${G.border}`,height:56,padding:'0 22px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:10 }}>
+          <div style={{ display:'flex',alignItems:'center',gap:14 }}>
+            <button onClick={()=>setCol(!collapsed)} style={{ background:'none',border:'none',cursor:'pointer',fontSize:18,color:G.muted }}>☰</button>
+            <span style={{ fontSize:15,fontWeight:700,color:G.text }}>{PAGES.find(p=>p.key===page)?.label} — {branch}</span>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={load} style={{ background:'#F3F4F6', border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:600, color:G.muted, cursor:'pointer' }}>↻ Refresh</button>
-            <span style={{ fontSize:12, color:G.muted }}>Branch Executive</span>
+          <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+            <button onClick={load} style={{ background:'#F3F4F6',border:'none',borderRadius:8,padding:'6px 14px',fontSize:12,fontWeight:600,color:G.muted,cursor:'pointer' }}>↻ Refresh</button>
           </div>
         </header>
 
-        <main className='branch-main' style={{ flex:1, padding:'22px', overflowY:'auto', minWidth:0, height:'100%' }}>
-          {loading ? <div style={{ textAlign:'center', padding:60, color:G.muted }}>Loading...</div> : <>
+        <main className="branch-main" style={{ flex:1,padding:'22px',overflowY:'auto',minWidth:0,height:'100%' }}>
+          {loading ? <div style={{ textAlign:'center',padding:60,color:G.muted }}>Loading...</div> : <>
 
           {/* ── DASHBOARD ── */}
-          {page === 'dashboard' && <>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:22 }}>
+          {page==='dashboard' && <>
+            <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:14,marginBottom:22 }}>
               {[
-                { label:'Total Orders',  value:stats.orders,        icon:'📋', color:G.blue,  bg:G.blueLight },
-                { label:'Revenue',       value:fmtRs(stats.revenue), icon:'💰', color:G.green, bg:G.greenLight },
-                { label:'Pending',       value:stats.pending,        icon:'⏳', color:G.amber, bg:G.amberLight },
-                { label:'Delivered',     value:stats.delivered,      icon:'✅', color:G.green2,bg:G.greenLight },
-              ].map((s,i) => (
-                <div key={i} style={{ background:G.white, borderRadius:16, padding:'16px 18px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${s.color}` }}>
-                  <div style={{ display:'flex', justifyContent:'space-between' }}>
-                    <div>
-                      <p style={{ margin:'0 0 6px', fontSize:12, color:G.muted }}>{s.label}</p>
-                      <p style={{ margin:0, fontSize:24, fontWeight:800, color:s.color }}>{s.value}</p>
-                    </div>
-                    <div style={{ width:38, height:38, borderRadius:9, background:s.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>{s.icon}</div>
+                { label:'Total Orders', value:stats.orders,        icon:'📋', color:G.blue,  bg:G.blueLight  },
+                { label:'Revenue',      value:fmtRs(stats.revenue),icon:'💰', color:G.green, bg:G.greenLight },
+                { label:'Pending',      value:stats.pending,       icon:'⏳', color:G.amber, bg:G.amberLight },
+                { label:'Delivered',    value:stats.delivered,     icon:'✅', color:G.green2,bg:G.greenLight },
+              ].map((s,i)=>(
+                <div key={i} style={{ background:G.white,borderRadius:16,padding:'16px 18px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',borderLeft:`4px solid ${s.color}` }}>
+                  <div style={{ display:'flex',justifyContent:'space-between' }}>
+                    <div><p style={{ margin:'0 0 6px',fontSize:12,color:G.muted }}>{s.label}</p><p style={{ margin:0,fontSize:24,fontWeight:800,color:s.color }}>{s.value}</p></div>
+                    <div style={{ width:38,height:38,borderRadius:9,background:s.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18 }}>{s.icon}</div>
                   </div>
                 </div>
               ))}
             </div>
-
-            <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', marginBottom:20 }}>
-              <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Orders — Last 7 Days ({branch})</p>
+            <div style={{ background:G.white,borderRadius:16,padding:'18px 20px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',marginBottom:20 }}>
+              <p style={{ margin:'0 0 14px',fontSize:13,fontWeight:700 }}>Orders — Last 7 Days ({branch})</p>
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={chart} barSize={28}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize:11, fill:G.muted }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize:11, fill:G.muted }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ borderRadius:10, fontSize:12 }} />
+                  <XAxis dataKey="name" tick={{ fontSize:11,fill:G.muted }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize:11,fill:G.muted }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ borderRadius:10,fontSize:12 }} />
                   <Bar dataKey="orders" radius={[6,6,0,0]}>
-                    {chart.map((_,i) => <Cell key={i} fill={i===chart.length-1?G.green:G.green2} />)}
+                    {chart.map((_,i)=><Cell key={i} fill={i===chart.length-1?G.green:G.green2} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
-
-            <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-              <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Recent Orders — {branch}</p>
-              {orders.slice(0,5).map((o,i) => (
-                <div key={o.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 0', borderBottom:i<4?`1px solid ${G.border}`:'none' }}>
-                  <div>
-                    <p style={{ margin:'0 0 2px', fontWeight:600, fontSize:13, color:G.green }}>{o.order_number}</p>
-                    <p style={{ margin:0, fontSize:11, color:G.muted }}>{o.customer_name} · {new Date(o.created_at).toLocaleDateString('en-IN')}</p>
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    <span style={{ fontWeight:700, fontSize:13 }}>{fmtRs(o.total_amount)}</span>
-                    <Badge status={o.status} />
-                  </div>
+            <div style={{ background:G.white,borderRadius:16,padding:'18px 20px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+              <p style={{ margin:'0 0 14px',fontSize:13,fontWeight:700 }}>Recent Orders — {branch}</p>
+              {orders.slice(0,5).map((o,i)=>(
+                <div key={o.id} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:i<4?`1px solid ${G.border}`:'none' }}>
+                  <div><p style={{ margin:'0 0 2px',fontWeight:600,fontSize:13,color:G.green }}>{o.order_number}</p><p style={{ margin:0,fontSize:11,color:G.muted }}>{o.customer_name} · {new Date(o.created_at).toLocaleDateString('en-IN')}</p></div>
+                  <div style={{ display:'flex',alignItems:'center',gap:10 }}><span style={{ fontWeight:700,fontSize:13 }}>{fmtRs(o.total_amount)}</span><Badge status={o.status} /></div>
                 </div>
               ))}
-              {orders.length === 0 && <p style={{ textAlign:'center', color:G.muted, fontSize:13 }}>No orders yet for {branch}</p>}
+              {orders.length===0 && <p style={{ textAlign:'center',color:G.muted,fontSize:13 }}>No orders for {branch} yet</p>}
             </div>
           </>}
 
           {/* ── ORDERS ── */}
-          {page === 'orders' && <>
-            <div style={{ background:G.white, borderRadius:14, padding:'12px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
-              <div style={{ position:'relative', flex:1, minWidth:200 }}>
-                <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:14, color:G.muted }}>🔍</span>
-                <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
-                  placeholder="Search order or customer..."
-                  style={{ width:'100%', padding:'9px 9px 9px 32px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
+          {page==='orders' && <>
+            <div style={{ background:G.white,borderRadius:14,padding:'12px 16px',marginBottom:16,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',display:'flex',gap:10,flexWrap:'wrap',alignItems:'center' }}>
+              <div style={{ position:'relative',flex:1,minWidth:200 }}>
+                <span style={{ position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:14,color:G.muted }}>🔍</span>
+                <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search order or customer..."
+                  style={{ width:'100%',padding:'9px 9px 9px 32px',borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:13,outline:'none',boxSizing:'border-box',background:'#FAFAFA' }}
                   onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
               </div>
-              <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+              <div style={{ display:'flex',gap:4,flexWrap:'wrap' }}>
                 {['all','pending','confirmed','packed','dispatched','delivered','cancelled'].map(s=>(
-                  <button key={s} onClick={()=>setSF(s)} style={{ padding:'6px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:statusFilter===s?G.green:'#F3F4F6', color:statusFilter===s?G.white:G.muted }}>
+                  <button key={s} onClick={()=>setSF(s)} style={{ padding:'6px 12px',borderRadius:20,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,background:statusFilter===s?G.green:'#F3F4F6',color:statusFilter===s?G.white:G.muted }}>
                     {s==='all'?'All':s.charAt(0).toUpperCase()+s.slice(1)}
                   </button>
                 ))}
               </div>
+              {/* FIX #9: export button */}
+              <button onClick={handleExportOrders} style={{ background:G.blueLight,border:'none',borderRadius:9,padding:'8px 14px',fontSize:12,fontWeight:700,color:G.blue,cursor:'pointer',display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap' }}>
+                ⬇ Export CSV
+              </button>
             </div>
-
-            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              {filteredOrders.map((o) => (
-                <div key={o.id} style={{ background:G.white, borderRadius:14, overflow:'hidden', border:`1px solid ${G.border}`, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+            <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
+              {filteredOrders.map(o=>(
+                <div key={o.id} style={{ background:G.white,borderRadius:14,overflow:'hidden',border:`1px solid ${G.border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
                   <div style={{ display:'flex' }}>
-                    <div style={{ width:200, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'12px 14px' }}>
-                      <p style={{ margin:'0 0 8px', fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase' }}>Items</p>
-                      {(o.order_items||[]).map((item,idx) => (
-                        <div key={idx} style={{ display:'flex', alignItems:'center', gap:7, marginBottom:6, padding:'6px 8px', background:G.white, borderRadius:7, border:`1px solid ${G.border}` }}>
+                    <div style={{ width:200,flexShrink:0,background:'#F9FAF7',borderRight:`1px solid ${G.border}`,padding:'12px 14px' }}>
+                      <p style={{ margin:'0 0 8px',fontSize:10,fontWeight:700,color:G.muted,textTransform:'uppercase' }}>Items</p>
+                      {(o.order_items||[]).map((item,idx)=>(
+                        <div key={idx} style={{ display:'flex',alignItems:'center',gap:7,marginBottom:6,padding:'6px 8px',background:G.white,borderRadius:7,border:`1px solid ${G.border}` }}>
                           <span style={{ fontSize:14 }}>🌾</span>
-                          <div>
-                            <p style={{ margin:0, fontSize:11, fontWeight:700, color:G.text }}>{item.name}</p>
-                            <p style={{ margin:0, fontSize:10, color:G.muted }}>×{item.quantity} = <strong style={{ color:G.green }}>₹{item.quantity*item.price_per_unit}</strong></p>
-                          </div>
+                          <div><p style={{ margin:0,fontSize:11,fontWeight:700,color:G.text }}>{item.name}</p><p style={{ margin:0,fontSize:10,color:G.muted }}>×{item.quantity} = <strong style={{ color:G.green }}>₹{item.quantity*item.price_per_unit}</strong></p></div>
                         </div>
                       ))}
-                      <div style={{ marginTop:6, padding:'6px 8px', background:G.greenLight, borderRadius:7, display:'flex', justifyContent:'space-between' }}>
-                        <span style={{ fontSize:11, color:G.greenDark, fontWeight:600 }}>Total</span>
-                        <span style={{ fontSize:13, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
+                      <div style={{ marginTop:6,padding:'6px 8px',background:G.greenLight,borderRadius:7,display:'flex',justifyContent:'space-between' }}>
+                        <span style={{ fontSize:11,color:G.greenDark,fontWeight:600 }}>Total</span>
+                        <span style={{ fontSize:13,fontWeight:800,color:G.green }}>{fmtRs(o.total_amount)}</span>
                       </div>
                     </div>
-                    <div style={{ flex:1, padding:'12px 14px' }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-                        <div>
-                          <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:14, color:G.green }}>{o.order_number}</p>
-                          <p style={{ margin:0, fontSize:11, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>
-                        </div>
+                    <div style={{ flex:1,padding:'12px 14px' }}>
+                      <div style={{ display:'flex',justifyContent:'space-between',marginBottom:8 }}>
+                        <div><p style={{ margin:'0 0 2px',fontWeight:700,fontSize:14,color:G.green }}>{o.order_number}</p><p style={{ margin:0,fontSize:11,color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p></div>
                         <Badge status={o.status} />
                       </div>
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:10, fontSize:12 }}>
-                        <div><p style={{ margin:'0 0 1px', fontSize:10, color:G.muted, textTransform:'uppercase', fontWeight:600 }}>Customer</p><p style={{ margin:0, fontWeight:600 }}>{o.customer_name||'—'}</p></div>
+                      <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:10,fontSize:12 }}>
+                        <div><p style={{ margin:'0 0 1px',fontSize:10,color:G.muted,textTransform:'uppercase',fontWeight:600 }}>Customer</p><p style={{ margin:0,fontWeight:600 }}>{o.customer_name||'—'}</p></div>
                         <div>
-                          <p style={{ margin:'0 0 1px', fontSize:10, color:G.muted, textTransform:'uppercase', fontWeight:600 }}>Payment</p>
-                          <p style={{ margin:0, fontWeight:600, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
-                          <span style={{ fontSize:10, fontWeight:600, padding:'1px 7px', borderRadius:10,
-                            background: o.payment_status==='paid' ? G.greenLight : G.amberLight,
-                            color: o.payment_status==='paid' ? G.green : G.amber }}>
-                            {o.payment_status==='paid' ? '✅ Paid' : '⏳ Pending'}
+                          <p style={{ margin:'0 0 1px',fontSize:10,color:G.muted,textTransform:'uppercase',fontWeight:600 }}>Payment</p>
+                          <p style={{ margin:0,fontWeight:600,textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
+                          <span style={{ fontSize:10,fontWeight:600,padding:'1px 7px',borderRadius:10,background:o.payment_status==='paid'?G.greenLight:G.amberLight,color:o.payment_status==='paid'?G.green:G.amber }}>
+                            {o.payment_status==='paid'?'✅ Paid':'⏳ Pending'}
                           </span>
                         </div>
-                        <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 1px', fontSize:10, color:G.muted, textTransform:'uppercase', fontWeight:600 }}>Address</p><p style={{ margin:0 }}>{o.delivery_address||'—'}</p></div>
+                        <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 1px',fontSize:10,color:G.muted,textTransform:'uppercase',fontWeight:600 }}>Address</p><p style={{ margin:0 }}>{o.delivery_address||'—'}</p></div>
                       </div>
-                      {/* FIX #14: added payment collection button for branch orders */}
-                      <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
-                        {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
-                        {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
-                        {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
-                        {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
+                      <div style={{ display:'flex',gap:5,flexWrap:'wrap' }}>
+                        {o.status==='pending'    && <button onClick={()=>updateOrderStatus(o.id,'confirmed')}  style={{ background:G.greenLight, border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:700,color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
+                        {o.status==='confirmed'  && <button onClick={()=>updateOrderStatus(o.id,'packed')}     style={{ background:G.blueLight,  border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:700,color:G.blue,  cursor:'pointer' }}>📦 Pack</button>}
+                        {o.status==='packed'     && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE',     border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:700,color:'#7C3AED',cursor:'pointer' }}>🚚 Dispatch</button>}
+                        {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')}  style={{ background:G.greenLight, border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:700,color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
                         {o.payment_method==='cod' && o.payment_status!=='paid' && (
-                          <button onClick={()=>markPaymentCollected(o)} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
-                            💵 Collect Cash
-                          </button>
+                          <button onClick={()=>markCashCollected(o)} style={{ background:G.amberLight,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:700,color:G.amber,cursor:'pointer' }}>💵 Collect Cash</button>
                         )}
                       </div>
                     </div>
                   </div>
                 </div>
               ))}
-              {filteredOrders.length === 0 && <div style={{ textAlign:'center', padding:40, color:G.muted, background:G.white, borderRadius:14 }}>No orders found for {branch}</div>}
+              {filteredOrders.length===0 && <div style={{ textAlign:'center',padding:40,color:G.muted,background:G.white,borderRadius:14 }}>No orders found for {branch}</div>}
             </div>
           </>}
 
           {/* ── INVENTORY ── */}
-          {page === 'inventory' && (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14 }}>
-              {products.map(p => {
-                const isLow = p.stock_bags <= p.low_stock_threshold
-                const pct = Math.min(100, Math.round(p.stock_bags/Math.max(p.stock_bags,p.low_stock_threshold*3)*100))
+          {page==='inventory' && (
+            <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:14 }}>
+              {products.map(p=>{
+                const isLow = p.stock_bags<=p.low_stock_threshold
+                const pct   = Math.min(100,Math.round(p.stock_bags/Math.max(p.stock_bags,p.low_stock_threshold*3)*100))
                 return (
-                  <div key={p.id} style={{ background:G.white, borderRadius:16, padding:'18px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${isLow?G.red:G.green}` }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10 }}>
-                      <div>
-                        <p style={{ margin:'0 0 3px', fontSize:14, fontWeight:700 }}>{p.name}</p>
-                        <p style={{ margin:0, fontSize:11, color:G.muted }}>{p.sku} · {p.weight_kg}kg</p>
-                      </div>
+                  <div key={p.id} style={{ background:G.white,borderRadius:16,padding:'18px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',borderLeft:`4px solid ${isLow?G.red:G.green}` }}>
+                    <div style={{ display:'flex',justifyContent:'space-between',marginBottom:10 }}>
+                      <div><p style={{ margin:'0 0 3px',fontSize:14,fontWeight:700 }}>{p.name}</p><p style={{ margin:0,fontSize:11,color:G.muted }}>{p.sku} · {p.weight_kg}kg</p></div>
                       <span style={{ fontSize:22 }}>🌾</span>
                     </div>
-                    <p style={{ margin:'0 0 6px', fontSize:26, fontWeight:800, color:isLow?G.red:G.green }}>
-                      {p.stock_bags} <span style={{ fontSize:12, color:G.muted, fontWeight:400 }}>bags</span>
-                    </p>
-                    <div style={{ height:5, background:'#F3F4F6', borderRadius:3, overflow:'hidden', marginBottom:8 }}>
-                      <div style={{ height:'100%', width:`${pct}%`, background:isLow?G.red:G.green, borderRadius:3 }} />
-                    </div>
-                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:G.muted }}>
-                      <span>₹{p.price_per_bag}/bag</span>
-                      {isLow && <span style={{ color:G.red, fontWeight:600 }}>⚠ Low</span>}
-                    </div>
-                    {p.packing_date && <p style={{ margin:'6px 0 0', fontSize:11, color:G.muted }}>📅 Packed: {new Date(p.packing_date).toLocaleDateString('en-IN')}</p>}
+                    <p style={{ margin:'0 0 6px',fontSize:26,fontWeight:800,color:isLow?G.red:G.green }}>{p.stock_bags} <span style={{ fontSize:12,color:G.muted,fontWeight:400 }}>bags</span></p>
+                    <div style={{ height:5,background:'#F3F4F6',borderRadius:3,overflow:'hidden',marginBottom:8 }}><div style={{ height:'100%',width:`${pct}%`,background:isLow?G.red:G.green,borderRadius:3 }} /></div>
+                    <div style={{ display:'flex',justifyContent:'space-between',fontSize:12,color:G.muted }}><span>₹{p.price_per_bag}/bag</span>{isLow&&<span style={{ color:G.red,fontWeight:600 }}>⚠ Low</span>}</div>
+                    {p.packing_date && <p style={{ margin:'6px 0 0',fontSize:11,color:G.muted }}>📅 Packed: {new Date(p.packing_date).toLocaleDateString('en-IN')}</p>}
                   </div>
                 )
               })}
             </div>
           )}
 
-          {page === 'walkin' && <WalkInBilling branch={branch} />}
-          {page === 'pickup' && <PickupQueue defaultBranch={branch} />}
+          {page==='walkin' && <WalkInBilling branch={branch} />}
+          {page==='pickup' && <PickupQueue defaultBranch={branch} />}
 
-          {/* ── MY BRANCH STOCK ── FIX #5: no more prompt() */}
-          {page === 'stock' && (
+          {/* ── MY BRANCH STOCK ── FIX #5: proper modal, FIX #9: export */}
+          {page==='stock' && (
             <div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:20 }}>
-                <div style={{ background:G.white, borderRadius:14, padding:'16px 18px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${G.green}` }}>
-                  <p style={{ margin:'0 0 6px', fontSize:12, color:G.muted }}>Total Bags at {branch}</p>
-                  <p style={{ margin:0, fontSize:26, fontWeight:800, color:G.green }}>{branchStock.reduce((s,b)=>s+(b.stock_bags||0),0)}</p>
+              <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:14,marginBottom:20 }}>
+                <div style={{ background:G.white,borderRadius:14,padding:'16px 18px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',borderLeft:`4px solid ${G.green}` }}>
+                  <p style={{ margin:'0 0 6px',fontSize:12,color:G.muted }}>Total Bags at {branch}</p>
+                  <p style={{ margin:0,fontSize:26,fontWeight:800,color:G.green }}>{branchStock.reduce((s,b)=>s+(b.stock_bags||0),0)}</p>
                 </div>
-                <div style={{ background:G.white, borderRadius:14, padding:'16px 18px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${G.red}` }}>
-                  <p style={{ margin:'0 0 6px', fontSize:12, color:G.muted }}>Low Stock Products</p>
-                  <p style={{ margin:0, fontSize:26, fontWeight:800, color:G.red }}>
-                    {products.filter(p=>{ const bs=branchStock.find(b=>b.product_id===p.id); return (bs?.stock_bags||0)<=p.low_stock_threshold }).length}
-                  </p>
+                <div style={{ background:G.white,borderRadius:14,padding:'16px 18px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',borderLeft:`4px solid ${G.red}` }}>
+                  <p style={{ margin:'0 0 6px',fontSize:12,color:G.muted }}>Low Stock Products</p>
+                  <p style={{ margin:0,fontSize:26,fontWeight:800,color:G.red }}>{products.filter(p=>{const bs=branchStock.find(b=>b.product_id===p.id);return(bs?.stock_bags||0)<=p.low_stock_threshold}).length}</p>
+                </div>
+                {/* FIX #9: export stock */}
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'center' }}>
+                  <button onClick={handleExportStock} style={{ padding:'10px 18px',background:G.blueLight,border:'none',borderRadius:10,fontSize:13,fontWeight:700,color:G.blue,cursor:'pointer' }}>
+                    ⬇ Export Stock CSV
+                  </button>
                 </div>
               </div>
-
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:14 }}>
-                {products.map(p => {
-                  const bs = branchStock.find(b => b.product_id === p.id)
-                  const stock = bs?.stock_bags || 0
-                  const isLow = stock <= p.low_stock_threshold
-                  const pct = Math.min(100, Math.round(stock/Math.max(stock,p.low_stock_threshold*3,1)*100))
+              <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:14 }}>
+                {products.map(p=>{
+                  const bs    = branchStock.find(b=>b.product_id===p.id)
+                  const stock = bs?.stock_bags||0
+                  const isLow = stock<=p.low_stock_threshold
+                  const pct   = Math.min(100,Math.round(stock/Math.max(stock,p.low_stock_threshold*3,1)*100))
                   return (
-                    <div key={p.id} style={{ background:G.white, borderRadius:16, padding:'18px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${isLow?G.red:G.green}` }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10 }}>
-                        <div>
-                          <p style={{ margin:'0 0 3px', fontSize:14, fontWeight:700 }}>{p.name}</p>
-                          <p style={{ margin:0, fontSize:11, color:G.muted }}>{branch} · {p.weight_kg}kg</p>
-                        </div>
+                    <div key={p.id} style={{ background:G.white,borderRadius:16,padding:'18px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',borderLeft:`4px solid ${isLow?G.red:G.green}` }}>
+                      <div style={{ display:'flex',justifyContent:'space-between',marginBottom:10 }}>
+                        <div><p style={{ margin:'0 0 3px',fontSize:14,fontWeight:700 }}>{p.name}</p><p style={{ margin:0,fontSize:11,color:G.muted }}>{branch} · {p.weight_kg}kg</p></div>
                         <span style={{ fontSize:22 }}>🌾</span>
                       </div>
-                      <p style={{ margin:'0 0 6px', fontSize:28, fontWeight:800, color:isLow?G.red:G.green }}>
-                        {stock} <span style={{ fontSize:12, color:G.muted, fontWeight:400 }}>bags</span>
-                      </p>
-                      <div style={{ height:5, background:'#F3F4F6', borderRadius:3, overflow:'hidden', marginBottom:10 }}>
-                        <div style={{ height:'100%', width:`${pct}%`, background:isLow?G.red:stock>p.low_stock_threshold*2?G.green:G.amber, borderRadius:3 }} />
-                      </div>
-                      {isLow && <p style={{ margin:'0 0 10px', fontSize:11, color:G.red, fontWeight:600 }}>⚠ Stock running low — request refill from HQ</p>}
-                      {/* FIX #5: proper modal buttons instead of prompt() */}
-                      <div style={{ display:'flex', gap:6 }}>
-                        <button
-                          onClick={() => setStockModal(bs || { product_id: p.id, product_name: p.name, stock_bags: 0 })}
-                          style={{ flex:1, padding:'7px', background:G.greenLight, border:'none', borderRadius:8, fontSize:12, fontWeight:700, color:G.green, cursor:'pointer' }}>
-                          + Add Stock
-                        </button>
-                        <button
-                          onClick={() => setStockModal(bs || { product_id: p.id, product_name: p.name, stock_bags: 0 })}
-                          style={{ flex:1, padding:'7px', background:G.amberLight, border:'none', borderRadius:8, fontSize:12, fontWeight:700, color:G.amber, cursor:'pointer' }}>
-                          − Remove
-                        </button>
+                      <p style={{ margin:'0 0 6px',fontSize:28,fontWeight:800,color:isLow?G.red:G.green }}>{stock} <span style={{ fontSize:12,color:G.muted,fontWeight:400 }}>bags</span></p>
+                      <div style={{ height:5,background:'#F3F4F6',borderRadius:3,overflow:'hidden',marginBottom:10 }}><div style={{ height:'100%',width:`${pct}%`,background:isLow?G.red:stock>p.low_stock_threshold*2?G.green:G.amber,borderRadius:3 }} /></div>
+                      {isLow && <p style={{ margin:'0 0 10px',fontSize:11,color:G.red,fontWeight:600 }}>⚠ Stock running low — request refill from HQ</p>}
+                      {/* FIX #5: modal buttons, no prompt() */}
+                      <div style={{ display:'flex',gap:6 }}>
+                        <button onClick={()=>setStockModal(bs||{product_id:p.id,product_name:p.name,stock_bags:0})} style={{ flex:1,padding:'7px',background:G.greenLight,border:'none',borderRadius:8,fontSize:12,fontWeight:700,color:G.green,cursor:'pointer' }}>+ Add Stock</button>
+                        <button onClick={()=>setStockModal(bs||{product_id:p.id,product_name:p.name,stock_bags:0})} style={{ flex:1,padding:'7px',background:G.amberLight,border:'none',borderRadius:8,fontSize:12,fontWeight:700,color:G.amber,cursor:'pointer' }}>− Remove</button>
                       </div>
                     </div>
                   )
