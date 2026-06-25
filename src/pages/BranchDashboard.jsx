@@ -40,14 +40,7 @@ const BRANCH_CSS = `
       transform:translateX(-100%)!important; transition:transform 0.25s ease!important;
     }
     .branch-sidebar.open { transform:translateX(0)!important; }
-    .branch-overlay {
-      display:block!important; position:fixed; inset:0;
-      background:rgba(0,0,0,0.4); z-index:199;
-    }
     .branch-main { padding:12px!important; }
-  }
-  @media (min-width: 641px) {
-    .branch-overlay { display:none!important; }
   }
 `
 
@@ -273,7 +266,7 @@ export default function BranchDashboard() {
           onSaved={load}
         />
       )}
-      <div className="branch-overlay" style={{ display:'none' }} onClick={()=>setCol(true)} />
+      {/* Overlay removed — not needed on web */}
       {showProfile && <ProfilePage onClose={()=>setShowProfile(false)} />}
 
       {/* SIDEBAR */}
