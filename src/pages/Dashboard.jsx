@@ -26,7 +26,7 @@ const G = {
 const PAGES = [
   { key:'dashboard',   icon:'⊞',  label:'Dashboard' },
   { key:'orders',      icon:'📋', label:'Orders' },
-  { key:'inventory',   icon:'📦', label:'Inventory' },
+  { key:'inventory',   icon:'📦', label:'Stock' },
   { key:'analytics',   icon:'📊', label:'Analytics' },
   { key:'users',       icon:'👥', label:'Users' },
   { key:'admin',       icon:'⚙️', label:'Admin' },
@@ -144,6 +144,7 @@ function NewOrderModal({ products, onClose, onSaved }) {
       const { data: newOrder, error: orderErr } = await supabase.from('orders').insert({
         order_number: orderNumber, customer_name: customerName,
         delivery_address: address, total_amount: grand,
+        branch: 'Hyderabad', order_type: 'delivery',
         status:'pending', payment_status:'pending', payment_method: payMethod,
         created_at: new Date().toISOString()
       }).select().single()
@@ -157,7 +158,6 @@ function NewOrderModal({ products, onClose, onSaved }) {
           weight_kg: p.weight_kg, quantity: cart[p.id], price_per_unit: p.price_per_bag
         })
         if (itemErr) throw itemErr
-        await supabase.from('products').update({ stock_bags: p.stock_bags - cart[p.id] }).eq('id', p.id)
       }
       onSaved(); onClose()
     } catch(e) {
@@ -285,6 +285,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [page, setPage]     = useState('dashboard')
   const [filter, setFilter] = useState('monthly')
+  // Sidebar is kept permanently open so the left navigation column stays fixed
   const [collapsed, setCollapsed] = useState(false)
   const [orders, setOrders]   = useState([])
   const [products, setProducts] = useState([])
@@ -342,7 +343,7 @@ export default function Dashboard() {
   async function load() {
     setLoading(true)
     const [oRes, pRes, uRes, mRes] = await Promise.all([
-      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,notes,created_at,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(500),
+      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,order_type,branch,pickup_branch,pickup_time,notes,created_at,stock_deducted,stock_deducted_at,stock_deducted_note,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(500),
       supabase.from('products').select('*').order('weight_kg'),
       supabase.from('profiles').select('id,username,full_name,role,phone,branch,created_at,active').order('created_at',{ascending:false}),
       supabase.from('stock_movements').select('id,product_id,change_bags,type,note,created_at,products(name)').order('created_at',{ascending:false}).limit(30),
@@ -372,32 +373,186 @@ export default function Dashboard() {
     return keys.map((k,i)=>({ name:labels[i], revenue:o.filter(x=>x.created_at?.startsWith(k)).reduce((s,x)=>s+Number(x.total_amount||0),0), orders:o.filter(x=>x.created_at?.startsWith(k)).length }))
   }
 
-  async function updateOrderStatus(id, status) {
-    // FIX #15: confirmation before cancellation
-    if (status === 'cancelled') {
-      if (!window.confirm('Cancel this order? This cannot be undone.')) return
-      // FIX #4: restore stock — DB trigger handles this automatically
-      // but we also do it in JS as a safety net for old deployments
-      const order = orders.find(o => o.id === id)
-      if (order?.order_items?.length) {
-        for (const item of order.order_items) {
-          if (!item.product_id) continue
-          const product = products.find(p => p.id === item.product_id)
-          if (product) {
-            await supabase.from('products').update({
-              stock_bags: product.stock_bags + item.quantity
-            }).eq('id', item.product_id)
-          }
-        }
-        // Refresh products state to reflect restored stock
-        setProducts(prev => prev.map(p => {
-          const item = order.order_items.find(i => i.product_id === p.id)
-          return item ? { ...p, stock_bags: p.stock_bags + item.quantity } : p
-        }))
+  function getOrderBranch(order) {
+    return order?.pickup_branch || order?.branch || 'Hyderabad'
+  }
+
+  async function deductBranchStockForOrder(order) {
+    if (order.stock_deducted) return
+
+    const branchName = getOrderBranch(order)
+    const items = order.order_items || []
+
+    if (!items.length) {
+      throw new Error('No order items found for stock deduction.')
+    }
+
+    // Check all branch stock first before deducting anything.
+    for (const item of items) {
+      if (!item.product_id) {
+        throw new Error(`Missing product ID for ${item.name}.`)
+      }
+
+      const { data: stockRow, error } = await supabase
+        .from('branch_stock')
+        .select('id,branch_name,product_id,product_name,stock_bags')
+        .eq('branch_name', branchName)
+        .eq('product_id', item.product_id)
+        .maybeSingle()
+
+      if (error) throw error
+
+      const available = Number(stockRow?.stock_bags || 0)
+      const required = Number(item.quantity || 0)
+
+      if (!stockRow || available < required) {
+        throw new Error(`${branchName} branch has only ${available} bags of ${item.name}. Required: ${required}.`)
       }
     }
-    await supabase.from('orders').update({ status }).eq('id', id)
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o))
+
+    // Deduct only after every product has enough stock.
+    for (const item of items) {
+      const { data: stockRow, error } = await supabase
+        .from('branch_stock')
+        .select('id,stock_bags')
+        .eq('branch_name', branchName)
+        .eq('product_id', item.product_id)
+        .single()
+
+      if (error) throw error
+
+      const newStock = Number(stockRow.stock_bags || 0) - Number(item.quantity || 0)
+
+      const { error: updateError } = await supabase
+        .from('branch_stock')
+        .update({
+          stock_bags: newStock,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', stockRow.id)
+
+      if (updateError) throw updateError
+
+      await supabase.from('branch_stock_movements').insert({
+        branch_name: branchName,
+        product_id: item.product_id,
+        product_name: item.name,
+        change_bags: -Number(item.quantity || 0),
+        type: 'sale',
+        note: `Order ${order.order_number} confirmed`,
+        created_at: new Date().toISOString()
+      })
+    }
+
+    const { error: orderError } = await supabase
+      .from('orders')
+      .update({
+        stock_deducted: true,
+        stock_deducted_at: new Date().toISOString(),
+        stock_deducted_note: `Branch stock deducted from ${branchName}`
+      })
+      .eq('id', order.id)
+
+    if (orderError) throw orderError
+  }
+
+  async function restoreBranchStockForOrder(order) {
+    if (!order.stock_deducted) return
+
+    const branchName = getOrderBranch(order)
+    const items = order.order_items || []
+
+    for (const item of items) {
+      if (!item.product_id) continue
+
+      const { data: stockRow, error } = await supabase
+        .from('branch_stock')
+        .select('id,stock_bags')
+        .eq('branch_name', branchName)
+        .eq('product_id', item.product_id)
+        .maybeSingle()
+
+      if (error) throw error
+
+      const restoredStock = Number(stockRow?.stock_bags || 0) + Number(item.quantity || 0)
+
+      if (stockRow?.id) {
+        const { error: updateError } = await supabase
+          .from('branch_stock')
+          .update({
+            stock_bags: restoredStock,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', stockRow.id)
+
+        if (updateError) throw updateError
+      } else {
+        const { error: insertError } = await supabase
+          .from('branch_stock')
+          .insert({
+            branch_name: branchName,
+            product_id: item.product_id,
+            product_name: item.name,
+            stock_bags: restoredStock,
+            updated_at: new Date().toISOString()
+          })
+
+        if (insertError) throw insertError
+      }
+
+      await supabase.from('branch_stock_movements').insert({
+        branch_name: branchName,
+        product_id: item.product_id,
+        product_name: item.name,
+        change_bags: Number(item.quantity || 0),
+        type: 'adjustment',
+        note: `Order ${order.order_number} cancelled — stock restored`,
+        created_at: new Date().toISOString()
+      })
+    }
+
+    const { error: orderError } = await supabase
+      .from('orders')
+      .update({
+        stock_deducted: false,
+        stock_deducted_note: `Branch stock restored to ${branchName}`
+      })
+      .eq('id', order.id)
+
+    if (orderError) throw orderError
+  }
+
+  async function updateOrderStatus(id, status) {
+    const order = orders.find(o => o.id === id)
+
+    if (!order) {
+      alert('Order not found.')
+      return
+    }
+
+    if (status === 'cancelled' && !window.confirm('Cancel this order?')) return
+
+    try {
+      if (status === 'confirmed' && !order.stock_deducted) {
+        await deductBranchStockForOrder(order)
+      }
+
+      if (status === 'cancelled' && order.stock_deducted) {
+        await restoreBranchStockForOrder(order)
+      }
+
+      const { error } = await supabase
+        .from('orders')
+        .update({ status })
+        .eq('id', id)
+
+      if (error) throw error
+
+      await load()
+    } catch (error) {
+      console.error('Order status update failed:', error)
+      alert(error.message || 'Unable to update order status.')
+    }
   }
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
@@ -620,10 +775,10 @@ export default function Dashboard() {
       {showStock && <StockModal product={showStock} onClose={()=>setShowStock(null)} onSaved={load} />}
 
       {/* SIDEBAR */}
-      <aside className={`dash-sidebar${!collapsed?' open':''}`} style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s, transform 0.25s', position:'sticky', top:0, height:'100vh', overflow:'hidden', zIndex:50 }}>
-        <div style={{ padding:collapsed?'18px 10px':'18px 18px', borderBottom:`1px solid ${G.border}`, display:'flex', alignItems:'center', gap:10 }}>
+      <aside className="dash-sidebar open" style={{ width:220, minWidth:220, maxWidth:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'none', position:'sticky', top:0, height:'100vh', overflow:'hidden', zIndex:50 }}>
+        <div style={{ padding:'18px 18px', borderBottom:`1px solid ${G.border}`, display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:9, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌾</div>
-          {!collapsed && <div><p style={{ margin:0, fontSize:13, fontWeight:700, color:G.greenDark }}>Green Village</p><p style={{ margin:0, fontSize:10, color:G.green2, fontWeight:600 }}>Rice Admin</p></div>}
+          <div><p style={{ margin:0, fontSize:13, fontWeight:700, color:G.greenDark }}>Green Village</p><p style={{ margin:0, fontSize:10, color:G.green2, fontWeight:600 }}>Rice Admin</p></div>
         </div>
         <nav style={{ flex:1, padding:'10px 6px', overflowY:'auto' }}>
           <style>{`
@@ -659,17 +814,16 @@ export default function Dashboard() {
           `}</style>
           {PAGES.map(item => (
             <div key={item.key} className="nav-item">
-              <button onClick={()=>{ setPage(item.key); setCollapsed(true) }} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:collapsed?'center':'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
+              <button onClick={()=>setPage(item.key)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
                 <span style={{ fontSize:17, flexShrink:0 }}>{item.icon}</span>
-                {!collapsed && item.label}
+                {item.label}
               </button>
-              {collapsed && <span className="nav-tooltip">{item.label}</span>}
+              
             </div>
           ))}
         </nav>
         <div style={{ padding:'8px 6px', borderTop:`1px solid ${G.border}`, flexShrink:0 }}>
-          {!collapsed && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', marginBottom:6, background:'#F9FAF7', borderRadius:10 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', marginBottom:6, background:'#F9FAF7', borderRadius:10 }}>
               <div style={{ width:30, height:30, borderRadius:'50%', background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:G.greenDark, flexShrink:0, overflow:'hidden' }}>
                 {profile?.avatar_url
                   ? <img src={profile.avatar_url} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
@@ -681,16 +835,15 @@ export default function Dashboard() {
                 <p style={{ margin:0, fontSize:10, color:G.muted, textTransform:'capitalize' }}>{profile?.role}</p>
               </div>
             </div>
-          )}
           <div className="nav-item" style={{ position:'relative' }}>
             <button onClick={async()=>{ await signOut(); navigate('/login') }}
-              style={{ width:'100%', padding:collapsed?'9px 0':'9px 12px', borderRadius:10, border:'none', background:G.redLight, color:G.red, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:8, transition:'background 0.15s' }}
+              style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:'none', background:G.redLight, color:G.red, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'flex-start', gap:8, transition:'background 0.15s' }}
               onMouseEnter={e=>e.currentTarget.style.background='#FECACA'}
               onMouseLeave={e=>e.currentTarget.style.background=G.redLight}>
               <span style={{ fontSize:16, flexShrink:0 }}>↩</span>
-              {!collapsed && <span>Logout</span>}
+              <span>Logout</span>
             </button>
-            {collapsed && <span className="nav-tooltip">Logout</span>}
+            
           </div>
         </div>
       </aside>
@@ -701,7 +854,7 @@ export default function Dashboard() {
         {/* TOPBAR */}
         <header className="dash-topbar" style={{ background:G.white, borderBottom:`1px solid ${G.border}`, height:58, padding:'0 24px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:10 }}>
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-            <button onClick={()=>setCollapsed(!collapsed)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:G.muted, padding:4 }}>☰</button>
+            <button type="button" onClick={()=>setCollapsed(false)} title="Sidebar is fixed" style={{ background:'none', border:'none', cursor:'default', fontSize:18, color:G.muted, padding:4 }}>☰</button>
             <span style={{ fontSize:15, fontWeight:700, color:G.text }}>{PAGES.find(p=>p.key===page)?.label}</span>
           </div>
           <div className="dash-topbar-center" style={{ display:'flex', gap:2 }}>
