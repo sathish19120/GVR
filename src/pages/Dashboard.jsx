@@ -310,6 +310,21 @@ export default function Dashboard() {
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
+  // Branch stock notification bell
+const [showNotifications, setShowNotifications] = useState(false)
+const [stockNotifications, setStockNotifications] = useState([])
+const [notificationSeenAt, setNotificationSeenAt] = useState(
+  () => localStorage.getItem('gvr_stock_notifications_seen_at') || ''
+)
+
+const normalizedRole = String(profile?.role || '').toLowerCase().replace(/[\s_-]/g, '')
+const rawRole = String(profile?.role || '').toLowerCase()
+
+const canSeeStockNotifications =
+  normalizedRole === 'superadmin' ||
+  normalizedRole === 'admin' ||
+  rawRole.includes('super') ||
+  rawRole.includes('admin')
   // FIX #10: pagination state
   const [ordersPage, setOrdersPage] = useState(1)
   const ORDERS_PER_PAGE = 20
@@ -362,7 +377,88 @@ export default function Dashboard() {
     setChart(buildChart(o, filter))
     setLoading(false)
   }
+   async function loadStockNotifications() {
+  if (!canSeeStockNotifications) return
 
+  try {
+    const { data, error } = await supabase
+      .from('branch_stock')
+      .select('*')
+      .order('updated_at', { ascending: false })
+
+    if (error) throw error
+
+    const alerts = (data || [])
+      .map(row => {
+        const stock = Number(row.stock_bags || 0)
+        const threshold = Number(row.low_stock_threshold || row.threshold || 5)
+        const productName = row.product_name || row.product || row.name || 'Product'
+        const branchName = row.branch_name || row.branch || 'Branch'
+
+        if (stock <= 0) {
+          return {
+            id: `zero-${branchName}-${row.product_id || productName}`,
+            level: 'critical',
+            icon: '🚨',
+            title: 'Branch stock is empty',
+            message: `${branchName} has 0 bags of ${productName}. Add stock immediately.`,
+            branch: branchName,
+            product: productName,
+            stock,
+            threshold,
+            created_at: row.updated_at || row.created_at || new Date().toISOString(),
+          }
+        }
+
+        if (stock <= threshold) {
+          return {
+            id: `low-${branchName}-${row.product_id || productName}`,
+            level: 'warning',
+            icon: '⚠️',
+            title: 'Low branch stock',
+            message: `${branchName} has only ${stock} bags of ${productName}. Threshold is ${threshold}.`,
+            branch: branchName,
+            product: productName,
+            stock,
+            threshold,
+            created_at: row.updated_at || row.created_at || new Date().toISOString(),
+          }
+        }
+
+        return null
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const levelRank = { critical: 0, warning: 1 }
+        return (levelRank[a.level] - levelRank[b.level]) || (a.stock - b.stock)
+      })
+
+    setStockNotifications(alerts)
+  } catch (error) {
+    console.error('Stock notification load failed:', error)
+  }
+}
+
+function markStockNotificationsRead() {
+  const now = new Date().toISOString()
+  localStorage.setItem('gvr_stock_notifications_seen_at', now)
+  setNotificationSeenAt(now)
+}
+
+const unreadStockNotifications = stockNotifications.filter(n => {
+  if (!notificationSeenAt) return true
+  return new Date(n.created_at) > new Date(notificationSeenAt)
+}).length
+
+useEffect(() => {
+  if (!canSeeStockNotifications) return
+
+  loadStockNotifications()
+  const interval = setInterval(loadStockNotifications, 60000)
+
+  return () => clearInterval(interval)
+}, [canSeeStockNotifications])
+  
   function buildChart(o, f) {
     const now = new Date()
     const keys=[], labels=[]
@@ -808,6 +904,239 @@ export default function Dashboard() {
             ))}
           </div>
           <div style={{ display:'flex', gap:6 }}>
+            {/* Branch stock notification bell */}
+{canSeeStockNotifications && (
+  <div style={{ position: 'relative' }}>
+    <button
+      type="button"
+      onClick={() => {
+        const next = !showNotifications
+        setShowNotifications(next)
+
+        if (next) {
+          markStockNotificationsRead()
+          loadStockNotifications()
+        }
+      }}
+      title="Branch stock notifications"
+      aria-label="Branch stock notifications"
+      style={{
+        width: 38,
+        height: 38,
+        borderRadius: 13,
+        border: `1px solid ${G.border}`,
+        background: showNotifications ? G.greenLight : G.white,
+        color: G.greenDark,
+        cursor: 'pointer',
+        fontSize: 19,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 1px 7px rgba(0,0,0,0.10)',
+        position: 'relative',
+      }}
+    >
+      🔔
+
+      {unreadStockNotifications > 0 && (
+        <span
+          style={{
+            position: 'absolute',
+            top: -6,
+            right: -6,
+            minWidth: 19,
+            height: 19,
+            padding: '0 5px',
+            borderRadius: 99,
+            background: G.red,
+            color: G.white,
+            fontSize: 10,
+            fontWeight: 900,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: `2px solid ${G.white}`,
+          }}
+        >
+          {unreadStockNotifications > 9 ? '9+' : unreadStockNotifications}
+        </span>
+      )}
+    </button>
+
+    {showNotifications && (
+      <div
+        style={{
+          position: 'absolute',
+          right: 0,
+          top: 46,
+          width: 380,
+          maxWidth: 'calc(100vw - 24px)',
+          background: G.white,
+          border: `1px solid ${G.border}`,
+          borderRadius: 16,
+          boxShadow: '0 18px 45px rgba(0,0,0,0.20)',
+          zIndex: 5000,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '14px 16px',
+            borderBottom: `1px solid ${G.border}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: G.text }}>
+              Branch Stock Alerts
+            </p>
+            <p style={{ margin: '3px 0 0', fontSize: 11, color: G.muted }}>
+              Low and empty branch stock notifications
+            </p>
+          </div>
+
+          <button
+            onClick={loadStockNotifications}
+            style={{
+              border: 'none',
+              background: G.greenLight,
+              color: G.greenDark,
+              borderRadius: 9,
+              padding: '6px 9px',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            ↻
+          </button>
+        </div>
+
+        <div style={{ maxHeight: 360, overflowY: 'auto', padding: 10 }}>
+          {stockNotifications.length === 0 ? (
+            <div style={{ padding: '28px 12px', textAlign: 'center', color: G.muted }}>
+              <div style={{ fontSize: 30, marginBottom: 8 }}>✅</div>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: G.text }}>
+                No stock alerts
+              </p>
+              <p style={{ margin: '4px 0 0', fontSize: 12 }}>
+                All branch stock levels are safe.
+              </p>
+            </div>
+          ) : (
+            stockNotifications.map(n => (
+              <div
+                key={n.id}
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  padding: '10px 8px',
+                  borderRadius: 12,
+                  background: n.level === 'critical' ? G.redLight : G.amberLight,
+                  marginBottom: 8,
+                  border: `1px solid ${n.level === 'critical' ? '#FCA5A5' : '#FCD34D'}`,
+                }}
+              >
+                <div
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    background: G.white,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 17,
+                    flexShrink: 0,
+                  }}
+                >
+                  {n.icon}
+                </div>
+
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p
+                    style={{
+                      margin: '0 0 3px',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: n.level === 'critical' ? G.red : G.amber,
+                    }}
+                  >
+                    {n.title}
+                  </p>
+
+                  <p style={{ margin: '0 0 6px', fontSize: 12, color: G.text, lineHeight: 1.35 }}>
+                    {n.message}
+                  </p>
+
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: G.white, color: G.muted }}>
+                      {n.branch}
+                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: G.white, color: G.muted }}>
+                      {n.product}
+                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: G.white, color: n.level === 'critical' ? G.red : G.amber }}>
+                      {n.stock} bags
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div
+          style={{
+            padding: 12,
+            borderTop: `1px solid ${G.border}`,
+            display: 'flex',
+            gap: 8,
+          }}
+        >
+          <button
+            onClick={() => {
+              setPage('branchstock')
+              setShowNotifications(false)
+            }}
+            style={{
+              flex: 1,
+              border: 'none',
+              background: G.green,
+              color: G.white,
+              borderRadius: 10,
+              padding: '9px 10px',
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            Open Branch Stock
+          </button>
+
+          <button
+            onClick={() => setShowNotifications(false)}
+            style={{
+              border: `1px solid ${G.border}`,
+              background: G.white,
+              color: G.muted,
+              borderRadius: 10,
+              padding: '9px 12px',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
+)}
             {['daily','monthly','yearly'].map(f=>(
               <button key={f} onClick={()=>setFilter(f)} style={{ padding:'5px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:filter===f?G.green:'#F3F4F6', color:filter===f?'#fff':G.muted }}>
                 {f.charAt(0).toUpperCase()+f.slice(1)}
