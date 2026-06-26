@@ -304,16 +304,19 @@ export default function Dashboard() {
   const [orderStatusFilter, setOrderStatusFilter] = useState('all')
   const [orderPayFilter, setOrderPayFilter] = useState('all')
   const [orderDateFilter, setOrderDateFilter] = useState('all')
+  const [orderView, setOrderView] = useState('active')
+  const [selectedOrderIds, setSelectedOrderIds] = useState([])
+  const [ordersCompact, setOrdersCompact] = useState(true)
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
   // FIX #10: pagination state
   const [ordersPage, setOrdersPage] = useState(1)
-  const ORDERS_PER_PAGE = 25
+  const ORDERS_PER_PAGE = 20
   const statsPendingRef = useRef(0)
 
   // FIX #10: reset to page 1 when any filter changes
-  useEffect(() => { setOrdersPage(1) }, [orderSearch, invoiceSearch, orderStatusFilter, orderPayFilter, orderBranchFilter, orderDateFilter])
+  useEffect(() => { setOrdersPage(1); setSelectedOrderIds([]) }, [orderSearch, invoiceSearch, orderStatusFilter, orderPayFilter, orderBranchFilter, orderDateFilter, orderView])
   useEffect(() => { statsPendingRef.current = stats.pending }, [stats.pending])
 
   useEffect(() => { load() }, [filter])
@@ -404,23 +407,110 @@ export default function Dashboard() {
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
 
-  // FIX #3 & #4: compute filtered orders once, applied everywhere in the Orders page
+  const ACTIVE_STATUSES = ['pending','confirmed','packed','dispatched']
+  const HISTORY_STATUSES = ['delivered','cancelled']
+  const ORDER_QUEUE_TABS = [
+    { key:'active',     label:'Active',        icon:'⚡', statuses:ACTIVE_STATUSES },
+    { key:'pending',    label:'New',           icon:'🆕', statuses:['pending'] },
+    { key:'payment',    label:'Payment Check', icon:'💳' },
+    { key:'confirmed',  label:'Confirmed',     icon:'✅', statuses:['confirmed'] },
+    { key:'packed',     label:'Packed',        icon:'📦', statuses:['packed'] },
+    { key:'dispatched', label:'Dispatched',    icon:'🚚', statuses:['dispatched'] },
+    { key:'history',    label:'History',       icon:'🗄️', statuses:HISTORY_STATUSES },
+  ]
+
+  function isPaymentPending(order) {
+    const paymentStatus = order?.payment_status || 'pending'
+    const method = order?.payment_method || ''
+    return paymentStatus !== 'paid' && method !== 'cod'
+  }
+
+  function orderMatchesQueue(order, view) {
+    if (view === 'all') return true
+    if (view === 'active') return ACTIVE_STATUSES.includes(order.status)
+    if (view === 'history') return HISTORY_STATUSES.includes(order.status)
+    if (view === 'payment') return isPaymentPending(order)
+    return order.status === view
+  }
+
+  const orderQueueCounts = {
+    active: orders.filter(o => ACTIVE_STATUSES.includes(o.status)).length,
+    pending: orders.filter(o => o.status === 'pending').length,
+    payment: orders.filter(isPaymentPending).length,
+    confirmed: orders.filter(o => o.status === 'confirmed').length,
+    packed: orders.filter(o => o.status === 'packed').length,
+    dispatched: orders.filter(o => o.status === 'dispatched').length,
+    history: orders.filter(o => HISTORY_STATUSES.includes(o.status)).length,
+  }
+
+  // Orders V2: queue-based filtering keeps the page clean as order volume grows.
   const filteredOrders = orders.filter(o => {
+    const matchQueue = orderMatchesQueue(o, orderView)
     const matchSearch = !orderSearch ||
       o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) ||
       o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) ||
       o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
     const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
     const matchStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter
-    const matchPay = orderPayFilter === 'all' || o.payment_method === orderPayFilter
-    const matchBranch = orderBranchFilter === 'all' || o.branch === orderBranchFilter
+    const matchPay = orderPayFilter === 'all' || o.payment_method === orderPayFilter || (orderPayFilter === 'unpaid' && isPaymentPending(o))
+    const branchName = getOrderBranch(o)
+    const matchBranch = orderBranchFilter === 'all' || branchName === orderBranchFilter
     const now = new Date()
     let matchDate = true
     if (orderDateFilter === 'today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
     else if (orderDateFilter === 'week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
     else if (orderDateFilter === 'month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
-    return matchSearch && matchInvoice && matchStatus && matchPay && matchBranch && matchDate
+    return matchQueue && matchSearch && matchInvoice && matchStatus && matchPay && matchBranch && matchDate
   })
+
+  const selectedOrders = orders.filter(o => selectedOrderIds.includes(o.id))
+
+  function toggleOrderSelection(id) {
+    setSelectedOrderIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleCurrentPageSelection() {
+    const pageIds = paginatedOrders.map(o => o.id)
+    setSelectedOrderIds(prev => {
+      const allSelected = pageIds.length > 0 && pageIds.every(id => prev.includes(id))
+      if (allSelected) return prev.filter(id => !pageIds.includes(id))
+      return Array.from(new Set([...prev, ...pageIds]))
+    })
+  }
+
+  async function bulkUpdateSelectedStatus(status) {
+    if (!selectedOrderIds.length) return
+    if (status === 'cancelled' && !window.confirm(`Cancel ${selectedOrderIds.length} selected order(s)?`)) return
+    try {
+      const { error } = await supabase.from('orders').update({ status }).in('id', selectedOrderIds)
+      if (error) throw error
+      setSelectedOrderIds([])
+      await load()
+    } catch (e) {
+      console.error('Bulk status update failed:', e)
+      alert(e.message || 'Unable to update selected orders')
+    }
+  }
+
+  async function bulkMarkSelectedPaid() {
+    if (!selectedOrderIds.length) return
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ payment_status:'paid' })
+        .in('id', selectedOrderIds)
+      if (error) throw error
+      setSelectedOrderIds([])
+      await load()
+    } catch (e) {
+      console.error('Bulk payment update failed:', e)
+      alert(e.message || 'Unable to mark selected orders as paid')
+    }
+  }
+
+  function bulkPrintInvoices() {
+    selectedOrders.forEach(o => generateInvoice(o, o.order_items || []))
+  }
 
   // FIX #9: export orders CSV — inline, no external dependency
   function handleExportOrders() {
@@ -463,6 +553,7 @@ export default function Dashboard() {
     (ordersPage - 1) * ORDERS_PER_PAGE,
     ordersPage * ORDERS_PER_PAGE
   )
+  const allCurrentPageSelected = paginatedOrders.length > 0 && paginatedOrders.every(o => selectedOrderIds.includes(o.id))
   function OrderActions({ o }) {
     return (
       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
@@ -812,171 +903,179 @@ export default function Dashboard() {
             </div>
           </>}
 
-          {/* ORDERS — FIX #2: single render using filteredOrders; FIX #3: filter computed once above */}
+          {/* ORDERS V2 — queue board for high order volume */}
           {page==='orders' && <>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{
-                  display:'flex', alignItems:'center', gap:6,
-                  background:G.white, border:`1px solid ${G.border}`, borderRadius:10,
-                  padding:'9px 16px', fontSize:13, fontWeight:600, cursor:'pointer', color:G.text,
-                  boxShadow:'0 1px 4px rgba(0,0,0,0.06)'
-                }}>
-                  <span style={{ fontSize:15 }}>↻</span> Refresh
-                </button>
-                <div style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 14px', background:G.white, borderRadius:10, border:`1px solid ${G.border}`, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-                  <div onClick={()=>setAutoRefresh(!autoRefresh)} style={{
-                    width:36, height:20, borderRadius:10, cursor:'pointer', transition:'background 0.2s', position:'relative',
-                    background: autoRefresh ? G.green : '#D1D5DB'
-                  }}>
-                    <div style={{ width:16, height:16, borderRadius:'50%', background:'white', position:'absolute', top:2, transition:'left 0.2s', left: autoRefresh ? 18 : 2 }} />
-                  </div>
-                  <span style={{ fontSize:12, color:G.muted, fontWeight:500 }}>
-                    {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
-                  </span>
-                </div>
-                <span style={{ fontSize:11, color:G.muted }}>
-                  Last updated: {lastRefresh.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
-                </span>
+            <style>{`
+              .orders-v2-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+              .orders-v2-table th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 800; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; background: #F9FAF7; }
+              .orders-v2-table td { padding: 11px 12px; border-top: 1px solid #E5E7EB; vertical-align: middle; }
+              .orders-v2-row:hover { background: #F9FAF7; }
+              @media (max-width: 760px) {
+                .orders-v2-table { display: none; }
+                .orders-v2-mobile-list { display: flex !important; }
+              }
+            `}</style>
+
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:10 }}>
+              <div>
+                <h2 style={{ margin:'0 0 4px', fontSize:20, fontWeight:800, color:G.text }}>📋 Orders Queue</h2>
+                <p style={{ margin:0, fontSize:12, color:G.muted }}>Active orders first. Delivered and cancelled orders stay in History.</p>
               </div>
-              <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 20px', fontSize:14, fontWeight:700, cursor:'pointer' }}>+ New Order</button>
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{ display:'flex', alignItems:'center', gap:6, background:G.white, border:`1px solid ${G.border}`, borderRadius:10, padding:'9px 16px', fontSize:13, fontWeight:700, cursor:'pointer', color:G.text, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                  ↻ Refresh
+                </button>
+                <button onClick={()=>setOrdersCompact(v=>!v)} style={{ background:G.white, border:`1px solid ${G.border}`, borderRadius:10, padding:'9px 14px', fontSize:13, fontWeight:700, cursor:'pointer', color:G.blue }}>
+                  {ordersCompact ? '▦ Compact' : '▤ Detailed'}
+                </button>
+                <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 18px', fontSize:14, fontWeight:800, cursor:'pointer' }}>+ New Order</button>
+              </div>
             </div>
 
             {newOrderAlert > 0 && (
-              <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:10, padding:'10px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <span style={{ color:G.amber, fontWeight:600, fontSize:13 }}>
-                  🔔 {newOrderAlert} new order{newOrderAlert > 1 ? 's' : ''} received!
-                </span>
+              <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:12, padding:'10px 16px', marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+                <span style={{ color:G.amber, fontWeight:700, fontSize:13 }}>🔔 {newOrderAlert} new order{newOrderAlert > 1 ? 's' : ''} received.</span>
                 <button onClick={()=>setNewOrderAlert(0)} style={{ background:'none', border:'none', cursor:'pointer', color:G.amber, fontSize:16 }}>✕</button>
               </div>
             )}
 
-            {/* Filter UI */}
-            <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-              <div style={{ display:'flex', gap:10, marginBottom:12 }}>
-                <div style={{ position:'relative', flex:1 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(135px,1fr))', gap:10, marginBottom:14 }}>
+              {ORDER_QUEUE_TABS.map(q => (
+                <button key={q.key} onClick={()=>{ setOrderView(q.key); setOrderStatusFilter('all') }} style={{ textAlign:'left', background:orderView===q.key?G.green:G.white, color:orderView===q.key?G.white:G.text, border:`1px solid ${orderView===q.key?G.green:G.border}`, borderRadius:14, padding:'12px 14px', cursor:'pointer', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                    <span style={{ fontSize:18 }}>{q.icon}</span>
+                    <span style={{ fontSize:20, fontWeight:900 }}>{orderQueueCounts[q.key] || 0}</span>
+                  </div>
+                  <p style={{ margin:0, fontSize:12, fontWeight:800 }}>{q.label}</p>
+                </button>
+              ))}
+            </div>
+
+            <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'minmax(220px,1fr) 180px', gap:10, marginBottom:12 }}>
+                <div style={{ position:'relative' }}>
                   <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:15, color:G.muted }}>🔍</span>
-                  <input type="text" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)}
-                    placeholder="Search by order number or customer name..."
-                    style={{ width:'100%', padding:'10px 36px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
-                    onFocus={e=>e.target.style.borderColor=G.green}
-                    onBlur={e=>e.target.style.borderColor=G.border} />
+                  <input type="text" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="Search order number, customer, address..." style={{ width:'100%', padding:'10px 36px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }} />
                   {orderSearch && <button onClick={()=>setOrderSearch('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:16 }}>✕</button>}
                 </div>
-                <div style={{ position:'relative', width:200 }}>
+                <div style={{ position:'relative' }}>
                   <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:13, color:G.muted }}>🧾</span>
-                  <input type="text" value={invoiceSearch} onChange={e=>setInvoiceSearch(e.target.value)}
-                    placeholder="Invoice / GVR-XXXX"
-                    style={{ width:'100%', padding:'10px 10px 10px 34px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
-                    onFocus={e=>e.target.style.borderColor=G.amber}
-                    onBlur={e=>e.target.style.borderColor=G.border} />
-                  {invoiceSearch && <button onClick={()=>setInvoiceSearch('')} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:14 }}>✕</button>}
+                  <input type="text" value={invoiceSearch} onChange={e=>setInvoiceSearch(e.target.value)} placeholder="GVR-XXXX" style={{ width:'100%', padding:'10px 10px 10px 34px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }} />
                 </div>
               </div>
-              {/* FIX #4: branch filter now uses orderBranchFilter and actually filters orders */}
-              <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:10, alignItems:'center' }}>
-                <span style={{ fontSize:11, fontWeight:600, color:G.muted, marginRight:4 }}>Branch:</span>
+
+              <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+                <span style={{ fontSize:11, fontWeight:800, color:G.muted }}>Branch:</span>
                 {['all','Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu'].map(b=>(
-                  <button key={b} onClick={()=>setOrderBranchFilter(b)} style={{ padding:'4px 10px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderBranchFilter===b?'#7C3AED':'#F3F4F6', color:orderBranchFilter===b?G.white:G.muted }}>
+                  <button key={b} onClick={()=>setOrderBranchFilter(b)} style={{ padding:'5px 11px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:700, background:orderBranchFilter===b?'#7C3AED':'#F3F4F6', color:orderBranchFilter===b?G.white:G.muted }}>
                     {b==='all'?'All':b}
                   </button>
                 ))}
-              </div>
-              <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
-                <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-                  {[['all','All'],['pending','Pending'],['confirmed','Confirmed'],['packed','Packed'],['dispatched','Dispatched'],['delivered','Delivered'],['cancelled','Cancelled']].map(([val,lbl])=>(
-                    <button key={val} onClick={()=>setOrderStatusFilter(val)} style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderStatusFilter===val?G.green:'#F3F4F6', color:orderStatusFilter===val?G.white:G.muted }}>{lbl}</button>
-                  ))}
-                </div>
-                <div style={{ width:1, height:20, background:G.border }} />
-                <div style={{ display:'flex', gap:4 }}>
-                  {[['all','All Pay'],['cod','COD'],['upi','UPI'],['bank','Bank']].map(([val,lbl])=>(
-                    <button key={val} onClick={()=>setOrderPayFilter(val)} style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderPayFilter===val?G.amber:'#F3F4F6', color:orderPayFilter===val?G.white:G.muted }}>{lbl}</button>
-                  ))}
-                </div>
-                <div style={{ width:1, height:20, background:G.border }} />
-                <div style={{ display:'flex', gap:4 }}>
-                  {[['all','All Time'],['today','Today'],['week','This Week'],['month','This Month']].map(([val,lbl])=>(
-                    <button key={val} onClick={()=>setOrderDateFilter(val)} style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderDateFilter===val?G.blue:'#F3F4F6', color:orderDateFilter===val?G.white:G.muted }}>{lbl}</button>
-                  ))}
-                </div>
-                <span style={{ marginLeft:'auto', fontSize:12, color:G.muted, fontWeight:500 }}>
-                  {filteredOrders.length} of {orders.length} orders
-                </span>
-                {/* FIX #9: export button */}
-                <button onClick={handleExportOrders} style={{ padding:'5px 12px',borderRadius:20,border:`1px solid ${G.border}`,background:G.white,cursor:'pointer',fontSize:11,fontWeight:600,color:G.blue,display:'flex',alignItems:'center',gap:4 }}>
+                <div style={{ width:1, height:20, background:G.border, margin:'0 4px' }} />
+                {[['all','All Pay'],['cod','COD'],['upi','UPI'],['wallet','Wallet'],['bank','Bank'],['unpaid','Payment Pending']].map(([val,lbl])=>(
+                  <button key={val} onClick={()=>setOrderPayFilter(val)} style={{ padding:'5px 11px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:700, background:orderPayFilter===val?G.amber:'#F3F4F6', color:orderPayFilter===val?G.white:G.muted }}>{lbl}</button>
+                ))}
+                <div style={{ width:1, height:20, background:G.border, margin:'0 4px' }} />
+                {[['all','All Time'],['today','Today'],['week','This Week'],['month','This Month']].map(([val,lbl])=>(
+                  <button key={val} onClick={()=>setOrderDateFilter(val)} style={{ padding:'5px 11px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:700, background:orderDateFilter===val?G.blue:'#F3F4F6', color:orderDateFilter===val?G.white:G.muted }}>{lbl}</button>
+                ))}
+                <button onClick={handleExportOrders} style={{ marginLeft:'auto', padding:'5px 12px',borderRadius:20,border:`1px solid ${G.border}`,background:G.white,cursor:'pointer',fontSize:11,fontWeight:700,color:G.blue,display:'flex',alignItems:'center',gap:4 }}>
                   ⬇ Export CSV
                 </button>
               </div>
             </div>
 
-            {/* FIX #2: single orders list using filteredOrders */}
-            {filteredOrders.length === 0 && (
-              <div style={{ textAlign:'center', padding:60, background:G.white, borderRadius:14, color:G.muted }}>
-                <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
-                <p style={{ fontWeight:600, color:G.text, margin:'0 0 4px' }}>No orders found</p>
-                <p style={{ fontSize:13 }}>Try a different search or filter</p>
-                <button onClick={()=>{ setOrderSearch(''); setInvoiceSearch(''); setOrderStatusFilter('all'); setOrderPayFilter('all'); setOrderDateFilter('all'); setOrderBranchFilter('all') }}
-                  style={{ marginTop:12, background:G.green, color:G.white, border:'none', borderRadius:8, padding:'8px 20px', fontWeight:600, cursor:'pointer', fontSize:13 }}>
-                  Clear Filters
-                </button>
+            {selectedOrderIds.length > 0 && (
+              <div style={{ background:'#111827', color:G.white, borderRadius:14, padding:'12px 16px', marginBottom:14, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                <strong style={{ fontSize:13 }}>{selectedOrderIds.length} selected</strong>
+                <button onClick={()=>bulkUpdateSelectedStatus('confirmed')} style={{ background:G.green, color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Confirm</button>
+                <button onClick={()=>bulkUpdateSelectedStatus('packed')} style={{ background:G.blue, color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Pack</button>
+                <button onClick={()=>bulkUpdateSelectedStatus('dispatched')} style={{ background:'#7C3AED', color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Dispatch</button>
+                <button onClick={()=>bulkUpdateSelectedStatus('delivered')} style={{ background:G.green2, color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Delivered</button>
+                <button onClick={bulkMarkSelectedPaid} style={{ background:G.amber, color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Mark Paid</button>
+                <button onClick={bulkPrintInvoices} style={{ background:G.blueLight, color:G.blue, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Print Invoices</button>
+                <button onClick={()=>bulkUpdateSelectedStatus('cancelled')} style={{ background:G.red, color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Cancel</button>
+                <button onClick={()=>setSelectedOrderIds([])} style={{ marginLeft:'auto', background:'transparent', color:G.white, border:'1px solid rgba(255,255,255,0.3)', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Clear</button>
               </div>
             )}
-            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-            {paginatedOrders.map((o)=>(
-              <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
-                <div style={{ display:'flex' }}>
-                  <div style={{ width:220, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'14px 16px' }}>
-                    <p style={{ margin:'0 0 10px', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px' }}>Items Ordered</p>
-                    {(o.order_items||[]).length===0 && <p style={{ margin:0, fontSize:12, color:G.muted }}>No items found</p>}
-                    {(o.order_items||[]).map((item,idx)=>(
-                      <div key={idx} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, padding:'8px 10px', background:G.white, borderRadius:8, border:`1px solid ${G.border}` }}>
-                        <div style={{ width:32, height:32, borderRadius:8, background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>🌾</div>
-                        <div style={{ minWidth:0 }}>
-                          <p style={{ margin:'0 0 1px', fontSize:12, fontWeight:700, color:G.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</p>
-                          <p style={{ margin:0, fontSize:11, color:G.muted }}>{item.weight_kg}kg × {item.quantity} = <strong style={{ color:G.green }}>₹{item.quantity*item.price_per_unit}</strong></p>
+
+            <div style={{ background:G.white, borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
+              <div style={{ padding:'10px 14px', borderBottom:`1px solid ${G.border}`, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                <p style={{ margin:0, fontSize:13, fontWeight:800, color:G.text }}>{filteredOrders.length} order{filteredOrders.length===1?'':'s'} in {ORDER_QUEUE_TABS.find(q=>q.key===orderView)?.label || 'All'}</p>
+                <p style={{ margin:0, fontSize:11, color:G.muted }}>Last updated: {lastRefresh.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
+              </div>
+              {filteredOrders.length === 0 ? (
+                <div style={{ textAlign:'center', padding:60, color:G.muted }}>
+                  <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
+                  <p style={{ fontWeight:700, color:G.text, margin:'0 0 4px' }}>No orders found</p>
+                  <button onClick={()=>{ setOrderSearch(''); setInvoiceSearch(''); setOrderStatusFilter('all'); setOrderPayFilter('all'); setOrderDateFilter('all'); setOrderBranchFilter('all'); setOrderView('active') }} style={{ marginTop:12, background:G.green, color:G.white, border:'none', borderRadius:8, padding:'8px 20px', fontWeight:700, cursor:'pointer', fontSize:13 }}>Clear Filters</button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ overflowX:'auto' }}>
+                    <table className="orders-v2-table">
+                      <thead>
+                        <tr>
+                          <th><input type="checkbox" checked={allCurrentPageSelected} onChange={toggleCurrentPageSelection} /></th>
+                          <th>Order</th>
+                          <th>Customer</th>
+                          <th>Branch</th>
+                          <th>Items</th>
+                          <th>Amount</th>
+                          <th>Payment</th>
+                          <th>Status</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedOrders.map(o => (
+                          <tr key={o.id} className="orders-v2-row">
+                            <td><input type="checkbox" checked={selectedOrderIds.includes(o.id)} onChange={()=>toggleOrderSelection(o.id)} /></td>
+                            <td style={{ whiteSpace:'nowrap' }}>
+                              <p style={{ margin:'0 0 3px', fontWeight:900, color:G.green }}>{o.order_number}</p>
+                              <p style={{ margin:0, fontSize:11, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
+                            </td>
+                            <td><p style={{ margin:0, fontWeight:700 }}>{o.customer_name || '—'}</p><p style={{ margin:0, fontSize:11, color:G.muted, maxWidth:170, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{o.delivery_address || '—'}</p></td>
+                            <td style={{ fontWeight:700, color:G.blue }}>{getOrderBranch(o)}</td>
+                            <td style={{ maxWidth:210 }}>{(o.order_items||[]).map(i => <span key={`${o.id}-${i.product_id}-${i.name}`} style={{ display:'inline-block', margin:'0 4px 4px 0', fontSize:11, padding:'3px 8px', borderRadius:20, background:G.greenLight, color:G.greenDark, fontWeight:700 }}>{i.name} × {i.quantity}</span>)}</td>
+                            <td style={{ fontWeight:900, color:G.green }}>{fmtRs(o.total_amount)}</td>
+                            <td>
+                              <p style={{ margin:'0 0 4px', fontSize:12, fontWeight:800, textTransform:'uppercase' }}>{o.payment_method || '—'}</p>
+                              <span style={{ fontSize:10, fontWeight:800, padding:'2px 8px', borderRadius:10, background:o.payment_status==='paid'?G.greenLight:isPaymentPending(o)?G.redLight:G.amberLight, color:o.payment_status==='paid'?G.green:isPaymentPending(o)?G.red:G.amber }}>
+                                {o.payment_status==='paid'?'Paid':isPaymentPending(o)?'Verify':'Pending'}
+                              </span>
+                            </td>
+                            <td><Badge status={o.status} /></td>
+                            <td><OrderActions o={o} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="orders-v2-mobile-list" style={{ display:'none', flexDirection:'column', gap:10, padding:12 }}>
+                    {paginatedOrders.map(o => (
+                      <div key={o.id} style={{ border:`1px solid ${G.border}`, borderRadius:14, padding:14 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', gap:10, marginBottom:8 }}>
+                          <div style={{ display:'flex', gap:8 }}>
+                            <input type="checkbox" checked={selectedOrderIds.includes(o.id)} onChange={()=>toggleOrderSelection(o.id)} />
+                            <div><p style={{ margin:'0 0 2px', fontWeight:900, color:G.green }}>{o.order_number}</p><p style={{ margin:0, fontSize:11, color:G.muted }}>{new Date(o.created_at).toLocaleString('en-IN')}</p></div>
+                          </div>
+                          <Badge status={o.status} />
                         </div>
+                        <p style={{ margin:'0 0 4px', fontWeight:800 }}>{o.customer_name || '—'} · {fmtRs(o.total_amount)}</p>
+                        <p style={{ margin:'0 0 8px', fontSize:12, color:G.muted }}>{getOrderBranch(o)} · {(o.payment_method||'—').toUpperCase()} · {o.payment_status}</p>
+                        <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:10 }}>
+                          {(o.order_items||[]).map(i => <span key={`${o.id}-${i.product_id}-${i.name}`} style={{ fontSize:11, padding:'3px 8px', borderRadius:20, background:G.greenLight, color:G.greenDark, fontWeight:700 }}>{i.name} × {i.quantity}</span>)}
+                        </div>
+                        <OrderActions o={o} />
                       </div>
                     ))}
-                    <div style={{ marginTop:8, padding:'8px 10px', background:G.greenLight, borderRadius:8, display:'flex', justifyContent:'space-between' }}>
-                      <span style={{ fontSize:12, fontWeight:600, color:G.greenDark }}>Total</span>
-                      <span style={{ fontSize:14, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
-                    </div>
                   </div>
-                  <div style={{ flex:1, padding:'14px 16px' }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-                      <div>
-                        <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15, color:G.green }}>{o.order_number}</p>
-                        <p style={{ margin:0, fontSize:12, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
-                      </div>
-                      <Badge status={o.status} />
-                    </div>
-                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
-                      <div><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Customer</p><p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text }}>{o.customer_name||'—'}</p></div>
-                      <div>
-                        <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p>
-                        <p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
-                        <span style={{ fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:10,
-                          background: o.payment_status==='paid' ? G.greenLight : o.payment_method==='cod' ? G.amberLight : G.redLight,
-                          color: o.payment_status==='paid' ? G.green : o.payment_method==='cod' ? G.amber : G.red }}>
-                          {o.payment_status==='paid' ? '✅ Paid' : o.payment_method==='cod' ? '💵 COD Pending' : '⏳ Unpaid'}
-                        </span>
-                      </div>
-                      <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Address</p><p style={{ margin:0, fontSize:13, color:G.text }}>{o.delivery_address||'—'}</p></div>
-                      {o.notes && (
-                        <div style={{ gridColumn:'1/-1' }}>
-                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment Reference</p>
-                          <p style={{ margin:0, fontSize:13, color:G.green, fontWeight:600 }}>🧾 {o.notes}</p>
-                        </div>
-                      )}
-                    </div>
-                    <OrderActions o={o} />
-                  </div>
-                </div>
-              </div>
-            ))}
+                </>
+              )}
             </div>
-            {/* FIX #10: pagination controls */}
+
             {totalOrderPages > 1 && (
               <div style={{ display:'flex',justifyContent:'center',alignItems:'center',gap:8,padding:'20px 0',flexWrap:'wrap' }}>
                 <button onClick={()=>setOrdersPage(1)} disabled={ordersPage===1} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===1?'#F3F4F6':G.white,cursor:ordersPage===1?'not-allowed':'pointer',fontSize:12,color:ordersPage===1?G.muted:G.text }}>«</button>
@@ -988,13 +1087,11 @@ export default function Dashboard() {
                     else if(ordersPage>=totalOrderPages-2) p=totalOrderPages-4+i
                     else p=ordersPage-2+i
                   }
-                  return(
-                    <button key={p} onClick={()=>setOrdersPage(p)} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${ordersPage===p?G.green:G.border}`,background:ordersPage===p?G.green:G.white,cursor:'pointer',fontSize:12,fontWeight:ordersPage===p?700:400,color:ordersPage===p?G.white:G.text }}>{p}</button>
-                  )
+                  return <button key={p} onClick={()=>setOrdersPage(p)} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${ordersPage===p?G.green:G.border}`,background:ordersPage===p?G.green:G.white,cursor:'pointer',fontSize:12,fontWeight:ordersPage===p?800:500,color:ordersPage===p?G.white:G.text }}>{p}</button>
                 })}
                 <button onClick={()=>setOrdersPage(p=>Math.min(totalOrderPages,p+1))} disabled={ordersPage===totalOrderPages} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===totalOrderPages?'#F3F4F6':G.white,cursor:ordersPage===totalOrderPages?'not-allowed':'pointer',fontSize:12,color:ordersPage===totalOrderPages?G.muted:G.text }}>Next ›</button>
                 <button onClick={()=>setOrdersPage(totalOrderPages)} disabled={ordersPage===totalOrderPages} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===totalOrderPages?'#F3F4F6':G.white,cursor:ordersPage===totalOrderPages?'not-allowed':'pointer',fontSize:12,color:ordersPage===totalOrderPages?G.muted:G.text }}>»</button>
-                <span style={{ fontSize:12,color:G.muted }}>Page {ordersPage} of {totalOrderPages} · {filteredOrders.length} orders</span>
+                <span style={{ fontSize:12,color:G.muted }}>Page {ordersPage} of {totalOrderPages} · showing {paginatedOrders.length} of {filteredOrders.length}</span>
               </div>
             )}
           </>}
