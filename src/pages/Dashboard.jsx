@@ -407,6 +407,11 @@ export default function Dashboard() {
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
 
+
+  function getOrderBranch(order) {
+    return order?.pickup_branch || order?.branch || 'Hyderabad'
+  }
+
   const ACTIVE_STATUSES = ['pending','confirmed','packed','dispatched']
   const HISTORY_STATUSES = ['delivered','cancelled']
   const ORDER_QUEUE_TABS = [
