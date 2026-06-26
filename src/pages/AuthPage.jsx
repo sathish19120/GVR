@@ -124,7 +124,7 @@ export default function AuthPage({ defaultMode }) {
       if (ok) { setDone(S.accountCreated); switchMode('login') }
     } else {
       const ok = await signIn(username, password)
-      if (ok) navigate('/', { replace: true })
+      if (ok) navigate('/app', { replace: true })
     }
   }
 
@@ -202,23 +202,142 @@ export default function AuthPage({ defaultMode }) {
     } finally { setFLoading(false) }
   }
 
-  const inp = { width:'100%', padding:'12px 14px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:14, color:G.text, outline:'none', background:'#FAFAFA', boxSizing:'border-box' }
+  const inp = { width:'100%', padding:'12px 14px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:16, color:G.text, outline:'none', background:'#FAFAFA', boxSizing:'border-box' }
   const lbl = { display:'block', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.8px', color:G.muted, marginBottom:7 }
-  const btn = (bg) => ({ width:'100%', padding:14, background:bg||G.green, color:G.white, border:'none', borderRadius:12, fontSize:15, fontWeight:700, cursor:'pointer' })
+  const btn = (bg) => ({ width:'100%', padding:14, background:bg||G.green, color:G.white, border:'none', borderRadius:12, fontSize:16, fontWeight:700, cursor:'pointer' })
 
   return (
-    <div style={{ minHeight:'100vh', display:'flex', fontFamily:"'Inter',sans-serif" }}>
-      <div style={{ position:'fixed', top:16, right:16, zIndex:200 }}>
+    <div className="auth-page" style={{ minHeight:'100dvh', width:'100%', display:'flex', fontFamily:"'Inter',sans-serif", overflowX:'hidden', background:G.white }}>
+      <style>{`
+        .auth-page,
+        .auth-page * {
+          box-sizing: border-box;
+        }
+
+        .auth-page input,
+        .auth-page button,
+        .auth-page select,
+        .auth-page textarea {
+          max-width: 100%;
+        }
+
+        @media (max-width: 768px) {
+          .auth-page {
+            min-height: 100dvh !important;
+            width: 100% !important;
+            flex-direction: column !important;
+            background: #F4F6F3 !important;
+            overflow-x: hidden !important;
+          }
+
+          .auth-lang {
+            top: 12px !important;
+            right: 12px !important;
+          }
+
+          .auth-left {
+            width: 100% !important;
+            flex: none !important;
+            min-height: 178px !important;
+            padding: 28px 18px 22px !important;
+            border-radius: 0 0 24px 24px !important;
+          }
+
+          .auth-brand-logo {
+            width: 56px !important;
+            height: 56px !important;
+            border-radius: 16px !important;
+            font-size: 28px !important;
+            margin-bottom: 10px !important;
+          }
+
+          .auth-left h1 {
+            font-size: 24px !important;
+            line-height: 1.1 !important;
+            margin-bottom: 4px !important;
+          }
+
+          .auth-brand-telugu {
+            font-size: 12px !important;
+            margin-bottom: 0 !important;
+          }
+
+          .auth-brand-copy,
+          .auth-brand-stats {
+            display: none !important;
+          }
+
+          .auth-right {
+            width: 100% !important;
+            flex: none !important;
+            padding: 18px 16px max(28px, env(safe-area-inset-bottom)) !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            align-items: flex-start !important;
+          }
+
+          .auth-card {
+            width: 100% !important;
+            max-width: 430px !important;
+            margin: 0 auto !important;
+            padding: 22px !important;
+            border-radius: 20px !important;
+            background: #fff !important;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08) !important;
+          }
+
+          .auth-card h2 {
+            font-size: 24px !important;
+            line-height: 1.2 !important;
+          }
+
+          .auth-card input {
+            width: 100% !important;
+            font-size: 16px !important;
+          }
+
+          .auth-card button[type="submit"] {
+            font-size: 16px !important;
+          }
+
+          .auth-login-links {
+            gap: 12px !important;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .auth-card {
+            padding: 18px !important;
+            border-radius: 16px !important;
+          }
+
+          .auth-left {
+            min-height: 160px !important;
+            padding-top: 24px !important;
+          }
+
+          .auth-left h1 {
+            font-size: 22px !important;
+          }
+
+          .auth-login-links {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 8px !important;
+          }
+        }
+      `}</style>
+      <div className="auth-lang" style={{ position:'fixed', top:16, right:16, zIndex:200 }}>
         <LangToggle lang={lang} onChange={setLang} />
       </div>
 
       {/* LEFT brand panel */}
       <div className="auth-left" style={{ flex:1, background:`linear-gradient(145deg,${G.green},${G.greenDark},#1a3a08)`, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'48px 40px' }}>
-        <div style={{ width:88,height:88,borderRadius:22,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,marginBottom:24 }}>🌾</div>
+        <div className="auth-brand-logo" style={{ width:88,height:88,borderRadius:22,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,marginBottom:24 }}>🌾</div>
         <h1 style={{ color:'#fff',fontSize:38,fontWeight:800,textAlign:'center',lineHeight:1.1,margin:'0 0 10px' }}>Green Village<br/>Rice</h1>
-        <p style={{ color:'rgba(255,255,255,0.65)',fontSize:15,margin:'0 0 6px' }}>గ్రీన్ విలేజ్ రైస్</p>
-        <p style={{ color:'rgba(255,255,255,0.5)',fontSize:14,textAlign:'center',margin:'0 0 48px',lineHeight:1.7 }}>Farm-fresh Sona Masoori rice<br/>delivered across Hyderabad</p>
-        <div style={{ display:'flex',gap:16 }}>
+        <p className="auth-brand-telugu" style={{ color:'rgba(255,255,255,0.65)',fontSize:15,margin:'0 0 6px' }}>గ్రీన్ విలేజ్ రైస్</p>
+        <p className="auth-brand-copy" style={{ color:'rgba(255,255,255,0.5)',fontSize:14,textAlign:'center',margin:'0 0 48px',lineHeight:1.7 }}>Farm-fresh Sona Masoori rice<br/>delivered across Hyderabad</p>
+        <div className="auth-brand-stats" style={{ display:'flex',gap:16 }}>
           {[['📦','Orders'],['🌾','Inventory'],['📊','Analytics']].map(([icon,label])=>(
             <div key={label} style={{ background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.18)',borderRadius:14,padding:'18px 22px',textAlign:'center' }}>
               <div style={{ fontSize:26,marginBottom:7 }}>{icon}</div>
@@ -230,7 +349,7 @@ export default function AuthPage({ defaultMode }) {
 
       {/* RIGHT form panel */}
       <div className="auth-right" style={{ width:460,flexShrink:0,background:G.white,display:'flex',alignItems:'center',justifyContent:'center',padding:'48px 44px',boxShadow:'-4px 0 20px rgba(0,0,0,0.06)' }}>
-        <div style={{ width:'100%',maxWidth:340 }}>
+        <div className="auth-card" style={{ width:'100%',maxWidth:340 }}>
 
           {/* LOGIN */}
           {mode === 'login' && (
@@ -256,7 +375,7 @@ export default function AuthPage({ defaultMode }) {
                     <button type="button" onClick={()=>setShowPw(!showPw)} style={{ position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:G.muted,fontSize:12,fontWeight:600 }}>{showPw?S.hidePw:S.showPw}</button>
                   </div>
                 </div>
-                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22 }}>
+                <div className="auth-login-links" style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22 }}>
                   <button type="button" onClick={()=>switchMode('signup')} style={{ background:'none',border:'none',color:G.green,fontSize:13,fontWeight:600,cursor:'pointer',padding:0,textDecoration:'underline' }}>{S.signupLink}</button>
                   <button type="button" onClick={()=>switchMode('forgot')} style={{ background:'none',border:'none',color:G.amber,fontSize:13,fontWeight:600,cursor:'pointer',padding:0,textDecoration:'underline' }}>{S.forgotBtn}</button>
                 </div>
