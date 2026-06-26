@@ -630,6 +630,7 @@ export default function CustomerShop() {
           total_amount:     finalTotal,
           status:           'pending',
           order_type:       orderType,
+          branch:           orderType === 'pickup' ? pickupBranch : 'Hyderabad',
           pickup_branch:    orderType === 'pickup' ? pickupBranch : null,
           pickup_time:      orderType === 'pickup' ? pickupTime : null,
           payment_status:   utrRef.trim() ? 'verification_pending' : 'pending',
