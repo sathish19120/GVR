@@ -5,8 +5,8 @@ import { useAuth } from '../store/auth'
 import ProfilePage from './ProfilePage'
 
 const SHOP_STRINGS = {
-  en: { orderRice:'Order Rice', myOrders:'My Orders', subscribe:'Subscribe', referEarn:'Refer & Earn', addToCart:'Add +', checkout:'Checkout', placeOrder:'Place Order', homeDelivery:'Home Delivery', storePickup:'Store Pickup', cashOnDelivery:'Cash on Delivery', upiPayment:'UPI Payment', orderPlaced:'Order Placed!', trackOrder:'Track My Order', orderMore:'Order More Rice', outOfStock:'Out of Stock', logout:'Logout', whereWeWork:'Where We Work', whatWeDo:'What We Do', about:'About', freshStock:'Fresh stock available today' },
-  te: { orderRice:'బియ్యం ఆర్డర్', myOrders:'నా ఆర్డర్లు', subscribe:'సబ్‌స్క్రైబ్', referEarn:'రెఫర్ & సంపాదించండి', addToCart:'చేర్చండి +', checkout:'చెక్అవుట్', placeOrder:'ఆర్డర్ పెట్టండి', homeDelivery:'ఇంటికి డెలివరీ', storePickup:'స్టోర్ పికప్', cashOnDelivery:'డెలివరీలో నగదు', upiPayment:'UPI చెల్లింపు', orderPlaced:'ఆర్డర్ పెట్టారు!', trackOrder:'ఆర్డర్ ట్రాక్ చేయండి', orderMore:'మరింత బియ్యం', outOfStock:'స్టాక్ లేదు', logout:'లాగ్ అవుట్', whereWeWork:'మేము ఎక్కడ పని చేస్తాం', whatWeDo:'మేము ఏమి చేస్తాం', about:'గురించి', freshStock:'ఈరోజు తాజా స్టాక్ అందుబాటులో ఉంది' }
+  en: { orderRice:'Order Rice', myOrders:'My Orders', subscribe:'Subscribe', referEarn:'Refer & Earn', addToCart:'Add +', checkout:'Checkout', placeOrder:'Place Order', homeDelivery:'Home Delivery', storePickup:'Store Pickup', cashOnDelivery:'Cash on Delivery', upiPayment:'UPI Payment', walletPayment:'GVR Wallet', orderPlaced:'Order Placed!', trackOrder:'Track My Order', orderMore:'Order More Rice', outOfStock:'Out of Stock', logout:'Logout', whereWeWork:'Where We Work', whatWeDo:'What We Do', about:'About', freshStock:'Fresh stock available today' },
+  te: { orderRice:'బియ్యం ఆర్డర్', myOrders:'నా ఆర్డర్లు', subscribe:'సబ్‌స్క్రైబ్', referEarn:'రెఫర్ & సంపాదించండి', addToCart:'చేర్చండి +', checkout:'చెక్అవుట్', placeOrder:'ఆర్డర్ పెట్టండి', homeDelivery:'ఇంటికి డెలివరీ', storePickup:'స్టోర్ పికప్', cashOnDelivery:'డెలివరీలో నగదు', upiPayment:'UPI చెల్లింపు', walletPayment:'GVR వాలెట్', orderPlaced:'ఆర్డర్ పెట్టారు!', trackOrder:'ఆర్డర్ ట్రాక్ చేయండి', orderMore:'మరింత బియ్యం', outOfStock:'స్టాక్ లేదు', logout:'లాగ్ అవుట్', whereWeWork:'మేము ఎక్కడ పని చేస్తాం', whatWeDo:'మేము ఏమి చేస్తాం', about:'గురించి', freshStock:'ఈరోజు తాజా స్టాక్ అందుబాటులో ఉంది' }
 }
 
 function ShopLangToggle({ lang, setLang }) {
@@ -337,6 +337,7 @@ export default function CustomerShop() {
   const [topModal, setTopModal]   = useState(null)
   const [showProfile, setShowProfile] = useState(false)
   const [points, setPoints]       = useState(0)
+  const [walletBalance, setWalletBalance] = useState(0)
 
   useEffect(() => {
     loadProducts()
@@ -348,7 +349,12 @@ export default function CustomerShop() {
     if (user?.id) {
       supabase.from('profiles').select('wallet_balance,total_orders,total_spent')
         .eq('id', user.id).single()
-        .then(({ data }) => { if (data) setPoints(Math.floor((data.total_spent||0)/100)) })
+        .then(({ data }) => {
+          if (data) {
+            setPoints(Math.floor((data.total_spent||0)/100))
+            setWalletBalance(Number(data.wallet_balance || 0))
+          }
+        })
     }
   }, [])
 
@@ -598,23 +604,29 @@ export default function CustomerShop() {
     let order = null
 
     try {
-      // Check wallet balance and deduct from order total
-      let walletDeduction = 0
       let finalTotal = grand
 
-      if (user?.id) {
+      // Wallet is an explicit payment method. The database trigger will debit
+      // the wallet atomically when the order is created, but we check here first
+      // to show a friendly message before submitting.
+      if (payMethod === 'wallet') {
+        if (!user?.id) {
+          throw new Error('Please login to use GVR Wallet')
+        }
+
         const { data: prof, error: profErr } = await supabase
           .from('profiles')
-          .select('wallet_balance,referred_by,total_orders')
+          .select('wallet_balance')
           .eq('id', user.id)
           .single()
 
-        if (!profErr && prof) {
-          const walletBal = Number(prof.wallet_balance || 0)
-          if (walletBal > 0) {
-            walletDeduction = Math.min(walletBal, grand)
-            finalTotal = Math.max(0, grand - walletDeduction)
-          }
+        if (profErr) throw profErr
+
+        const walletBal = Number(prof?.wallet_balance || 0)
+        setWalletBalance(walletBal)
+
+        if (walletBal < grand) {
+          throw new Error(`Insufficient wallet balance. Available ₹${walletBal}, order total ₹${grand}.`)
         }
       }
 
@@ -633,11 +645,11 @@ export default function CustomerShop() {
           branch:           orderType === 'pickup' ? pickupBranch : 'Hyderabad',
           pickup_branch:    orderType === 'pickup' ? pickupBranch : null,
           pickup_time:      orderType === 'pickup' ? pickupTime : null,
-          payment_status:   utrRef.trim() ? 'verification_pending' : 'pending',
+          payment_status:   payMethod === 'wallet' ? 'paid' : utrRef.trim() ? 'verification_pending' : 'pending',
           payment_method:   payMethod,
           notes:            [
             utrRef.trim() ? `Payment Ref: ${utrRef.trim()}` : null,
-            walletDeduction > 0 ? `Wallet used: ₹${walletDeduction}` : null
+            payMethod === 'wallet' ? `Paid by GVR Wallet: ₹${grand}` : null
           ].filter(Boolean).join(' · ') || null,
           created_at:       new Date().toISOString()
         })
@@ -651,7 +663,7 @@ export default function CustomerShop() {
       order = newOrder
 
       // Critical step: create order items.
-      // Do NOT reduce product stock here. Stock is deducted only when admin confirms the order.
+      // Do NOT reduce product stock here. Supabase trigger deducts branch stock when order items are inserted.
       for (const p of products.filter(p => cart[p.id])) {
         const { error: itemErr } = await supabase.from('order_items').insert({
           order_id:       order.id,
@@ -670,34 +682,6 @@ export default function CustomerShop() {
       // Non-critical updates below must not fail the completed order.
       // If any of these fail, the order still remains created and customer sees success.
       if (user?.id) {
-        if (walletDeduction > 0) {
-          try {
-            const { data: prof } = await supabase
-              .from('profiles')
-              .select('wallet_balance')
-              .eq('id', user.id)
-              .single()
-
-            const newBal = Math.max(0, Number(prof?.wallet_balance || 0) - walletDeduction)
-
-            await supabase
-              .from('profiles')
-              .update({ wallet_balance: newBal })
-              .eq('id', user.id)
-
-            await supabase.from('wallet_transactions').insert({
-              user_id:    user.id,
-              amount:     walletDeduction,
-              type:       'debit',
-              reason:     `Wallet applied to order ${orderNumber}`,
-              order_id:   order.id,
-              created_at: new Date().toISOString()
-            })
-          } catch (walletErr) {
-            console.error('Wallet update failed:', walletErr)
-          }
-        }
-
         try {
           const { error: statsErr } = await supabase.rpc('increment_customer_stats', {
             user_id: user.id,
@@ -753,6 +737,10 @@ export default function CustomerShop() {
         }
       } catch (notificationErr) {
         console.error('Notification failed:', notificationErr)
+      }
+
+      if (payMethod === 'wallet') {
+        setWalletBalance(prev => Math.max(0, Number(prev || 0) - grand))
       }
 
       setOrderNum(orderNumber)
@@ -865,7 +853,11 @@ export default function CustomerShop() {
 
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>Payment Method</p>
-          {[['cod','💵',T.cashOnDelivery,'Pay when your order arrives'],['upi','📱',T.upiPayment,'GPay, PhonePe, Paytm']].map(([val,icon,label,sub])=>(
+          {[
+            ['cod','💵',T.cashOnDelivery,'Pay when your order arrives'],
+            ['upi','📱',T.upiPayment,'GPay, PhonePe, Paytm'],
+            ['wallet','👛',T.walletPayment || 'GVR Wallet',`Available ₹${Number(walletBalance || 0).toFixed(0)}`]
+          ].map(([val,icon,label,sub])=>(
             <div key={val} onClick={()=>setPayMethod(val)} style={{ display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderRadius:10,marginBottom:8,cursor:'pointer',border:`2px solid ${payMethod===val?G.green:G.border}`,background:payMethod===val?G.greenLight:G.white }}>
               <span style={{ fontSize:22 }}>{icon}</span>
               <div style={{ flex:1 }}><p style={{ margin:0,fontWeight:600,fontSize:14 }}>{label}</p><p style={{ margin:0,fontSize:12,color:G.muted }}>{sub}</p></div>
@@ -893,10 +885,19 @@ export default function CustomerShop() {
               </div>
             </div>
           )}
+          {payMethod==='wallet' && (
+            <div style={{ marginTop:12,padding:14,background:walletBalance>=grand?G.greenLight:G.redLight,borderRadius:12,border:`1px solid ${walletBalance>=grand?'#97C459':'#FECACA'}` }}>
+              <p style={{ margin:'0 0 4px',fontSize:13,fontWeight:700,color:walletBalance>=grand?G.greenDark:G.red }}>👛 GVR Wallet</p>
+              <p style={{ margin:0,fontSize:12,color:walletBalance>=grand?G.greenDark:G.red,lineHeight:1.6 }}>
+                Balance ₹{Number(walletBalance || 0).toFixed(0)} · Order ₹{grand}
+                {walletBalance>=grand ? ` · Balance after order ₹${Math.max(0, walletBalance-grand).toFixed(0)}` : ' · Not enough balance'}
+              </p>
+            </div>
+          )}
         </div>
 
         {payMethod!=='cod' && (
-          <button onClick={placeOrder} disabled={placing||(orderType==='delivery'&&!address.trim())||(payMethod==='upi'&&!utrRef.trim())} style={{ width:'100%',padding:14,background:placing||(orderType==='delivery'&&!address.trim())||(payMethod==='upi'&&!utrRef.trim())?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:14,fontSize:15,fontWeight:700,cursor:'pointer' }}>
+          <button onClick={placeOrder} disabled={placing||(orderType==='delivery'&&!address.trim())||(payMethod==='upi'&&!utrRef.trim())||(payMethod==='wallet'&&walletBalance<grand)} style={{ width:'100%',padding:14,background:placing||(orderType==='delivery'&&!address.trim())||(payMethod==='upi'&&!utrRef.trim())||(payMethod==='wallet'&&walletBalance<grand)?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:14,fontSize:15,fontWeight:700,cursor:'pointer' }}>
             {placing?'⏳ Placing...':`${orderType==='pickup'?'🏪 Place Pickup Order':'✅ Place Order'} — ₹${grand}`}
           </button>
         )}
