@@ -368,8 +368,28 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
   }
 
   const rechargeAmount = Number(amount || 0)
-  const upiUrl = `upi://pay?pa=${upiId}&pn=Green+Village+Rice&am=${rechargeAmount || ''}&cu=INR&tn=GVR+Wallet+Recharge`
+  const upiParams = new URLSearchParams({
+    pa: upiId,
+    pn: 'Green Village Rice',
+    am: rechargeAmount ? String(rechargeAmount) : '',
+    cu: 'INR',
+    tn: 'GVR Wallet Recharge'
+  }).toString()
+  const upiUrl = `upi://pay?${upiParams}`
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiUrl)}`
+
+  function getRechargeAppUrl(appKey) {
+    const appUrls = {
+      phonepe: `phonepe://pay?${upiParams}`,
+      gpay: `tez://upi/pay?${upiParams}`,
+      paytm: `paytmmp://pay?${upiParams}`,
+      amazonpay: `amazonpay://upi/pay?${upiParams}`,
+      payzapp: `upi://pay?${upiParams}`,
+      other_upi: `upi://pay?${upiParams}`,
+    }
+
+    return appUrls[appKey] || upiUrl
+  }
 
   const statusPill = (status) => {
     const map = {
@@ -450,7 +470,7 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
             <p style={{ margin:'0 0 8px',fontSize:12,fontWeight:800,color:G.text }}>Pay using your app</p>
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10 }}>
               {rechargeApps.map(([key, label]) => (
-                <a key={key} href={upiUrl} onClick={() => setRechargeApp(key)} style={{
+                <a key={key} href={getRechargeAppUrl(key)} onClick={() => setRechargeApp(key)} style={{
                   display:'block',textDecoration:'none',padding:'9px 8px',borderRadius:10,
                   border:`2px solid ${rechargeApp===key?G.green:G.border}`,
                   background:rechargeApp===key?G.greenLight:G.white,
@@ -462,7 +482,7 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
               ))}
             </div>
             <p style={{ margin:0,fontSize:11,color:G.muted,lineHeight:1.5 }}>
-              These buttons open your phone payment app. After payment, copy the UTR / transaction ID from {selectedAppLabel} and submit below.
+              These buttons open the selected payment app if it is installed. If your phone does not open that app, choose Other UPI App or scan the QR. After payment, copy the UTR / transaction ID from {selectedAppLabel} and submit below.
             </p>
           </div>
         )}
