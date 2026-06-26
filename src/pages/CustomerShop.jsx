@@ -380,6 +380,14 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
     return <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:bg,color }}>{label}</span>
   }
 
+  const formatDateTime = (value) => {
+    if (!value) return '—'
+    return new Date(value).toLocaleString('en-IN', {
+      day:'numeric', month:'short', year:'numeric',
+      hour:'2-digit', minute:'2-digit'
+    })
+  }
+
   if (loading) return <div style={{ textAlign:'center',padding:40,color:G.muted }}>Loading wallet...</div>
 
   return (
@@ -455,7 +463,9 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
           <div key={r.id} style={{ display:'flex',justifyContent:'space-between',gap:10,padding:'10px 0',borderTop:`1px solid ${D.border}` }}>
             <div>
               <p style={{ margin:'0 0 3px',fontSize:13,fontWeight:800,color:D.text }}>₹{Number(r.amount || 0).toLocaleString('en-IN')}</p>
-              <p style={{ margin:0,fontSize:11,color:D.muted }}>UTR: {r.utr_ref} · {new Date(r.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</p>
+              <p style={{ margin:'0 0 2px',fontSize:11,color:D.muted }}>UTR: {r.utr_ref}</p>
+              <p style={{ margin:'0 0 2px',fontSize:11,color:D.muted }}>Submitted: {formatDateTime(r.created_at)}</p>
+              {r.verified_at && <p style={{ margin:0,fontSize:11,color:D.muted }}>Verified: {formatDateTime(r.verified_at)}</p>}
             </div>
             <div style={{ flexShrink:0 }}>{statusPill(r.status)}</div>
           </div>
@@ -469,7 +479,8 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
           <div key={tx.id} style={{ display:'flex',justifyContent:'space-between',gap:10,padding:'10px 0',borderTop:`1px solid ${D.border}` }}>
             <div>
               <p style={{ margin:'0 0 3px',fontSize:13,fontWeight:700,color:D.text,textTransform:'capitalize' }}>{tx.type?.replace('_',' ') || 'Transaction'}</p>
-              <p style={{ margin:0,fontSize:11,color:D.muted }}>{tx.reason || '—'} · {new Date(tx.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</p>
+              <p style={{ margin:'0 0 2px',fontSize:11,color:D.muted }}>{tx.reason || '—'}</p>
+              <p style={{ margin:0,fontSize:11,color:D.muted }}>Date & Time: {formatDateTime(tx.created_at)}</p>
             </div>
             <span style={{ fontSize:14,fontWeight:900,color:Number(tx.amount || 0) >= 0 ? G.green : G.red }}>
               {Number(tx.amount || 0) >= 0 ? '+' : ''}₹{Number(tx.amount || 0).toLocaleString('en-IN')}
