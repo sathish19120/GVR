@@ -274,6 +274,7 @@ function SubscribeSection({ user, D, switchTab }) {
 function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
   const [amount, setAmount] = useState('')
   const [utrRef, setUtrRef] = useState('')
+  const [rechargeApp, setRechargeApp] = useState('upi')
   const [requests, setRequests] = useState([])
   const [transactions, setTransactions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -315,7 +316,7 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
     }
 
     if (!utr || utr.length < 6) {
-      setErr('Enter UPI UTR / transaction reference')
+      setErr('Enter UTR / transaction reference from your payment app')
       return
     }
 
@@ -346,7 +347,7 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
         username: user.username || null,
         full_name: user.full_name || null,
         amount: rechargeAmount,
-        payment_method: 'upi',
+        payment_method: rechargeApp,
         utr_ref: utr,
         status: 'verification_pending',
         created_at: new Date().toISOString()
@@ -388,6 +389,17 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
     })
   }
 
+  const rechargeApps = [
+    ['phonepe', '📲 PhonePe'],
+    ['gpay', '🟢 Google Pay'],
+    ['paytm', '🔵 Paytm'],
+    ['amazonpay', '🛒 Amazon Pay'],
+    ['payzapp', '💳 PayZapp'],
+    ['other_upi', '🏦 Other UPI App'],
+  ]
+
+  const selectedAppLabel = rechargeApps.find(([key]) => key === rechargeApp)?.[1]?.replace(/^\S+\s*/, '') || 'UPI App'
+
   if (loading) return <div style={{ textAlign:'center',padding:40,color:G.muted }}>Loading wallet...</div>
 
   return (
@@ -395,7 +407,7 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
       <div style={{ background:`linear-gradient(135deg,${G.green},${G.greenDark})`,borderRadius:18,padding:'22px 20px',marginBottom:14,color:G.white,boxShadow:'0 4px 14px rgba(59,109,17,0.22)' }}>
         <p style={{ margin:'0 0 4px',fontSize:12,color:'rgba(255,255,255,0.7)',fontWeight:600 }}>GVR Wallet Balance</p>
         <p style={{ margin:'0 0 8px',fontSize:34,fontWeight:900 }}>₹{Number(walletBalance || 0).toLocaleString('en-IN')}</p>
-        <p style={{ margin:0,fontSize:12,color:'rgba(255,255,255,0.75)' }}>Recharge using UPI, then submit UTR for admin verification.</p>
+        <p style={{ margin:0,fontSize:12,color:'rgba(255,255,255,0.75)' }}>Recharge from your own PhonePe, Google Pay, Paytm, Amazon Pay, PayZapp, or any UPI app. Admin verifies UTR before crediting wallet.</p>
       </div>
 
       {err && <div style={{ background:G.redLight,border:'1px solid #FECACA',borderRadius:10,padding:'10px 14px',marginBottom:12,color:G.red,fontSize:13,display:'flex',justifyContent:'space-between',gap:10 }}>
@@ -410,7 +422,7 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
       <div style={{ background:D.card,borderRadius:16,padding:18,marginBottom:14,border:`1px solid ${D.border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
         <p style={{ margin:'0 0 4px',fontSize:15,fontWeight:800,color:D.text }}>➕ Add Money</p>
         <p style={{ margin:'0 0 14px',fontSize:12,color:D.muted,lineHeight:1.6 }}>
-          Enter amount, pay to GVR UPI, then submit your UTR. Wallet balance updates after admin approval.
+          Enter amount, choose your payment app, pay to the GVR company UPI account, then submit your UTR. Wallet balance updates only after admin approval.
         </p>
 
         <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12 }}>
@@ -429,19 +441,34 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
 
         {rechargeAmount > 0 && (
           <div style={{ textAlign:'center',padding:14,background:'#F9FAF7',borderRadius:12,border:`1px solid ${G.border}`,marginBottom:12 }}>
-            <p style={{ margin:'0 0 8px',fontSize:13,fontWeight:800,color:G.greenDark }}>Pay ₹{rechargeAmount} to GVR UPI</p>
+            <p style={{ margin:'0 0 8px',fontSize:13,fontWeight:800,color:G.greenDark }}>Pay ₹{rechargeAmount} to GVR company UPI account</p>
             <div style={{ background:G.white,display:'inline-block',padding:10,borderRadius:12,border:`1px solid ${G.border}`,marginBottom:8 }}>
-              <img src={qrUrl} alt="Wallet recharge UPI QR" width={150} height={150} style={{ display:'block',borderRadius:8 }} />
+              <img src={qrUrl} alt="GVR company UPI QR" width={150} height={150} style={{ display:'block',borderRadius:8 }} />
             </div>
-            <p style={{ margin:'0 0 8px',fontSize:12,color:G.muted }}>UPI ID: <strong style={{ color:G.text }}>{upiId}</strong></p>
-            <a href={upiUrl} style={{ display:'inline-block',background:G.green,color:G.white,textDecoration:'none',padding:'9px 18px',borderRadius:10,fontSize:13,fontWeight:800 }}>
-              Open UPI App
-            </a>
+            <p style={{ margin:'0 0 10px',fontSize:12,color:G.muted }}>GVR Company UPI ID: <strong style={{ color:G.text }}>{upiId}</strong></p>
+
+            <p style={{ margin:'0 0 8px',fontSize:12,fontWeight:800,color:G.text }}>Pay using your app</p>
+            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10 }}>
+              {rechargeApps.map(([key, label]) => (
+                <a key={key} href={upiUrl} onClick={() => setRechargeApp(key)} style={{
+                  display:'block',textDecoration:'none',padding:'9px 8px',borderRadius:10,
+                  border:`2px solid ${rechargeApp===key?G.green:G.border}`,
+                  background:rechargeApp===key?G.greenLight:G.white,
+                  color:rechargeApp===key?G.greenDark:G.text,
+                  fontSize:12,fontWeight:800
+                }}>
+                  {label}
+                </a>
+              ))}
+            </div>
+            <p style={{ margin:0,fontSize:11,color:G.muted,lineHeight:1.5 }}>
+              These buttons open your phone payment app. After payment, copy the UTR / transaction ID from {selectedAppLabel} and submit below.
+            </p>
           </div>
         )}
 
         <input type="text" value={utrRef} onChange={e=>setUtrRef(e.target.value.trim())}
-          placeholder="Enter UTR / Transaction ID after payment"
+          placeholder="Enter UTR / Transaction ID from payment app"
           style={{ width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${utrRef?G.green:D.border}`,fontSize:14,outline:'none',boxSizing:'border-box',background:D.bg,color:D.text,marginBottom:12 }} />
 
         <button onClick={submitRecharge} disabled={saving || !amount || !utrRef.trim()} style={{
@@ -464,6 +491,7 @@ function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
             <div>
               <p style={{ margin:'0 0 3px',fontSize:13,fontWeight:800,color:D.text }}>₹{Number(r.amount || 0).toLocaleString('en-IN')}</p>
               <p style={{ margin:'0 0 2px',fontSize:11,color:D.muted }}>UTR: {r.utr_ref}</p>
+              <p style={{ margin:'0 0 2px',fontSize:11,color:D.muted }}>Paid using: {r.payment_method?.replace('_',' ') || 'UPI app'}</p>
               <p style={{ margin:'0 0 2px',fontSize:11,color:D.muted }}>Submitted: {formatDateTime(r.created_at)}</p>
               {r.verified_at && <p style={{ margin:0,fontSize:11,color:D.muted }}>Verified: {formatDateTime(r.verified_at)}</p>}
             </div>
