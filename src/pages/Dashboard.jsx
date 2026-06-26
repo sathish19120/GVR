@@ -11,7 +11,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { supabase } from '../lib/supabase'
-import FinancePage from './FinancePage'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid, Cell
@@ -25,7 +24,6 @@ const G = {
 }
 
 const PAGES = [
-  { key:'home',        icon:'🏠', label:'Home' },         // FIX #9: added to PAGES so it's reachable
   { key:'dashboard',   icon:'⊞',  label:'Dashboard' },
   { key:'orders',      icon:'📋', label:'Orders' },
   { key:'inventory',   icon:'📦', label:'Stock' },
@@ -35,11 +33,11 @@ const PAGES = [
   { key:'branches',    icon:'🏪', label:'Branches' },
   { key:'vendors',     icon:'🌾', label:'Vendors' },
   { key:'batches',     icon:'📦', label:'Batches' },
-  { key:'finance',     icon:'💹', label:'Finance' },
   { key:'pickup',      icon:'🏪', label:'Pickup Queue' },
   { key:'bulk',        icon:'🏢', label:'Bulk Orders' },
   { key:'suppliers',   icon:'🏭', label:'Suppliers' },
   { key:'branchstock', icon:'📊', label:'Branch Stock' }, // FIX #8: unique icon
+  { key:'home',        icon:'🏠', label:'Home' },         // FIX #9: added to PAGES so it's reachable
   { key:'walkin',      icon:'🧾', label:'Walk-in Billing' }, // FIX #6: now reachable from sidebar
 ]
 
@@ -1224,7 +1222,6 @@ export default function Dashboard() {
 
           {page==='vendors'     && <VendorPage />}
           {page==='batches'     && <BatchPage />}
-          {page==='finance'     && <FinancePage />}
           {page==='pickup'      && <PickupQueue />}
           {page==='bulk'        && <BulkOrderForm />}
           {page==='home'        && <HomePage />}
