@@ -460,6 +460,216 @@ function ResetRequestsPanel() {
   )
 }
 
+
+// ── Wallet Recharge Requests Panel ────────────────────────
+function WalletRechargeRequestsPanel({ currentUser, onChanged }) {
+  const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState(null)
+  const [filter, setFilter] = useState('verification_pending')
+
+  useEffect(() => { loadRequests() }, [])
+
+  async function loadRequests() {
+    setLoading(true)
+    try {
+      let query = supabase
+        .from('wallet_recharge_requests')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100)
+
+      if (filter !== 'all') {
+        query = query.eq('status', filter)
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+      setRequests(data || [])
+    } catch (e) {
+      console.error('Wallet recharge load failed:', e)
+      setRequests([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadRequests() }, [filter])
+
+  async function approve(req) {
+    if (!window.confirm(`Approve wallet recharge of ₹${Number(req.amount).toLocaleString('en-IN')} for ${req.full_name || req.username}?`)) return
+
+    setProcessing(req.id)
+    try {
+      const { data: prof, error: profileError } = await supabase
+        .from('profiles')
+        .select('wallet_balance')
+        .eq('id', req.user_id)
+        .single()
+
+      if (profileError) throw profileError
+
+      const currentBalance = Number(prof?.wallet_balance || 0)
+      const amount = Number(req.amount || 0)
+      const newBalance = currentBalance + amount
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ wallet_balance: newBalance })
+        .eq('id', req.user_id)
+
+      if (updateError) throw updateError
+
+      // Transaction log is useful, but do not block approval if an older
+      // wallet_transactions table has a different schema.
+      try {
+        await supabase.from('wallet_transactions').insert({
+          user_id: req.user_id,
+          amount,
+          type: 'recharge',
+          reason: `Wallet recharge approved · UTR ${req.utr_ref}`,
+          recharge_request_id: req.id,
+          created_at: new Date().toISOString()
+        })
+      } catch (txErr) {
+        console.warn('Wallet transaction insert skipped:', txErr)
+      }
+
+      const { error: requestError } = await supabase
+        .from('wallet_recharge_requests')
+        .update({
+          status: 'approved',
+          verified_by: currentUser?.id || null,
+          verified_at: new Date().toISOString(),
+          admin_note: `Approved. Balance ₹${currentBalance} → ₹${newBalance}`
+        })
+        .eq('id', req.id)
+
+      if (requestError) throw requestError
+
+      await loadRequests()
+      onChanged?.()
+    } catch (e) {
+      console.error('Approve recharge failed:', e)
+      alert(e.message || 'Unable to approve recharge')
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+  async function reject(req) {
+    const note = window.prompt('Reason for rejection?', 'Invalid or duplicate UTR')
+    if (note === null) return
+
+    setProcessing(req.id)
+    try {
+      const { error } = await supabase
+        .from('wallet_recharge_requests')
+        .update({
+          status: 'rejected',
+          verified_by: currentUser?.id || null,
+          verified_at: new Date().toISOString(),
+          admin_note: note || 'Rejected by admin'
+        })
+        .eq('id', req.id)
+
+      if (error) throw error
+
+      await loadRequests()
+      onChanged?.()
+    } catch (e) {
+      console.error('Reject recharge failed:', e)
+      alert(e.message || 'Unable to reject recharge')
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+  const statusBadge = (status) => {
+    const map = {
+      verification_pending: [G.amber, G.amberLight, 'Verification Pending'],
+      approved: [G.green, G.greenLight, 'Approved'],
+      rejected: [G.red, G.redLight, 'Rejected'],
+    }
+    const [color, bg, label] = map[status] || [G.muted, '#F3F4F6', status || '—']
+    return <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:bg,color }}>{label}</span>
+  }
+
+  return (
+    <div>
+      <div style={{ display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center' }}>
+        {[
+          ['verification_pending','Pending'],
+          ['approved','Approved'],
+          ['rejected','Rejected'],
+          ['all','All'],
+        ].map(([key,label]) => (
+          <button key={key} onClick={()=>setFilter(key)} style={{
+            padding:'8px 16px',border:'none',borderRadius:20,cursor:'pointer',
+            fontSize:12,fontWeight:700,
+            background:filter===key?G.green:G.white,
+            color:filter===key?G.white:G.muted,
+            boxShadow:'0 1px 4px rgba(0,0,0,0.06)'
+          }}>{label}</button>
+        ))}
+        <button onClick={loadRequests} style={{ marginLeft:'auto',background:G.white,border:`1px solid ${G.border}`,borderRadius:10,padding:'8px 16px',fontSize:13,fontWeight:700,color:G.text,cursor:'pointer' }}>
+          ↻ Refresh
+        </button>
+      </div>
+
+      {loading && <p style={{ padding:30,textAlign:'center',color:G.muted }}>Loading wallet recharge requests...</p>}
+
+      {!loading && requests.length === 0 && (
+        <div style={{ textAlign:'center',padding:'60px 20px',background:G.white,borderRadius:14 }}>
+          <p style={{ fontSize:40,margin:'0 0 10px' }}>👛</p>
+          <p style={{ fontWeight:700,color:G.text,margin:'0 0 6px' }}>No wallet recharge requests</p>
+          <p style={{ fontSize:13,color:G.muted,margin:0 }}>Customer UPI recharge requests will appear here.</p>
+        </div>
+      )}
+
+      <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
+        {requests.map(req => (
+          <div key={req.id} style={{ background:G.white,borderRadius:14,padding:18,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${req.status==='verification_pending'?G.amber:G.border}` }}>
+            <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,marginBottom:12 }}>
+              <div>
+                <p style={{ margin:'0 0 3px',fontWeight:800,fontSize:16,color:G.green }}>₹{Number(req.amount || 0).toLocaleString('en-IN')}</p>
+                <p style={{ margin:'0 0 2px',fontSize:13,fontWeight:700,color:G.text }}>{req.full_name || req.username || 'Customer'}</p>
+                <p style={{ margin:'0 0 2px',fontSize:12,color:G.muted }}>@{req.username || '—'} · UTR: <strong style={{ color:G.text }}>{req.utr_ref}</strong></p>
+                <p style={{ margin:0,fontSize:11,color:G.muted }}>{new Date(req.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</p>
+              </div>
+              {statusBadge(req.status)}
+            </div>
+
+            {req.admin_note && (
+              <div style={{ background:'#F9FAF7',borderRadius:10,padding:'9px 12px',marginBottom:12 }}>
+                <p style={{ margin:0,fontSize:12,color:G.muted }}>Admin note: {req.admin_note}</p>
+              </div>
+            )}
+
+            {req.status === 'verification_pending' && (
+              <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
+                <button onClick={()=>approve(req)} disabled={processing===req.id} style={{
+                  padding:'9px 18px',background:processing===req.id?'#9CA3AF':G.green,
+                  color:G.white,border:'none',borderRadius:9,fontSize:13,fontWeight:800,cursor:processing===req.id?'not-allowed':'pointer'
+                }}>
+                  {processing===req.id ? 'Processing...' : '✓ Verify & Credit Wallet'}
+                </button>
+                <button onClick={()=>reject(req)} disabled={processing===req.id} style={{
+                  padding:'9px 14px',background:G.redLight,color:G.red,border:'none',
+                  borderRadius:9,fontSize:13,fontWeight:700,cursor:processing===req.id?'not-allowed':'pointer'
+                }}>
+                  ✕ Reject
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+
 // ── Main AdminPage ────────────────────────────────────────
 export default function AdminPage() {
   const authStore   = useAuth()
@@ -475,8 +685,9 @@ export default function AdminPage() {
   const [deleting, setDeleting]         = useState(null)
   // FIX #3: track pending reset requests count for badge
   const [pendingResets, setPendingResets] = useState(0)
+  const [pendingWalletRecharges, setPendingWalletRecharges] = useState(0)
 
-  useEffect(() => { loadUsers(); loadPendingResets() }, [])
+  useEffect(() => { loadUsers(); loadPendingResets(); loadPendingWalletRecharges() }, [])
 
   async function loadUsers() {
     setLoading(true)
@@ -491,6 +702,14 @@ export default function AdminPage() {
         .select('id', { count:'exact', head:true }).eq('status','pending')
       setPendingResets(count || 0)
     } catch { setPendingResets(0) }
+  }
+
+  async function loadPendingWalletRecharges() {
+    try {
+      const { count } = await supabase.from('wallet_recharge_requests')
+        .select('id', { count:'exact', head:true }).eq('status','verification_pending')
+      setPendingWalletRecharges(count || 0)
+    } catch { setPendingWalletRecharges(0) }
   }
 
   async function deleteUser(id, username) {
@@ -517,6 +736,7 @@ export default function AdminPage() {
   const TABS = [
     { key:'users',   label:'👥 Manage Users' },
     { key:'resets',  label:`🔒 Reset Requests${pendingResets>0?' ('+pendingResets+')':''}` },
+    { key:'walletRecharges', label:`👛 Wallet Recharges${pendingWalletRecharges>0?' ('+pendingWalletRecharges+')':''}` },
     { key:'profile', label:'👤 My Profile' },
   ]
 
@@ -528,7 +748,7 @@ export default function AdminPage() {
 
       <div style={{ display:'flex',gap:8,marginBottom:24,flexWrap:'wrap' }}>
         {TABS.map(t => (
-          <button key={t.key} onClick={()=>{ setTab(t.key); if(t.key==='resets') loadPendingResets() }} style={{
+          <button key={t.key} onClick={()=>{ setTab(t.key); if(t.key==='resets') loadPendingResets(); if(t.key==='walletRecharges') loadPendingWalletRecharges() }} style={{
             padding:'9px 20px', borderRadius:10, border:'none', cursor:'pointer',
             fontSize:13, fontWeight:600,
             background: tab===t.key ? G.green : G.white,
@@ -540,6 +760,7 @@ export default function AdminPage() {
 
       {/* FIX #3: Password Reset Requests tab */}
       {tab === 'resets'  && <ResetRequestsPanel />}
+      {tab === 'walletRecharges' && <WalletRechargeRequestsPanel currentUser={currentUser} onChanged={loadPendingWalletRecharges} />}
       {tab === 'profile' && currentUser && <MyProfile currentUser={currentUser} onUpdated={loadUsers} />}
 
       {tab === 'users' && (
