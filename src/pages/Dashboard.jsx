@@ -11,6 +11,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { supabase } from '../lib/supabase'
+import FinancePage from './FinancePage'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid, Cell
@@ -29,6 +30,7 @@ const PAGES = [
   { key:'orders',      icon:'📋', label:'Orders' },
   { key:'inventory',   icon:'📦', label:'Stock' },
   { key:'analytics',   icon:'📊', label:'Analytics' },
+  { key:'finance',     icon:'💹', label:'Finance' },
   { key:'users',       icon:'👥', label:'Users' },
   { key:'admin',       icon:'⚙️', label:'Admin' },
   { key:'branches',    icon:'🏪', label:'Branches' },
@@ -1554,6 +1556,7 @@ useEffect(() => {
           {page==='pickup'      && <PickupQueue />}
           {page==='bulk'        && <BulkOrderForm />}
           {page==='home'        && <HomePage />}
+          {page==='finance'     && <FinancePage />}
           {page==='suppliers'   && <SupplierPage />}
           {page==='branchstock' && <BranchStockPage />}
           {/* FIX #6: WalkInBilling now receives branch prop from profile */}
