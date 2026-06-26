@@ -11,7 +11,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { supabase } from '../lib/supabase'
-import FinancePage from './FinancePage'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid, Cell
