@@ -801,7 +801,7 @@ export default function CustomerShop() {
   )
 
   if (step === 'checkout') return (
-    <div style={{ minHeight:'100vh',background:D.bg }}>
+    <div className="customer-shop-root checkout-root" style={{ minHeight:'100dvh',background:D.bg,width:'100%',maxWidth:'100vw',overflowX:'hidden' }}>
       <TopNavModal modal={topModal} onClose={()=>setTopModal(null)} />
       <header style={{ background:G.green,padding:'14px 20px',display:'flex',alignItems:'center',gap:12 }}>
         <button onClick={()=>{ setStep('shop'); setError('') }} style={{ background:'none',border:'none',color:G.white,fontSize:22,cursor:'pointer' }}>←</button>
@@ -905,22 +905,210 @@ export default function CustomerShop() {
   )
 
   return (
-    <div style={{ minHeight:'100vh',background:D.bg }}>
+    <div className="customer-shop-root" style={{ minHeight:'100dvh',background:D.bg,width:'100%',maxWidth:'100vw',overflowX:'hidden' }}>
       <TopNavModal modal={topModal} onClose={()=>setTopModal(null)} />
+      <style>{`
+        .customer-shop-root,
+        .customer-shop-root * {
+          box-sizing: border-box;
+        }
+
+        .customer-shop-root {
+          overflow-x: hidden;
+          max-width: 100vw;
+        }
+
+        .customer-shop-info-nav,
+        .customer-shop-tabs {
+          max-width: 100vw;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+        }
+
+        .customer-shop-info-nav::-webkit-scrollbar,
+        .customer-shop-tabs::-webkit-scrollbar {
+          display: none;
+        }
+
+        .customer-shop-info-button,
+        .customer-shop-tab-button {
+          flex: 0 0 auto !important;
+          white-space: nowrap;
+        }
+
+        @media (max-width: 640px) {
+          .customer-shop-header {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+            padding: 14px 16px !important;
+            align-items: flex-start !important;
+            justify-content: flex-start !important;
+          }
+
+          .customer-shop-brand {
+            width: 100% !important;
+            min-width: 0 !important;
+          }
+
+          .customer-shop-brand p:first-child {
+            font-size: 16px !important;
+            line-height: 1.15 !important;
+          }
+
+          .customer-shop-actions {
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) 72px 88px !important;
+            gap: 8px !important;
+            align-items: center !important;
+          }
+
+          .customer-shop-actions > button,
+          .customer-shop-actions > div {
+            min-width: 0 !important;
+          }
+
+          .customer-shop-actions > button:first-of-type {
+            width: 100% !important;
+            justify-content: flex-start !important;
+            padding: 4px 8px 4px 4px !important;
+            border-radius: 999px !important;
+          }
+
+          .customer-shop-actions > button:first-of-type span {
+            max-width: 92px !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+          }
+
+          .customer-shop-actions > div > button {
+            width: 100% !important;
+            justify-content: center !important;
+            padding: 8px 8px !important;
+            font-size: 13px !important;
+            border-radius: 14px !important;
+          }
+
+          .customer-shop-actions > button:last-child {
+            width: 100% !important;
+            padding: 8px 8px !important;
+            font-size: 13px !important;
+            border-radius: 14px !important;
+          }
+
+          .customer-shop-info-nav {
+            padding: 0 8px !important;
+            justify-content: flex-start !important;
+          }
+
+          .customer-shop-info-button {
+            min-width: 126px !important;
+            padding: 10px 12px !important;
+            font-size: 13px !important;
+            text-align: center !important;
+          }
+
+          .customer-shop-tabs {
+            padding: 0 8px !important;
+            justify-content: flex-start !important;
+          }
+
+          .customer-shop-tab-button {
+            min-width: 126px !important;
+            padding: 11px 12px !important;
+            font-size: 13px !important;
+            text-align: center !important;
+          }
+
+          .customer-shop-list {
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 12px !important;
+          }
+
+          .customer-product-card {
+            width: 100% !important;
+            padding: 14px !important;
+            gap: 10px !important;
+            border-radius: 14px !important;
+          }
+
+          .customer-product-icon {
+            width: 54px !important;
+            height: 54px !important;
+            font-size: 25px !important;
+          }
+
+          .customer-product-info {
+            min-width: 0 !important;
+          }
+
+          .customer-product-info p:first-child {
+            font-size: 14px !important;
+            line-height: 1.25 !important;
+          }
+
+          .customer-product-info p {
+            overflow-wrap: anywhere !important;
+          }
+
+          .customer-product-actions {
+            min-width: 88px !important;
+            max-width: 108px !important;
+          }
+
+          .customer-product-actions p {
+            font-size: 17px !important;
+          }
+
+          .customer-product-actions button {
+            padding: 8px 12px !important;
+            font-size: 13px !important;
+            border-radius: 10px !important;
+            white-space: nowrap !important;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .customer-shop-actions {
+            grid-template-columns: minmax(0, 1fr) 66px 80px !important;
+            gap: 6px !important;
+          }
+
+          .customer-shop-info-button,
+          .customer-shop-tab-button {
+            min-width: 116px !important;
+            font-size: 12px !important;
+          }
+
+          .customer-product-icon {
+            width: 48px !important;
+            height: 48px !important;
+          }
+
+          .customer-product-actions {
+            min-width: 80px !important;
+            max-width: 92px !important;
+          }
+        }
+      `}</style>
       {showProfile && <ProfilePage onClose={()=>setShowProfile(false)} />}
       {reviewModal && <ReviewModal order={reviewModal} onClose={()=>setRevModal(null)} />}
       {reportModal && <ReportModal order={reportModal} onClose={()=>setRepModal(null)} />}
       {notifyModal && <NotifyModal product={notifyModal} onClose={()=>setNotifyModal(null)} />}
 
-      <header style={{ background:G.green,padding:'14px 20px',display:'flex',alignItems:'center',justifyContent:'space-between' }}>
-        <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-          <span style={{ fontSize:22 }}>🌾</span>
+      <header className="customer-shop-header" style={{ background:G.green,padding:'14px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12 }}>
+        <div className="customer-shop-brand" style={{ display:'flex',alignItems:'center',gap:10,minWidth:0 }}>
+          <span style={{ fontSize:22,flexShrink:0 }}>🌾</span>
           <div>
             <p style={{ color:G.white,fontWeight:700,margin:0,fontSize:15 }}>Green Village Rice</p>
             <p style={{ color:'rgba(255,255,255,0.6)',margin:0,fontSize:11 }}>Fresh Sona Masoori</p>
           </div>
         </div>
-        <div style={{ display:'flex',alignItems:'center',gap:8 }}>
+        <div className="customer-shop-actions" style={{ display:'flex',alignItems:'center',gap:8,minWidth:0 }}>
           {totalItems>0 && tab==='shop' && (
             <button onClick={()=>{ setStep('checkout'); setError('') }} style={{ background:G.white,border:'none',borderRadius:20,padding:'6px 14px',fontWeight:700,color:G.green,cursor:'pointer',fontSize:13 }}>
               🛒 {totalItems} · ₹{totalAmount}
@@ -939,21 +1127,21 @@ export default function CustomerShop() {
         </div>
       </header>
 
-      <div style={{ background:G.white,borderBottom:`1px solid ${G.border}`,padding:'0 16px',display:'flex',alignItems:'center' }}>
+      <div className="customer-shop-info-nav" style={{ background:G.white,borderBottom:`1px solid ${G.border}`,padding:'0 16px',display:'flex',alignItems:'center',overflowX:'auto' }}>
         {[['where','📍 '+T.whereWeWork],['what','🌾 '+T.whatWeDo],['about','ℹ️ '+T.about]].map(([key,label])=>(
-          <button key={key} onClick={()=>setTopModal(key)} style={{ padding:'10px 14px',border:'none',background:'none',cursor:'pointer',fontSize:12,fontWeight:600,color:G.green }}>{label}</button>
+          <button className="customer-shop-info-button" key={key} onClick={()=>setTopModal(key)} style={{ padding:'10px 14px',border:'none',background:'none',cursor:'pointer',fontSize:12,fontWeight:600,color:G.green,flex:'0 0 auto',whiteSpace:'nowrap' }}>{label}</button>
         ))}
       </div>
 
       {/* FIX #3: tabs array is now flat — was double-nested before causing only 1 tab to render */}
-      <div style={{ background:G.white,borderBottom:`1px solid ${G.border}`,display:'flex',overflowX:'auto' }}>
+      <div className="customer-shop-tabs" style={{ background:G.white,borderBottom:`1px solid ${G.border}`,display:'flex',overflowX:'auto' }}>
         {[
           ['shop',    `🌾 ${T.orderRice}`],
           ['myorders',`📋 ${T.myOrders}`],
           ['subscribe',`🔄 ${T.subscribe}`],
           ['referral', `🎁 ${T.referEarn}`],
         ].map(([key,label])=>(
-          <button key={key} onClick={()=>switchTab(key)} style={{ padding:'10px 16px',border:'none',background:'none',cursor:'pointer',fontSize:13,fontWeight:600,borderBottom:`3px solid ${tab===key?G.green:'transparent'}`,color:tab===key?G.green:G.muted,whiteSpace:'nowrap',flex:1,textAlign:'center' }}>
+          <button className="customer-shop-tab-button" key={key} onClick={()=>switchTab(key)} style={{ padding:'10px 16px',border:'none',background:'none',cursor:'pointer',fontSize:13,fontWeight:600,borderBottom:`3px solid ${tab===key?G.green:'transparent'}`,color:tab===key?G.green:G.muted,whiteSpace:'nowrap',flex:'0 0 auto',textAlign:'center' }}>
             {label}
           </button>
         ))}
@@ -964,7 +1152,7 @@ export default function CustomerShop() {
       {tab==='referral'  && <ReferralSection  user={user} D={D} />}
 
       {tab==='myorders' && (
-        <div style={{ maxWidth:600,margin:'0 auto',padding:16 }}>
+        <div className="customer-shop-list" style={{ maxWidth:600,margin:'0 auto',padding:16,width:'100%' }}>
           <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',margin:'4px 0 16px' }}>
             <p style={{ margin:0,fontSize:15,fontWeight:700 }}>My Orders</p>
             <button onClick={loadMyOrders} style={{ background:G.greenLight,border:'none',borderRadius:8,padding:'6px 14px',fontSize:12,fontWeight:600,color:G.green,cursor:'pointer' }}>↻ Refresh</button>
@@ -1026,7 +1214,7 @@ export default function CustomerShop() {
       )}
 
       {tab==='shop' && (
-        <div style={{ maxWidth:600,margin:'0 auto',padding:16 }}>
+        <div className="customer-shop-list" style={{ maxWidth:600,margin:'0 auto',padding:16,width:'100%' }}>
           {error && <div style={{ background:G.redLight,border:`1px solid #FECACA`,borderRadius:10,padding:'10px 14px',marginBottom:16,color:G.red,fontSize:13,display:'flex',justifyContent:'space-between' }}>
             <span>{error}</span><button onClick={()=>setError('')} style={{ background:'none',border:'none',cursor:'pointer',color:G.red,fontSize:16 }}>✕</button>
           </div>}
@@ -1035,14 +1223,14 @@ export default function CustomerShop() {
           </p>
           {loading && <p style={{ textAlign:'center',color:G.muted,padding:40 }}>Loading products...</p>}
           {products.map(p=>(
-            <div key={p.id} style={{ background:D.card,borderRadius:14,padding:16,marginBottom:12,display:'flex',alignItems:'center',gap:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${D.border}` }}>
-              <div style={{ width:56,height:56,borderRadius:12,background:G.greenLight,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,flexShrink:0 }}>🌾</div>
-              <div style={{ flex:1,minWidth:0 }}>
+            <div className="customer-product-card" key={p.id} style={{ background:D.card,borderRadius:14,padding:16,marginBottom:12,display:'flex',alignItems:'center',gap:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${D.border}`,width:'100%',maxWidth:'100%' }}>
+              <div className="customer-product-icon" style={{ width:56,height:56,borderRadius:12,background:G.greenLight,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,flexShrink:0 }}>🌾</div>
+              <div className="customer-product-info" style={{ flex:1,minWidth:0 }}>
                 <p style={{ margin:'0 0 2px',fontWeight:700,fontSize:15 }}>{p.name}</p>
                 <p style={{ margin:'0 0 2px',fontSize:12,color:G.muted }}>{p.name_telugu} · {p.weight_kg}kg</p>
                 {p.packing_date && <p style={{ margin:0,fontSize:11,color:G.green }}>✓ Packed: {new Date(p.packing_date).toLocaleDateString('en-IN')}</p>}
               </div>
-              <div style={{ textAlign:'right',flexShrink:0 }}>
+              <div className="customer-product-actions" style={{ textAlign:'right',flexShrink:0 }}>
                 <p style={{ margin:'0 0 8px',fontWeight:800,fontSize:17 }}>₹{p.price_per_bag}</p>
                 {p.stock_bags<=0
                   ? <button onClick={()=>setNotifyModal(p)} style={{ background:G.amberLight,color:G.amber,border:'none',borderRadius:8,padding:'7px 12px',fontWeight:700,cursor:'pointer',fontSize:12 }}>
