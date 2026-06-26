@@ -595,6 +595,14 @@ function WalletRechargeRequestsPanel({ currentUser, onChanged }) {
     return <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:bg,color }}>{label}</span>
   }
 
+  const formatDateTime = (value) => {
+    if (!value) return '—'
+    return new Date(value).toLocaleString('en-IN', {
+      day:'numeric', month:'short', year:'numeric',
+      hour:'2-digit', minute:'2-digit'
+    })
+  }
+
   return (
     <div>
       <div style={{ display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center' }}>
@@ -635,7 +643,8 @@ function WalletRechargeRequestsPanel({ currentUser, onChanged }) {
                 <p style={{ margin:'0 0 3px',fontWeight:800,fontSize:16,color:G.green }}>₹{Number(req.amount || 0).toLocaleString('en-IN')}</p>
                 <p style={{ margin:'0 0 2px',fontSize:13,fontWeight:700,color:G.text }}>{req.full_name || req.username || 'Customer'}</p>
                 <p style={{ margin:'0 0 2px',fontSize:12,color:G.muted }}>@{req.username || '—'} · UTR: <strong style={{ color:G.text }}>{req.utr_ref}</strong></p>
-                <p style={{ margin:0,fontSize:11,color:G.muted }}>{new Date(req.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</p>
+                <p style={{ margin:'0 0 2px',fontSize:11,color:G.muted }}>Submitted: {formatDateTime(req.created_at)}</p>
+                {req.verified_at && <p style={{ margin:0,fontSize:11,color:G.muted }}>Verified: {formatDateTime(req.verified_at)}</p>}
               </div>
               {statusBadge(req.status)}
             </div>
