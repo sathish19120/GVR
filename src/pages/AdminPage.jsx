@@ -527,7 +527,7 @@ function WalletRechargeRequestsPanel({ currentUser, onChanged }) {
           user_id: req.user_id,
           amount,
           type: 'recharge',
-          reason: `Wallet recharge approved · UTR ${req.utr_ref}`,
+          reason: `Wallet recharge approved · ${req.payment_method || 'upi'} · UTR ${req.utr_ref}`,
           recharge_request_id: req.id,
           created_at: new Date().toISOString()
         })
@@ -643,6 +643,7 @@ function WalletRechargeRequestsPanel({ currentUser, onChanged }) {
                 <p style={{ margin:'0 0 3px',fontWeight:800,fontSize:16,color:G.green }}>₹{Number(req.amount || 0).toLocaleString('en-IN')}</p>
                 <p style={{ margin:'0 0 2px',fontSize:13,fontWeight:700,color:G.text }}>{req.full_name || req.username || 'Customer'}</p>
                 <p style={{ margin:'0 0 2px',fontSize:12,color:G.muted }}>@{req.username || '—'} · UTR: <strong style={{ color:G.text }}>{req.utr_ref}</strong></p>
+                <p style={{ margin:'0 0 2px',fontSize:12,color:G.muted }}>Paid using: <strong style={{ color:G.text,textTransform:'capitalize' }}>{req.payment_method?.replace('_',' ') || 'UPI app'}</strong></p>
                 <p style={{ margin:'0 0 2px',fontSize:11,color:G.muted }}>Submitted: {formatDateTime(req.created_at)}</p>
                 {req.verified_at && <p style={{ margin:0,fontSize:11,color:G.muted }}>Verified: {formatDateTime(req.verified_at)}</p>}
               </div>
