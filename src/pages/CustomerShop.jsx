@@ -269,6 +269,219 @@ function SubscribeSection({ user, D, switchTab }) {
   )
 }
 
+
+// ── Wallet Recharge Section ───────────────────────────────
+function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
+  const [amount, setAmount] = useState('')
+  const [utrRef, setUtrRef] = useState('')
+  const [requests, setRequests] = useState([])
+  const [transactions, setTransactions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+
+  useEffect(() => { loadWallet() }, [user?.id])
+
+  async function loadWallet() {
+    if (!user?.id) return
+    setLoading(true)
+    setErr('')
+    try {
+      const [profileRes, requestRes, txRes] = await Promise.all([
+        supabase.from('profiles').select('wallet_balance').eq('id', user.id).single(),
+        supabase.from('wallet_recharge_requests').select('*').eq('user_id', user.id).order('created_at', { ascending:false }).limit(20),
+        supabase.from('wallet_transactions').select('*').eq('user_id', user.id).order('created_at', { ascending:false }).limit(20),
+      ])
+
+      if (profileRes.data) setWalletBalance(Number(profileRes.data.wallet_balance || 0))
+      setRequests(requestRes.data || [])
+      setTransactions(txRes.data || [])
+    } catch (e) {
+      console.error('Wallet load failed:', e)
+      setErr('Unable to load wallet details. Please refresh.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function submitRecharge() {
+    const rechargeAmount = Number(amount)
+    const utr = utrRef.trim()
+
+    if (!rechargeAmount || rechargeAmount <= 0) {
+      setErr('Enter a valid recharge amount')
+      return
+    }
+
+    if (!utr || utr.length < 6) {
+      setErr('Enter UPI UTR / transaction reference')
+      return
+    }
+
+    if (!user?.id) {
+      setErr('Please login again to recharge wallet')
+      return
+    }
+
+    setSaving(true)
+    setErr('')
+    setMsg('')
+
+    try {
+      const { data: existing } = await supabase
+        .from('wallet_recharge_requests')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('utr_ref', utr)
+        .maybeSingle()
+
+      if (existing) {
+        setErr('This UTR is already submitted. Please wait for admin verification.')
+        return
+      }
+
+      const { error } = await supabase.from('wallet_recharge_requests').insert({
+        user_id: user.id,
+        username: user.username || null,
+        full_name: user.full_name || null,
+        amount: rechargeAmount,
+        payment_method: 'upi',
+        utr_ref: utr,
+        status: 'verification_pending',
+        created_at: new Date().toISOString()
+      })
+
+      if (error) throw error
+
+      setMsg('Recharge request submitted. Admin will verify the UTR and credit your wallet.')
+      setAmount('')
+      setUtrRef('')
+      await loadWallet()
+    } catch (e) {
+      console.error('Recharge request failed:', e)
+      setErr(e.message || 'Unable to submit recharge request')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const rechargeAmount = Number(amount || 0)
+  const upiUrl = `upi://pay?pa=${upiId}&pn=Green+Village+Rice&am=${rechargeAmount || ''}&cu=INR&tn=GVR+Wallet+Recharge`
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiUrl)}`
+
+  const statusPill = (status) => {
+    const map = {
+      verification_pending: [G.amber, G.amberLight, 'Verification Pending'],
+      approved: [G.green, G.greenLight, 'Approved'],
+      rejected: [G.red, G.redLight, 'Rejected'],
+    }
+    const [color, bg, label] = map[status] || [G.muted, '#F3F4F6', status || '—']
+    return <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:bg,color }}>{label}</span>
+  }
+
+  if (loading) return <div style={{ textAlign:'center',padding:40,color:G.muted }}>Loading wallet...</div>
+
+  return (
+    <div className="customer-shop-list" style={{ maxWidth:600,margin:'0 auto',padding:16,width:'100%' }}>
+      <div style={{ background:`linear-gradient(135deg,${G.green},${G.greenDark})`,borderRadius:18,padding:'22px 20px',marginBottom:14,color:G.white,boxShadow:'0 4px 14px rgba(59,109,17,0.22)' }}>
+        <p style={{ margin:'0 0 4px',fontSize:12,color:'rgba(255,255,255,0.7)',fontWeight:600 }}>GVR Wallet Balance</p>
+        <p style={{ margin:'0 0 8px',fontSize:34,fontWeight:900 }}>₹{Number(walletBalance || 0).toLocaleString('en-IN')}</p>
+        <p style={{ margin:0,fontSize:12,color:'rgba(255,255,255,0.75)' }}>Recharge using UPI, then submit UTR for admin verification.</p>
+      </div>
+
+      {err && <div style={{ background:G.redLight,border:'1px solid #FECACA',borderRadius:10,padding:'10px 14px',marginBottom:12,color:G.red,fontSize:13,display:'flex',justifyContent:'space-between',gap:10 }}>
+        <span>{err}</span>
+        <button onClick={()=>setErr('')} style={{ background:'none',border:'none',color:G.red,cursor:'pointer',fontSize:16 }}>✕</button>
+      </div>}
+
+      {msg && <div style={{ background:G.greenLight,border:'1px solid #97C459',borderRadius:10,padding:'10px 14px',marginBottom:12,color:G.greenDark,fontSize:13 }}>
+        ✓ {msg}
+      </div>}
+
+      <div style={{ background:D.card,borderRadius:16,padding:18,marginBottom:14,border:`1px solid ${D.border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+        <p style={{ margin:'0 0 4px',fontSize:15,fontWeight:800,color:D.text }}>➕ Add Money</p>
+        <p style={{ margin:'0 0 14px',fontSize:12,color:D.muted,lineHeight:1.6 }}>
+          Enter amount, pay to GVR UPI, then submit your UTR. Wallet balance updates after admin approval.
+        </p>
+
+        <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12 }}>
+          {[100, 200, 500, 1000].map(v => (
+            <button key={v} onClick={()=>setAmount(String(v))} style={{
+              padding:'10px 12px',borderRadius:10,border:`2px solid ${Number(amount)===v?G.green:D.border}`,
+              background:Number(amount)===v?G.greenLight:'transparent',color:Number(amount)===v?G.greenDark:D.text,
+              fontSize:13,fontWeight:800,cursor:'pointer'
+            }}>₹{v}</button>
+          ))}
+        </div>
+
+        <input type="number" min="1" value={amount} onChange={e=>setAmount(e.target.value)}
+          placeholder="Enter recharge amount"
+          style={{ width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${amount?G.green:D.border}`,fontSize:16,outline:'none',boxSizing:'border-box',background:D.bg,color:D.text,marginBottom:12 }} />
+
+        {rechargeAmount > 0 && (
+          <div style={{ textAlign:'center',padding:14,background:'#F9FAF7',borderRadius:12,border:`1px solid ${G.border}`,marginBottom:12 }}>
+            <p style={{ margin:'0 0 8px',fontSize:13,fontWeight:800,color:G.greenDark }}>Pay ₹{rechargeAmount} to GVR UPI</p>
+            <div style={{ background:G.white,display:'inline-block',padding:10,borderRadius:12,border:`1px solid ${G.border}`,marginBottom:8 }}>
+              <img src={qrUrl} alt="Wallet recharge UPI QR" width={150} height={150} style={{ display:'block',borderRadius:8 }} />
+            </div>
+            <p style={{ margin:'0 0 8px',fontSize:12,color:G.muted }}>UPI ID: <strong style={{ color:G.text }}>{upiId}</strong></p>
+            <a href={upiUrl} style={{ display:'inline-block',background:G.green,color:G.white,textDecoration:'none',padding:'9px 18px',borderRadius:10,fontSize:13,fontWeight:800 }}>
+              Open UPI App
+            </a>
+          </div>
+        )}
+
+        <input type="text" value={utrRef} onChange={e=>setUtrRef(e.target.value.trim())}
+          placeholder="Enter UTR / Transaction ID after payment"
+          style={{ width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${utrRef?G.green:D.border}`,fontSize:14,outline:'none',boxSizing:'border-box',background:D.bg,color:D.text,marginBottom:12 }} />
+
+        <button onClick={submitRecharge} disabled={saving || !amount || !utrRef.trim()} style={{
+          width:'100%',padding:13,border:'none',borderRadius:12,
+          background:saving || !amount || !utrRef.trim() ? '#9CA3AF' : G.green,
+          color:G.white,fontSize:15,fontWeight:800,cursor:saving || !amount || !utrRef.trim() ? 'not-allowed' : 'pointer'
+        }}>
+          {saving ? 'Submitting...' : 'Submit Recharge Request'}
+        </button>
+      </div>
+
+      <div style={{ background:D.card,borderRadius:16,padding:18,marginBottom:14,border:`1px solid ${D.border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12 }}>
+          <p style={{ margin:0,fontSize:15,fontWeight:800,color:D.text }}>Recharge Requests</p>
+          <button onClick={loadWallet} style={{ background:G.greenLight,border:'none',borderRadius:8,padding:'6px 12px',fontSize:12,fontWeight:700,color:G.green,cursor:'pointer' }}>↻ Refresh</button>
+        </div>
+        {requests.length === 0 && <p style={{ margin:0,fontSize:13,color:D.muted,textAlign:'center',padding:18 }}>No recharge requests yet</p>}
+        {requests.map(r => (
+          <div key={r.id} style={{ display:'flex',justifyContent:'space-between',gap:10,padding:'10px 0',borderTop:`1px solid ${D.border}` }}>
+            <div>
+              <p style={{ margin:'0 0 3px',fontSize:13,fontWeight:800,color:D.text }}>₹{Number(r.amount || 0).toLocaleString('en-IN')}</p>
+              <p style={{ margin:0,fontSize:11,color:D.muted }}>UTR: {r.utr_ref} · {new Date(r.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</p>
+            </div>
+            <div style={{ flexShrink:0 }}>{statusPill(r.status)}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background:D.card,borderRadius:16,padding:18,border:`1px solid ${D.border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+        <p style={{ margin:'0 0 12px',fontSize:15,fontWeight:800,color:D.text }}>Wallet History</p>
+        {transactions.length === 0 && <p style={{ margin:0,fontSize:13,color:D.muted,textAlign:'center',padding:18 }}>No wallet transactions yet</p>}
+        {transactions.map(tx => (
+          <div key={tx.id} style={{ display:'flex',justifyContent:'space-between',gap:10,padding:'10px 0',borderTop:`1px solid ${D.border}` }}>
+            <div>
+              <p style={{ margin:'0 0 3px',fontSize:13,fontWeight:700,color:D.text,textTransform:'capitalize' }}>{tx.type?.replace('_',' ') || 'Transaction'}</p>
+              <p style={{ margin:0,fontSize:11,color:D.muted }}>{tx.reason || '—'} · {new Date(tx.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</p>
+            </div>
+            <span style={{ fontSize:14,fontWeight:900,color:Number(tx.amount || 0) >= 0 ? G.green : G.red }}>
+              {Number(tx.amount || 0) >= 0 ? '+' : ''}₹{Number(tx.amount || 0).toLocaleString('en-IN')}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+
 // ── Helper: safe order number using MAX ───────────────────
 // FIX #5: avoids duplicate GVR-XXXX when orders are deleted
 async function getNextOrderNumber(prefix = 'GVR') {
@@ -1141,6 +1354,7 @@ export default function CustomerShop() {
           ['myorders',`📋 ${T.myOrders}`],
           ['subscribe',`🔄 ${T.subscribe}`],
           ['referral', `🎁 ${T.referEarn}`],
+          ['wallet', '👛 Wallet'],
         ].map(([key,label])=>(
           <button className="customer-shop-tab-button" key={key} onClick={()=>switchTab(key)} style={{ padding:'10px 16px',border:'none',background:'none',cursor:'pointer',fontSize:13,fontWeight:600,borderBottom:`3px solid ${tab===key?G.green:'transparent'}`,color:tab===key?G.green:G.muted,whiteSpace:'nowrap',flex:'0 0 auto',textAlign:'center' }}>
             {label}
@@ -1151,6 +1365,7 @@ export default function CustomerShop() {
       {/* FIX #1 & #2: pass D and switchTab as props */}
       {tab==='subscribe' && <SubscribeSection user={user} D={D} switchTab={switchTab} />}
       {tab==='referral'  && <ReferralSection  user={user} D={D} />}
+      {tab==='wallet'    && <WalletSection user={user} D={D} walletBalance={walletBalance} setWalletBalance={setWalletBalance} upiId={UPI_ID} />}
 
       {tab==='myorders' && (
         <div className="customer-shop-list" style={{ maxWidth:600,margin:'0 auto',padding:16,width:'100%' }}>
