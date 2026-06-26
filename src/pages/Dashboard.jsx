@@ -373,155 +373,10 @@ export default function Dashboard() {
     return keys.map((k,i)=>({ name:labels[i], revenue:o.filter(x=>x.created_at?.startsWith(k)).reduce((s,x)=>s+Number(x.total_amount||0),0), orders:o.filter(x=>x.created_at?.startsWith(k)).length }))
   }
 
-  function getOrderBranch(order) {
-    return order?.pickup_branch || order?.branch || 'Hyderabad'
-  }
-
-  async function deductBranchStockForOrder(order) {
-    if (order.stock_deducted) return
-
-    const branchName = getOrderBranch(order)
-    const items = order.order_items || []
-
-    if (!items.length) {
-      throw new Error('No order items found for stock deduction.')
-    }
-
-    // Check all branch stock first before deducting anything.
-    for (const item of items) {
-      if (!item.product_id) {
-        throw new Error(`Missing product ID for ${item.name}.`)
-      }
-
-      const { data: stockRow, error } = await supabase
-        .from('branch_stock')
-        .select('id,branch_name,product_id,product_name,stock_bags')
-        .eq('branch_name', branchName)
-        .eq('product_id', item.product_id)
-        .maybeSingle()
-
-      if (error) throw error
-
-      const available = Number(stockRow?.stock_bags || 0)
-      const required = Number(item.quantity || 0)
-
-      if (!stockRow || available < required) {
-        throw new Error(`${branchName} branch has only ${available} bags of ${item.name}. Required: ${required}.`)
-      }
-    }
-
-    // Deduct only after every product has enough stock.
-    for (const item of items) {
-      const { data: stockRow, error } = await supabase
-        .from('branch_stock')
-        .select('id,stock_bags')
-        .eq('branch_name', branchName)
-        .eq('product_id', item.product_id)
-        .single()
-
-      if (error) throw error
-
-      const newStock = Number(stockRow.stock_bags || 0) - Number(item.quantity || 0)
-
-      const { error: updateError } = await supabase
-        .from('branch_stock')
-        .update({
-          stock_bags: newStock,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', stockRow.id)
-
-      if (updateError) throw updateError
-
-      await supabase.from('branch_stock_movements').insert({
-        branch_name: branchName,
-        product_id: item.product_id,
-        product_name: item.name,
-        change_bags: -Number(item.quantity || 0),
-        type: 'sale',
-        note: `Order ${order.order_number} confirmed`,
-        created_at: new Date().toISOString()
-      })
-    }
-
-    const { error: orderError } = await supabase
-      .from('orders')
-      .update({
-        stock_deducted: true,
-        stock_deducted_at: new Date().toISOString(),
-        stock_deducted_note: `Branch stock deducted from ${branchName}`
-      })
-      .eq('id', order.id)
-
-    if (orderError) throw orderError
-  }
-
-  async function restoreBranchStockForOrder(order) {
-    if (!order.stock_deducted) return
-
-    const branchName = getOrderBranch(order)
-    const items = order.order_items || []
-
-    for (const item of items) {
-      if (!item.product_id) continue
-
-      const { data: stockRow, error } = await supabase
-        .from('branch_stock')
-        .select('id,stock_bags')
-        .eq('branch_name', branchName)
-        .eq('product_id', item.product_id)
-        .maybeSingle()
-
-      if (error) throw error
-
-      const restoredStock = Number(stockRow?.stock_bags || 0) + Number(item.quantity || 0)
-
-      if (stockRow?.id) {
-        const { error: updateError } = await supabase
-          .from('branch_stock')
-          .update({
-            stock_bags: restoredStock,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', stockRow.id)
-
-        if (updateError) throw updateError
-      } else {
-        const { error: insertError } = await supabase
-          .from('branch_stock')
-          .insert({
-            branch_name: branchName,
-            product_id: item.product_id,
-            product_name: item.name,
-            stock_bags: restoredStock,
-            updated_at: new Date().toISOString()
-          })
-
-        if (insertError) throw insertError
-      }
-
-      await supabase.from('branch_stock_movements').insert({
-        branch_name: branchName,
-        product_id: item.product_id,
-        product_name: item.name,
-        change_bags: Number(item.quantity || 0),
-        type: 'adjustment',
-        note: `Order ${order.order_number} cancelled — stock restored`,
-        created_at: new Date().toISOString()
-      })
-    }
-
-    const { error: orderError } = await supabase
-      .from('orders')
-      .update({
-        stock_deducted: false,
-        stock_deducted_note: `Branch stock restored to ${branchName}`
-      })
-      .eq('id', order.id)
-
-    if (orderError) throw orderError
-  }
-
+  // Stock is now handled by Supabase triggers:
+  // - order_items insert automatically deducts branch_stock
+  // - orders status changed to cancelled automatically restores branch_stock
+  // Keep Dashboard status changes simple to prevent double deduction/restoration.
   async function updateOrderStatus(id, status) {
     const order = orders.find(o => o.id === id)
 
@@ -533,14 +388,6 @@ export default function Dashboard() {
     if (status === 'cancelled' && !window.confirm('Cancel this order?')) return
 
     try {
-      if (status === 'confirmed' && !order.stock_deducted) {
-        await deductBranchStockForOrder(order)
-      }
-
-      if (status === 'cancelled' && order.stock_deducted) {
-        await restoreBranchStockForOrder(order)
-      }
-
       const { error } = await supabase
         .from('orders')
         .update({ status })
@@ -712,7 +559,7 @@ export default function Dashboard() {
                   { icon:'⚙️', title:'Fresh Milling', desc:'Rice is milled in small batches to preserve freshness. Every pack carries the milling date — you always know how fresh your rice is.' },
                   { icon:'📦', title:'Quality Packing', desc:'Available in 1 kg, 5 kg and 25 kg packs (25 kg coming soon). FSSAI-compliant packaging with best-before dates.' },
                   { icon:'🚪', title:'Doorstep Delivery', desc:'Orders placed through our app are delivered to your home within hours. Track your delivery in real time.' },
-                  { icon:'💰', title:'Fair Pricing', desc:'By cutting out wholesalers and retailers, we offer premium rice at transparent prices — ₹60/kg for 1 kg packs, ₹50/kg for 5 kg packs.' },
+                  { icon:'💰', title:'Fair Pricing', desc:'By cutting out wholesalers and retailers, we offer premium rice at transparent prices — Sona Masoori 1kg ₹68, Sona Masoori 5kg ₹320, Basmati 1kg ₹95, and Basmati 5kg ₹440.' },
                 ].map(item => (
                   <div key={item.title} style={{ display:'flex', gap:14, padding:'14px 16px', background:'#F9FAF7', borderRadius:12, borderLeft:'3px solid #3B6D11' }}>
                     <span style={{ fontSize:24, flexShrink:0 }}>{item.icon}</span>
@@ -761,7 +608,7 @@ export default function Dashboard() {
               <div style={{ background:'#EAF3DE', borderRadius:12, padding:'14px 18px' }}>
                 <p style={{ margin:'0 0 8px', fontWeight:700, fontSize:13, color:'#27500A' }}>Product Range</p>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  {[['Sona Masoori 1kg','₹60'],['Sona Masoori 5kg','₹250'],['Sona Masoori 25kg','Coming Soon']].map(([name,price])=>(
+                  {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Basmati 1kg','₹95'],['Basmati 5kg','₹440']].map(([name,price])=>(
                     <span key={name} style={{ fontSize:12, padding:'4px 12px', borderRadius:20, background:'#fff', color:'#3B6D11', fontWeight:600 }}>{name} — {price}</span>
                   ))}
                 </div>
