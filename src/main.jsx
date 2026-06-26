@@ -2,6 +2,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import './mobile.css'
 
 // ── Initialize Google Analytics ───────────────────────────
 // Set VITE_GA_ID=G-XXXXXXXXXX in your Vercel environment variables
