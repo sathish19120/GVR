@@ -11,7 +11,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { supabase } from '../lib/supabase'
-import FinancePage from './FinancePage'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid, Cell
@@ -25,12 +24,10 @@ const G = {
 }
 
 const PAGES = [
-  { key:'home',        icon:'🏠', label:'Home' },         // FIX #9: added to PAGES so it's reachable
   { key:'dashboard',   icon:'⊞',  label:'Dashboard' },
   { key:'orders',      icon:'📋', label:'Orders' },
   { key:'inventory',   icon:'📦', label:'Stock' },
   { key:'analytics',   icon:'📊', label:'Analytics' },
-  { key:'finance',     icon:'💹', label:'Finance' },
   { key:'users',       icon:'👥', label:'Users' },
   { key:'admin',       icon:'⚙️', label:'Admin' },
   { key:'branches',    icon:'🏪', label:'Branches' },
@@ -40,6 +37,7 @@ const PAGES = [
   { key:'bulk',        icon:'🏢', label:'Bulk Orders' },
   { key:'suppliers',   icon:'🏭', label:'Suppliers' },
   { key:'branchstock', icon:'📊', label:'Branch Stock' }, // FIX #8: unique icon
+  { key:'home',        icon:'🏠', label:'Home' },         // FIX #9: added to PAGES so it's reachable
   { key:'walkin',      icon:'🧾', label:'Walk-in Billing' }, // FIX #6: now reachable from sidebar
 ]
 
@@ -312,24 +310,13 @@ export default function Dashboard() {
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
-  // Branch stock notification bell
-const [showNotifications, setShowNotifications] = useState(false)
-const [stockNotifications, setStockNotifications] = useState([])
-const [notificationSeenAt, setNotificationSeenAt] = useState(
-  () => localStorage.getItem('gvr_stock_notifications_seen_at') || ''
-)
-
-const normalizedRole = String(profile?.role || '').toLowerCase().replace(/[\s_-]/g, '')
-const rawRole = String(profile?.role || '').toLowerCase()
-
-const canSeeStockNotifications =
-  normalizedRole === 'superadmin' ||
-  normalizedRole === 'admin' ||
-  rawRole.includes('super') ||
-  rawRole.includes('admin')
-  // FIX #10: pagination state
+  // Orders V2 server-side pagination state
   const [ordersPage, setOrdersPage] = useState(1)
-  const ORDERS_PER_PAGE = 20
+  const [ordersTotalCount, setOrdersTotalCount] = useState(0)
+  const [serverOrders, setServerOrders] = useState([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [orderQueueCounts, setOrderQueueCounts] = useState({ active:0, pending:0, payment:0, confirmed:0, packed:0, dispatched:0, history:0 })
+  const ORDERS_PER_PAGE = 25
   const statsPendingRef = useRef(0)
 
   // FIX #10: reset to page 1 when any filter changes
@@ -338,27 +325,25 @@ const canSeeStockNotifications =
 
   useEffect(() => { load() }, [filter])
 
-  // Auto refresh every 30 seconds
+  // Load only one server-side page when Orders screen is open.
+  useEffect(() => {
+    if (page !== 'orders') return
+    loadOrdersPage()
+    loadOrderQueueCounts()
+  }, [page, ordersPage, orderSearch, invoiceSearch, orderStatusFilter, orderPayFilter, orderBranchFilter, orderDateFilter, orderView])
+
+  // Auto refresh Orders page without loading thousands of rows.
   useEffect(() => {
     if (!autoRefresh || page !== 'orders') return
     const interval = setInterval(async () => {
       try {
-        const { data } = await supabase
-          .from('orders')
-          .select('*, order_items(quantity, price_per_unit, product_id, name, weight_kg)')
-          .order('created_at', { ascending: false })
-        const newOrders = data || []
-        const pendingCount = newOrders.filter(o => o.status === 'pending').length
-        // FIX #7: read from ref instead of stale closure
-        if (pendingCount > statsPendingRef.current) {
-          setNewOrderAlert(pendingCount - statsPendingRef.current)
-        }
-        setOrders(newOrders)
-        setLastRefresh(new Date())
-      } catch(e) { console.error('Auto refresh error:', e) }
+        await Promise.all([loadOrdersPage({ silent:true }), loadOrderQueueCounts()])
+      } catch(e) {
+        console.error('Orders auto refresh error:', e)
+      }
     }, 30000)
     return () => clearInterval(interval)
-  }, [autoRefresh, page])
+  }, [autoRefresh, page, ordersPage, orderSearch, invoiceSearch, orderStatusFilter, orderPayFilter, orderBranchFilter, orderDateFilter, orderView])
 
   async function load() {
     setLoading(true)
@@ -379,88 +364,7 @@ const canSeeStockNotifications =
     setChart(buildChart(o, filter))
     setLoading(false)
   }
-   async function loadStockNotifications() {
-  if (!canSeeStockNotifications) return
 
-  try {
-    const { data, error } = await supabase
-      .from('branch_stock')
-      .select('*')
-      .order('updated_at', { ascending: false })
-
-    if (error) throw error
-
-    const alerts = (data || [])
-      .map(row => {
-        const stock = Number(row.stock_bags || 0)
-        const threshold = Number(row.low_stock_threshold || row.threshold || 5)
-        const productName = row.product_name || row.product || row.name || 'Product'
-        const branchName = row.branch_name || row.branch || 'Branch'
-
-        if (stock <= 0) {
-          return {
-            id: `zero-${branchName}-${row.product_id || productName}`,
-            level: 'critical',
-            icon: '🚨',
-            title: 'Branch stock is empty',
-            message: `${branchName} has 0 bags of ${productName}. Add stock immediately.`,
-            branch: branchName,
-            product: productName,
-            stock,
-            threshold,
-            created_at: row.updated_at || row.created_at || new Date().toISOString(),
-          }
-        }
-
-        if (stock <= threshold) {
-          return {
-            id: `low-${branchName}-${row.product_id || productName}`,
-            level: 'warning',
-            icon: '⚠️',
-            title: 'Low branch stock',
-            message: `${branchName} has only ${stock} bags of ${productName}. Threshold is ${threshold}.`,
-            branch: branchName,
-            product: productName,
-            stock,
-            threshold,
-            created_at: row.updated_at || row.created_at || new Date().toISOString(),
-          }
-        }
-
-        return null
-      })
-      .filter(Boolean)
-      .sort((a, b) => {
-        const levelRank = { critical: 0, warning: 1 }
-        return (levelRank[a.level] - levelRank[b.level]) || (a.stock - b.stock)
-      })
-
-    setStockNotifications(alerts)
-  } catch (error) {
-    console.error('Stock notification load failed:', error)
-  }
-}
-
-function markStockNotificationsRead() {
-  const now = new Date().toISOString()
-  localStorage.setItem('gvr_stock_notifications_seen_at', now)
-  setNotificationSeenAt(now)
-}
-
-const unreadStockNotifications = stockNotifications.filter(n => {
-  if (!notificationSeenAt) return true
-  return new Date(n.created_at) > new Date(notificationSeenAt)
-}).length
-
-useEffect(() => {
-  if (!canSeeStockNotifications) return
-
-  loadStockNotifications()
-  const interval = setInterval(loadStockNotifications, 60000)
-
-  return () => clearInterval(interval)
-}, [canSeeStockNotifications])
-  
   function buildChart(o, f) {
     const now = new Date()
     const keys=[], labels=[]
@@ -479,7 +383,7 @@ useEffect(() => {
   // - orders status changed to cancelled automatically restores branch_stock
   // Keep Dashboard status changes simple to prevent double deduction/restoration.
   async function updateOrderStatus(id, status) {
-    const order = orders.find(o => o.id === id)
+    const order = serverOrders.find(o => o.id === id) || orders.find(o => o.id === id)
 
     if (!order) {
       alert('Order not found.')
@@ -496,7 +400,7 @@ useEffect(() => {
 
       if (error) throw error
 
-      await load()
+      await refreshOrdersAfterChange()
     } catch (error) {
       console.error('Order status update failed:', error)
       alert(error.message || 'Unable to update order status.')
@@ -522,6 +426,133 @@ useEffect(() => {
     { key:'history',    label:'History',       icon:'🗄️', statuses:HISTORY_STATUSES },
   ]
 
+  function escapeOrderSearch(value) {
+    return String(value || '').trim().replace(/[,%]/g, ' ')
+  }
+
+  function getOrderDateRange(dateFilter) {
+    const now = new Date()
+    if (dateFilter === 'today') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const end = new Date(start)
+      end.setDate(end.getDate() + 1)
+      return { start:start.toISOString(), end:end.toISOString() }
+    }
+    if (dateFilter === 'week') {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 7)
+      return { start:start.toISOString(), end:null }
+    }
+    if (dateFilter === 'month') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      return { start:start.toISOString(), end:end.toISOString() }
+    }
+    return { start:null, end:null }
+  }
+
+  function applyOrderQueueFilter(query, view = orderView) {
+    if (view === 'active') return query.in('status', ACTIVE_STATUSES)
+    if (view === 'history') return query.in('status', HISTORY_STATUSES)
+    if (view === 'payment') return query.neq('payment_status', 'paid').neq('payment_method', 'cod')
+    if (view && view !== 'all') return query.eq('status', view)
+    return query
+  }
+
+  function applyOrderServerFilters(query, options = {}) {
+    const view = options.view ?? orderView
+    const includeStatusFilter = options.includeStatusFilter !== false
+
+    query = applyOrderQueueFilter(query, view)
+
+    const searchText = escapeOrderSearch(orderSearch)
+    if (searchText) {
+      query = query.or(`order_number.ilike.%${searchText}%,customer_name.ilike.%${searchText}%,delivery_address.ilike.%${searchText}%`)
+    }
+
+    const invoiceText = escapeOrderSearch(invoiceSearch)
+    if (invoiceText) query = query.ilike('order_number', `%${invoiceText}%`)
+
+    if (includeStatusFilter && orderStatusFilter !== 'all') query = query.eq('status', orderStatusFilter)
+
+    if (orderPayFilter === 'unpaid') {
+      query = query.neq('payment_status', 'paid').neq('payment_method', 'cod')
+    } else if (orderPayFilter !== 'all') {
+      query = query.eq('payment_method', orderPayFilter)
+    }
+
+    if (orderBranchFilter !== 'all') {
+      query = query.or(`branch.eq.${orderBranchFilter},pickup_branch.eq.${orderBranchFilter}`)
+    }
+
+    const { start, end } = getOrderDateRange(orderDateFilter)
+    if (start) query = query.gte('created_at', start)
+    if (end) query = query.lt('created_at', end)
+
+    return query
+  }
+
+  async function loadOrdersPage(options = {}) {
+    if (!options.silent) setOrdersLoading(true)
+    try {
+      const from = (ordersPage - 1) * ORDERS_PER_PAGE
+      const to = from + ORDERS_PER_PAGE - 1
+
+      let query = supabase
+        .from('orders')
+        .select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,order_type,branch,pickup_branch,pickup_time,notes,created_at,stock_deducted,stock_deducted_at,stock_deducted_note,order_items(quantity,price_per_unit,product_id,name,weight_kg)', { count:'exact' })
+        .order('created_at', { ascending:false })
+        .range(from, to)
+
+      query = applyOrderServerFilters(query)
+
+      const { data, error, count } = await query
+      if (error) throw error
+
+      setServerOrders(data || [])
+      setOrdersTotalCount(count || 0)
+      setLastRefresh(new Date())
+
+      const maxPage = Math.max(1, Math.ceil((count || 0) / ORDERS_PER_PAGE))
+      if (ordersPage > maxPage) setOrdersPage(maxPage)
+    } catch (error) {
+      console.error('Server-side order load failed:', error)
+    } finally {
+      if (!options.silent) setOrdersLoading(false)
+    }
+  }
+
+  async function loadOrderQueueCounts() {
+    try {
+      const nextCounts = {}
+
+      await Promise.all(ORDER_QUEUE_TABS.map(async tab => {
+        let query = supabase
+          .from('orders')
+          .select('id', { count:'exact', head:true })
+
+        query = applyOrderServerFilters(query, { view:tab.key, includeStatusFilter:false })
+
+        const { count, error } = await query
+        if (error) throw error
+        nextCounts[tab.key] = count || 0
+      }))
+
+      if (nextCounts.pending > statsPendingRef.current) {
+        setNewOrderAlert(nextCounts.pending - statsPendingRef.current)
+      }
+
+      setOrderQueueCounts(nextCounts)
+    } catch (error) {
+      console.error('Order queue count load failed:', error)
+    }
+  }
+
+  async function refreshOrdersAfterChange() {
+    await Promise.all([loadOrdersPage(), loadOrderQueueCounts()])
+    load()
+  }
+
   function isPaymentPending(order) {
     const paymentStatus = order?.payment_status || 'pending'
     const method = order?.payment_method || ''
@@ -536,37 +567,10 @@ useEffect(() => {
     return order.status === view
   }
 
-  const orderQueueCounts = {
-    active: orders.filter(o => ACTIVE_STATUSES.includes(o.status)).length,
-    pending: orders.filter(o => o.status === 'pending').length,
-    payment: orders.filter(isPaymentPending).length,
-    confirmed: orders.filter(o => o.status === 'confirmed').length,
-    packed: orders.filter(o => o.status === 'packed').length,
-    dispatched: orders.filter(o => o.status === 'dispatched').length,
-    history: orders.filter(o => HISTORY_STATUSES.includes(o.status)).length,
-  }
+  // Orders V2 now loads filtered rows directly from Supabase.
+  const filteredOrders = serverOrders
 
-  // Orders V2: queue-based filtering keeps the page clean as order volume grows.
-  const filteredOrders = orders.filter(o => {
-    const matchQueue = orderMatchesQueue(o, orderView)
-    const matchSearch = !orderSearch ||
-      o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) ||
-      o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) ||
-      o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
-    const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
-    const matchStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter
-    const matchPay = orderPayFilter === 'all' || o.payment_method === orderPayFilter || (orderPayFilter === 'unpaid' && isPaymentPending(o))
-    const branchName = getOrderBranch(o)
-    const matchBranch = orderBranchFilter === 'all' || branchName === orderBranchFilter
-    const now = new Date()
-    let matchDate = true
-    if (orderDateFilter === 'today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
-    else if (orderDateFilter === 'week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
-    else if (orderDateFilter === 'month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
-    return matchQueue && matchSearch && matchInvoice && matchStatus && matchPay && matchBranch && matchDate
-  })
-
-  const selectedOrders = orders.filter(o => selectedOrderIds.includes(o.id))
+  const selectedOrders = filteredOrders.filter(o => selectedOrderIds.includes(o.id))
 
   function toggleOrderSelection(id) {
     setSelectedOrderIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -588,7 +592,7 @@ useEffect(() => {
       const { error } = await supabase.from('orders').update({ status }).in('id', selectedOrderIds)
       if (error) throw error
       setSelectedOrderIds([])
-      await load()
+      await refreshOrdersAfterChange()
     } catch (e) {
       console.error('Bulk status update failed:', e)
       alert(e.message || 'Unable to update selected orders')
@@ -604,7 +608,7 @@ useEffect(() => {
         .in('id', selectedOrderIds)
       if (error) throw error
       setSelectedOrderIds([])
-      await load()
+      await refreshOrdersAfterChange()
     } catch (e) {
       console.error('Bulk payment update failed:', e)
       alert(e.message || 'Unable to mark selected orders as paid')
@@ -650,18 +654,15 @@ useEffect(() => {
     a.click()
   }
 
-  // FIX #10: paginate filtered orders
-  const totalOrderPages  = Math.ceil(filteredOrders.length / ORDERS_PER_PAGE)
-  const paginatedOrders  = filteredOrders.slice(
-    (ordersPage - 1) * ORDERS_PER_PAGE,
-    ordersPage * ORDERS_PER_PAGE
-  )
+  // Server-side pagination: Supabase already returned only this page.
+  const totalOrderPages = Math.max(1, Math.ceil(ordersTotalCount / ORDERS_PER_PAGE))
+  const paginatedOrders = filteredOrders
   const allCurrentPageSelected = paginatedOrders.length > 0 && paginatedOrders.every(o => selectedOrderIds.includes(o.id))
   function OrderActions({ o }) {
     return (
       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
         {o.payment_status==='pending' && o.payment_method!=='cod' && (
-          <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); load() }}
+          <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); refreshOrdersAfterChange() }}
             style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
             💰 Mark Paid
           </button>
@@ -906,239 +907,6 @@ useEffect(() => {
             ))}
           </div>
           <div style={{ display:'flex', gap:6 }}>
-            {/* Branch stock notification bell */}
-{canSeeStockNotifications && (
-  <div style={{ position: 'relative' }}>
-    <button
-      type="button"
-      onClick={() => {
-        const next = !showNotifications
-        setShowNotifications(next)
-
-        if (next) {
-          markStockNotificationsRead()
-          loadStockNotifications()
-        }
-      }}
-      title="Branch stock notifications"
-      aria-label="Branch stock notifications"
-      style={{
-        width: 38,
-        height: 38,
-        borderRadius: 13,
-        border: `1px solid ${G.border}`,
-        background: showNotifications ? G.greenLight : G.white,
-        color: G.greenDark,
-        cursor: 'pointer',
-        fontSize: 19,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: '0 1px 7px rgba(0,0,0,0.10)',
-        position: 'relative',
-      }}
-    >
-      🔔
-
-      {unreadStockNotifications > 0 && (
-        <span
-          style={{
-            position: 'absolute',
-            top: -6,
-            right: -6,
-            minWidth: 19,
-            height: 19,
-            padding: '0 5px',
-            borderRadius: 99,
-            background: G.red,
-            color: G.white,
-            fontSize: 10,
-            fontWeight: 900,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: `2px solid ${G.white}`,
-          }}
-        >
-          {unreadStockNotifications > 9 ? '9+' : unreadStockNotifications}
-        </span>
-      )}
-    </button>
-
-    {showNotifications && (
-      <div
-        style={{
-          position: 'absolute',
-          right: 0,
-          top: 46,
-          width: 380,
-          maxWidth: 'calc(100vw - 24px)',
-          background: G.white,
-          border: `1px solid ${G.border}`,
-          borderRadius: 16,
-          boxShadow: '0 18px 45px rgba(0,0,0,0.20)',
-          zIndex: 5000,
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            padding: '14px 16px',
-            borderBottom: `1px solid ${G.border}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <div>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: G.text }}>
-              Branch Stock Alerts
-            </p>
-            <p style={{ margin: '3px 0 0', fontSize: 11, color: G.muted }}>
-              Low and empty branch stock notifications
-            </p>
-          </div>
-
-          <button
-            onClick={loadStockNotifications}
-            style={{
-              border: 'none',
-              background: G.greenLight,
-              color: G.greenDark,
-              borderRadius: 9,
-              padding: '6px 9px',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            ↻
-          </button>
-        </div>
-
-        <div style={{ maxHeight: 360, overflowY: 'auto', padding: 10 }}>
-          {stockNotifications.length === 0 ? (
-            <div style={{ padding: '28px 12px', textAlign: 'center', color: G.muted }}>
-              <div style={{ fontSize: 30, marginBottom: 8 }}>✅</div>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: G.text }}>
-                No stock alerts
-              </p>
-              <p style={{ margin: '4px 0 0', fontSize: 12 }}>
-                All branch stock levels are safe.
-              </p>
-            </div>
-          ) : (
-            stockNotifications.map(n => (
-              <div
-                key={n.id}
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  padding: '10px 8px',
-                  borderRadius: 12,
-                  background: n.level === 'critical' ? G.redLight : G.amberLight,
-                  marginBottom: 8,
-                  border: `1px solid ${n.level === 'critical' ? '#FCA5A5' : '#FCD34D'}`,
-                }}
-              >
-                <div
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
-                    background: G.white,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 17,
-                    flexShrink: 0,
-                  }}
-                >
-                  {n.icon}
-                </div>
-
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <p
-                    style={{
-                      margin: '0 0 3px',
-                      fontSize: 13,
-                      fontWeight: 800,
-                      color: n.level === 'critical' ? G.red : G.amber,
-                    }}
-                  >
-                    {n.title}
-                  </p>
-
-                  <p style={{ margin: '0 0 6px', fontSize: 12, color: G.text, lineHeight: 1.35 }}>
-                    {n.message}
-                  </p>
-
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: G.white, color: G.muted }}>
-                      {n.branch}
-                    </span>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: G.white, color: G.muted }}>
-                      {n.product}
-                    </span>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: G.white, color: n.level === 'critical' ? G.red : G.amber }}>
-                      {n.stock} bags
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div
-          style={{
-            padding: 12,
-            borderTop: `1px solid ${G.border}`,
-            display: 'flex',
-            gap: 8,
-          }}
-        >
-          <button
-            onClick={() => {
-              setPage('branchstock')
-              setShowNotifications(false)
-            }}
-            style={{
-              flex: 1,
-              border: 'none',
-              background: G.green,
-              color: G.white,
-              borderRadius: 10,
-              padding: '9px 10px',
-              fontSize: 12,
-              fontWeight: 800,
-              cursor: 'pointer',
-            }}
-          >
-            Open Branch Stock
-          </button>
-
-          <button
-            onClick={() => setShowNotifications(false)}
-            style={{
-              border: `1px solid ${G.border}`,
-              background: G.white,
-              color: G.muted,
-              borderRadius: 10,
-              padding: '9px 12px',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    )}
-  </div>
-)}
             {['daily','monthly','yearly'].map(f=>(
               <button key={f} onClick={()=>setFilter(f)} style={{ padding:'5px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:filter===f?G.green:'#F3F4F6', color:filter===f?'#fff':G.muted }}>
                 {f.charAt(0).toUpperCase()+f.slice(1)}
@@ -1199,7 +967,7 @@ useEffect(() => {
                   )}
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
-                  <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{ background:'#F3F4F6', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:600, cursor:'pointer', color:G.muted }}>↻ Refresh</button>
+                  <button onClick={()=>{ loadOrdersPage(); loadOrderQueueCounts(); setNewOrderAlert(0) }} style={{ background:'#F3F4F6', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:600, cursor:'pointer', color:G.muted }}>↻ Refresh</button>
                   <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:8, padding:'7px 16px', fontSize:13, fontWeight:600, cursor:'pointer' }}>+ New Order</button>
                 </div>
               </div>
@@ -1258,7 +1026,7 @@ useEffect(() => {
                 <p style={{ margin:0, fontSize:12, color:G.muted }}>Active orders first. Delivered and cancelled orders stay in History.</p>
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{ display:'flex', alignItems:'center', gap:6, background:G.white, border:`1px solid ${G.border}`, borderRadius:10, padding:'9px 16px', fontSize:13, fontWeight:700, cursor:'pointer', color:G.text, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                <button onClick={()=>{ loadOrdersPage(); loadOrderQueueCounts(); setNewOrderAlert(0) }} style={{ display:'flex', alignItems:'center', gap:6, background:G.white, border:`1px solid ${G.border}`, borderRadius:10, padding:'9px 16px', fontSize:13, fontWeight:700, cursor:'pointer', color:G.text, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
                   ↻ Refresh
                 </button>
                 <button onClick={()=>setOrdersCompact(v=>!v)} style={{ background:G.white, border:`1px solid ${G.border}`, borderRadius:10, padding:'9px 14px', fontSize:13, fontWeight:700, cursor:'pointer', color:G.blue }}>
@@ -1337,7 +1105,7 @@ useEffect(() => {
 
             <div style={{ background:G.white, borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
               <div style={{ padding:'10px 14px', borderBottom:`1px solid ${G.border}`, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                <p style={{ margin:0, fontSize:13, fontWeight:800, color:G.text }}>{filteredOrders.length} order{filteredOrders.length===1?'':'s'} in {ORDER_QUEUE_TABS.find(q=>q.key===orderView)?.label || 'All'}</p>
+                <p style={{ margin:0, fontSize:13, fontWeight:800, color:G.text }}>{ordersLoading ? 'Loading orders…' : `${ordersTotalCount} order${ordersTotalCount===1?'':'s'} in ${ORDER_QUEUE_TABS.find(q=>q.key===orderView)?.label || 'All'}`}</p>
                 <p style={{ margin:0, fontSize:11, color:G.muted }}>Last updated: {lastRefresh.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
               </div>
               {filteredOrders.length === 0 ? (
@@ -1427,7 +1195,7 @@ useEffect(() => {
                 })}
                 <button onClick={()=>setOrdersPage(p=>Math.min(totalOrderPages,p+1))} disabled={ordersPage===totalOrderPages} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===totalOrderPages?'#F3F4F6':G.white,cursor:ordersPage===totalOrderPages?'not-allowed':'pointer',fontSize:12,color:ordersPage===totalOrderPages?G.muted:G.text }}>Next ›</button>
                 <button onClick={()=>setOrdersPage(totalOrderPages)} disabled={ordersPage===totalOrderPages} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===totalOrderPages?'#F3F4F6':G.white,cursor:ordersPage===totalOrderPages?'not-allowed':'pointer',fontSize:12,color:ordersPage===totalOrderPages?G.muted:G.text }}>»</button>
-                <span style={{ fontSize:12,color:G.muted }}>Page {ordersPage} of {totalOrderPages} · showing {paginatedOrders.length} of {filteredOrders.length}</span>
+                <span style={{ fontSize:12,color:G.muted }}>Page {ordersPage} of {totalOrderPages} · showing {paginatedOrders.length} of {ordersTotalCount}</span>
               </div>
             )}
           </>}
@@ -1556,7 +1324,6 @@ useEffect(() => {
           {page==='pickup'      && <PickupQueue />}
           {page==='bulk'        && <BulkOrderForm />}
           {page==='home'        && <HomePage />}
-          {page==='finance'     && <FinancePage />}
           {page==='suppliers'   && <SupplierPage />}
           {page==='branchstock' && <BranchStockPage />}
           {/* FIX #6: WalkInBilling now receives branch prop from profile */}
