@@ -17,10 +17,16 @@ const STRINGS = {
     forgotBtn:'Forgot Password?', createBtn:'Create My Account',
     backBtn:'← Back to Login', referralLbl:'Referral Code (optional)',
     loading:'Please wait…', creating:'Creating…', resetting:'Resetting...',
-    continueBtn:'Continue →', resetBtn:'✓ Submit Reset Request',
+    continueBtn:'Continue →', resetBtn:'✓ Reset Password',
     signupLink:'Create Account', signinSubtitle:'Sign in to continue',
     signupSubtitle:'Sign up to start ordering rice',
     resetSubtitle1:'Enter your username to continue',
+    // ✅ FIX: new strings for phone verification step
+    resetSubtitle2:'Verify your phone number to continue',
+    phoneLbl2:'Registered Phone Number',
+    phonePlaceholder:'Enter phone number on your account',
+    verifyBtn:'Verify & Continue →',
+    phoneNoMatch:'Phone number does not match our records',
     showPw:'Show', hidePw:'Hide', mismatch:'Passwords do not match',
     referralApplied:'✓ Referral code applied — you get ₹20 after first order!',
     weakPw:'Password must be at least 6 characters',
@@ -34,10 +40,15 @@ const STRINGS = {
     forgotBtn:'పాస్‌వర్డ్ మర్చిపోయారా?', createBtn:'నా ఖాతా తయారు చేయండి',
     backBtn:'← లాగిన్‌కు వెళ్ళండి', referralLbl:'రెఫరల్ కోడ్ (ఐచ్ఛికం)',
     loading:'వేచి ఉండండి…', creating:'తయారవుతోంది…', resetting:'రీసెట్ అవుతోంది...',
-    continueBtn:'కొనసాగించండి →', resetBtn:'✓ రీసెట్ అభ్యర్థన పంపండి',
+    continueBtn:'కొనసాగించండి →', resetBtn:'✓ పాస్‌వర్డ్ రీసెట్ చేయండి',
     signupLink:'ఖాతా తయారు చేయండి', signinSubtitle:'కొనసాగించడానికి లాగిన్ చేయండి',
     signupSubtitle:'బియ్యం ఆర్డర్ చేయడం ప్రారంభించండి',
     resetSubtitle1:'కొనసాగించడానికి మీ యూజర్‌నేమ్ నమోదు చేయండి',
+    resetSubtitle2:'కొనసాగించడానికి మీ ఫోన్ నంబర్ నిర్ధారించండి',
+    phoneLbl2:'నమోదిత ఫోన్ నంబర్',
+    phonePlaceholder:'మీ ఖాతాలోని ఫోన్ నంబర్ నమోదు చేయండి',
+    verifyBtn:'నిర్ధారించండి & కొనసాగించండి →',
+    phoneNoMatch:'ఫోన్ నంబర్ మా రికార్డులతో సరిపోలడం లేదు',
     showPw:'చూపించు', hidePw:'దాచు', mismatch:'పాస్‌వర్డ్‌లు సరిపోలడం లేదు',
     referralApplied:'✓ రెఫరల్ కోడ్ వర్తించింది — మీకు ₹20 లభిస్తుంది!',
     weakPw:'పాస్‌వర్డ్ కనీసం 6 అక్షరాలు ఉండాలి',
@@ -93,13 +104,12 @@ export default function AuthPage({ defaultMode }) {
   const [showPw, setShowPw]     = useState(false)
   const [done, setDone]         = useState('')
 
-  // FIX #1: password reset now uses admin-approval flow instead of
-  // direct reset. Step 1: verify username + phone. Step 2: submit
-  // reset request for admin to approve via AdminPage.
   const [fUser, setFUser]       = useState('')
-  const [fPhone, setFPhone]     = useState('')
+  const [fPhone, setFPhone]     = useState('')   // ✅ FIX: phone verification field
+  const [fNewPw, setFNewPw]     = useState('')
+  const [fConfPw, setFConfPw]   = useState('')
   const [fProfile, setFProfile] = useState(null)
-  const [fStep, setFStep]       = useState(1)
+  const [fStep, setFStep]       = useState(1)    // ✅ FIX: step 1=username, 2=phone verify, 3=new password
   const [fMsg, setFMsg]         = useState('')
   const [fErr, setFErr]         = useState('')
   const [fLoading, setFLoading] = useState(false)
@@ -111,7 +121,7 @@ export default function AuthPage({ defaultMode }) {
   function switchMode(m) {
     setMode(m); clearError(); setDone('')
     setUsername(''); setPassword(''); setFullName(''); setPhone(''); setConfirm('')
-    setFUser(''); setFPhone(''); setFMsg(''); setFErr('')
+    setFUser(''); setFPhone(''); setFNewPw(''); setFConfPw(''); setFMsg(''); setFErr('')
     setFStep(1); setFProfile(null)
   }
 
@@ -124,220 +134,78 @@ export default function AuthPage({ defaultMode }) {
       if (ok) { setDone(S.accountCreated); switchMode('login') }
     } else {
       const ok = await signIn(username, password)
-      if (ok) navigate('/app', { replace: true })
+      if (ok) navigate('/', { replace: true })
     }
   }
 
-  // FIX #1: Step 1 — verify username AND registered phone number
-  // Both must match — prevents anyone from resetting another user's password
-  // just by knowing their username.
-  async function checkUsernameAndPhone() {
+  // Step 1: Verify username exists
+  async function checkUsername() {
     if (!fUser.trim()) { setFErr('Enter your username'); return }
-    if (!fPhone.trim()) { setFErr('Enter your registered phone number'); return }
     setFLoading(true); setFErr('')
     try {
       const { data, error: err } = await supabase
-        .from('profiles')
-        .select('id,username,full_name,role,phone')
-        .eq('username', fUser.trim().toLowerCase())
-        .single()
+        .from('profiles').select('id,username,full_name,role,phone')
+        .eq('username', fUser.trim().toLowerCase()).single()
       if (err || !data) { setFErr('Username not found'); return }
-
-      // FIX #1: verify phone number matches — adds a second factor
-      const storedPhone = (data.phone || '').replace(/\s/g, '').replace(/^\+91/, '')
-      const enteredPhone = fPhone.trim().replace(/\s/g, '').replace(/^\+91/, '')
-      if (!storedPhone) {
-        // No phone on file — fall through to admin-only reset
-        setFProfile(data)
-        setFStep(2)
-        return
-      }
-      if (storedPhone !== enteredPhone) {
-        setFErr('Phone number does not match our records')
-        return
-      }
       setFProfile(data)
-      setFStep(2)
+      setFStep(2)  // ✅ FIX: go to phone verification, not directly to password reset
     } catch { setFErr('Username not found') }
     finally { setFLoading(false) }
   }
 
-  // FIX #1: Step 2 — instead of resetting directly, log a reset_requests
-  // entry for admin to action. Admin approves via AdminPage and sets a
-  // temporary password. Prevents unauthenticated password changes.
-  async function submitResetRequest() {
-    if (!fProfile) return
+  // ✅ FIX: Step 2 — verify phone number matches the account
+  // This prevents anyone from resetting another person's password
+  async function verifyPhone() {
+    if (!fPhone.trim()) { setFErr('Enter your phone number'); return }
     setFLoading(true); setFErr('')
     try {
-      // Check if a pending request already exists
-      const { data: existing } = await supabase
-        .from('password_reset_requests')
-        .select('id')
-        .eq('user_id', fProfile.id)
-        .eq('status', 'pending')
-        .maybeSingle()
+      // Normalise: strip spaces, dashes, +91 prefix for comparison
+      const normalise = (p) => p.replace(/[\s\-\+]/g,'').replace(/^91/,'').slice(-10)
+      const enteredNorm  = normalise(fPhone)
+      const storedNorm   = normalise(fProfile.phone || '')
 
-      if (existing) {
-        setFMsg('A reset request is already pending. Please contact the admin.')
+      if (!storedNorm || enteredNorm !== storedNorm) {
+        setFErr(S.phoneNoMatch)
         return
       }
-
-      const { error: insertErr } = await supabase
-        .from('password_reset_requests')
-        .insert({
-          user_id:    fProfile.id,
-          username:   fProfile.username,
-          full_name:  fProfile.full_name,
-          phone:      fPhone.trim(),
-          status:     'pending',
-          created_at: new Date().toISOString()
-        })
-      if (insertErr) throw insertErr
-
-      setFMsg('Reset request submitted! An admin will reset your password and inform you. Please contact admin@greenvillagerice.in or call your branch.')
-    } catch(e) {
-      // Graceful fallback: if password_reset_requests table doesn't exist yet,
-      // tell user to contact admin directly
-      setFMsg('Please contact admin@greenvillagerice.in or your branch manager to reset your password. Mention your username and registered phone number.')
-    } finally { setFLoading(false) }
+      setFStep(3)  // phone verified — now allow password reset
+    } finally {
+      setFLoading(false)
+    }
   }
 
-  const inp = { width:'100%', padding:'12px 14px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:16, color:G.text, outline:'none', background:'#FAFAFA', boxSizing:'border-box' }
+  // Step 3: Set new password (only reached after phone verification)
+  async function doReset() {
+    if (fNewPw.length < 6) { setFErr(S.weakPw); return }
+    if (fNewPw !== fConfPw) { setFErr(S.mismatch); return }
+    setFLoading(true); setFErr('')
+    try {
+      const hashed = await hashPw(fNewPw)
+      await supabase.from('profiles').update({ password_hash: hashed }).eq('id', fProfile.id)
+      setFMsg('Password reset! You can now login.')
+      setTimeout(() => switchMode('login'), 2000)
+    } catch(e) { setFErr(e.message) }
+    finally { setFLoading(false) }
+  }
+
+  const inp = { width:'100%', padding:'12px 14px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:14, color:G.text, outline:'none', background:'#FAFAFA', boxSizing:'border-box' }
   const lbl = { display:'block', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.8px', color:G.muted, marginBottom:7 }
-  const btn = (bg) => ({ width:'100%', padding:14, background:bg||G.green, color:G.white, border:'none', borderRadius:12, fontSize:16, fontWeight:700, cursor:'pointer' })
+  const btn = (bg) => ({ width:'100%', padding:14, background:bg||G.green, color:G.white, border:'none', borderRadius:12, fontSize:15, fontWeight:700, cursor:'pointer' })
 
   return (
-    <div className="auth-page" style={{ minHeight:'100dvh', width:'100%', display:'flex', fontFamily:"'Inter',sans-serif", overflowX:'hidden', background:G.white }}>
-      <style>{`
-        .auth-page,
-        .auth-page * {
-          box-sizing: border-box;
-        }
-
-        .auth-page input,
-        .auth-page button,
-        .auth-page select,
-        .auth-page textarea {
-          max-width: 100%;
-        }
-
-        @media (max-width: 768px) {
-          .auth-page {
-            min-height: 100dvh !important;
-            width: 100% !important;
-            flex-direction: column !important;
-            background: #F4F6F3 !important;
-            overflow-x: hidden !important;
-          }
-
-          .auth-lang {
-            top: 12px !important;
-            right: 12px !important;
-          }
-
-          .auth-left {
-            width: 100% !important;
-            flex: none !important;
-            min-height: 178px !important;
-            padding: 28px 18px 22px !important;
-            border-radius: 0 0 24px 24px !important;
-          }
-
-          .auth-brand-logo {
-            width: 56px !important;
-            height: 56px !important;
-            border-radius: 16px !important;
-            font-size: 28px !important;
-            margin-bottom: 10px !important;
-          }
-
-          .auth-left h1 {
-            font-size: 24px !important;
-            line-height: 1.1 !important;
-            margin-bottom: 4px !important;
-          }
-
-          .auth-brand-telugu {
-            font-size: 12px !important;
-            margin-bottom: 0 !important;
-          }
-
-          .auth-brand-copy,
-          .auth-brand-stats {
-            display: none !important;
-          }
-
-          .auth-right {
-            width: 100% !important;
-            flex: none !important;
-            padding: 18px 16px max(28px, env(safe-area-inset-bottom)) !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            align-items: flex-start !important;
-          }
-
-          .auth-card {
-            width: 100% !important;
-            max-width: 430px !important;
-            margin: 0 auto !important;
-            padding: 22px !important;
-            border-radius: 20px !important;
-            background: #fff !important;
-            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08) !important;
-          }
-
-          .auth-card h2 {
-            font-size: 24px !important;
-            line-height: 1.2 !important;
-          }
-
-          .auth-card input {
-            width: 100% !important;
-            font-size: 16px !important;
-          }
-
-          .auth-card button[type="submit"] {
-            font-size: 16px !important;
-          }
-
-          .auth-login-links {
-            gap: 12px !important;
-          }
-        }
-
-        @media (max-width: 380px) {
-          .auth-card {
-            padding: 18px !important;
-            border-radius: 16px !important;
-          }
-
-          .auth-left {
-            min-height: 160px !important;
-            padding-top: 24px !important;
-          }
-
-          .auth-left h1 {
-            font-size: 22px !important;
-          }
-
-          .auth-login-links {
-            flex-direction: column !important;
-            align-items: flex-start !important;
-            gap: 8px !important;
-          }
-        }
-      `}</style>
-      <div className="auth-lang" style={{ position:'fixed', top:16, right:16, zIndex:200 }}>
+    <div style={{ minHeight:'100vh', display:'flex', fontFamily:"'Inter',sans-serif" }}>
+      {/* Lang toggle */}
+      <div style={{ position:'fixed', top:16, right:16, zIndex:200 }}>
         <LangToggle lang={lang} onChange={setLang} />
       </div>
 
       {/* LEFT brand panel */}
       <div className="auth-left" style={{ flex:1, background:`linear-gradient(145deg,${G.green},${G.greenDark},#1a3a08)`, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'48px 40px' }}>
-        <div className="auth-brand-logo" style={{ width:88,height:88,borderRadius:22,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,marginBottom:24 }}>🌾</div>
+        <div style={{ width:88,height:88,borderRadius:22,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:44,marginBottom:24 }}>🌾</div>
         <h1 style={{ color:'#fff',fontSize:38,fontWeight:800,textAlign:'center',lineHeight:1.1,margin:'0 0 10px' }}>Green Village<br/>Rice</h1>
-        <p className="auth-brand-telugu" style={{ color:'rgba(255,255,255,0.65)',fontSize:15,margin:'0 0 6px' }}>గ్రీన్ విలేజ్ రైస్</p>
-        <p className="auth-brand-copy" style={{ color:'rgba(255,255,255,0.5)',fontSize:14,textAlign:'center',margin:'0 0 48px',lineHeight:1.7 }}>Farm-fresh Sona Masoori rice<br/>delivered across Hyderabad</p>
-        <div className="auth-brand-stats" style={{ display:'flex',gap:16 }}>
+        <p style={{ color:'rgba(255,255,255,0.65)',fontSize:15,margin:'0 0 6px' }}>గ్రీన్ విలేజ్ రైస్</p>
+        <p style={{ color:'rgba(255,255,255,0.5)',fontSize:14,textAlign:'center',margin:'0 0 48px',lineHeight:1.7 }}>Farm-fresh Sona Masoori rice<br/>delivered across Hyderabad</p>
+        <div style={{ display:'flex',gap:16 }}>
           {[['📦','Orders'],['🌾','Inventory'],['📊','Analytics']].map(([icon,label])=>(
             <div key={label} style={{ background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.18)',borderRadius:14,padding:'18px 22px',textAlign:'center' }}>
               <div style={{ fontSize:26,marginBottom:7 }}>{icon}</div>
@@ -349,7 +217,7 @@ export default function AuthPage({ defaultMode }) {
 
       {/* RIGHT form panel */}
       <div className="auth-right" style={{ width:460,flexShrink:0,background:G.white,display:'flex',alignItems:'center',justifyContent:'center',padding:'48px 44px',boxShadow:'-4px 0 20px rgba(0,0,0,0.06)' }}>
-        <div className="auth-card" style={{ width:'100%',maxWidth:340 }}>
+        <div style={{ width:'100%',maxWidth:340 }}>
 
           {/* LOGIN */}
           {mode === 'login' && (
@@ -375,7 +243,7 @@ export default function AuthPage({ defaultMode }) {
                     <button type="button" onClick={()=>setShowPw(!showPw)} style={{ position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:G.muted,fontSize:12,fontWeight:600 }}>{showPw?S.hidePw:S.showPw}</button>
                   </div>
                 </div>
-                <div className="auth-login-links" style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22 }}>
+                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22 }}>
                   <button type="button" onClick={()=>switchMode('signup')} style={{ background:'none',border:'none',color:G.green,fontSize:13,fontWeight:600,cursor:'pointer',padding:0,textDecoration:'underline' }}>{S.signupLink}</button>
                   <button type="button" onClick={()=>switchMode('forgot')} style={{ background:'none',border:'none',color:G.amber,fontSize:13,fontWeight:600,cursor:'pointer',padding:0,textDecoration:'underline' }}>{S.forgotBtn}</button>
                 </div>
@@ -435,87 +303,102 @@ export default function AuthPage({ defaultMode }) {
             </>
           )}
 
-          {/* FORGOT — FIX #1: now requires username + phone verification,
-              then submits an admin-approval request instead of resetting directly */}
+          {/* FORGOT — 3-step flow: username → phone verify → new password */}
           {mode === 'forgot' && (
             <>
               <h2 style={{ fontSize:28,fontWeight:800,color:G.text,margin:'0 0 6px' }}>{S.resetTitle}</h2>
+
+              {/* Progress indicator */}
+              <div style={{ display:'flex',alignItems:'center',gap:6,marginBottom:18 }}>
+                {[1,2,3].map(s=>(
+                  <div key={s} style={{ display:'flex',alignItems:'center',gap:6 }}>
+                    <div style={{ width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,background:fStep>=s?G.green:'#E5E7EB',color:fStep>=s?G.white:G.muted }}>
+                      {fStep>s?'✓':s}
+                    </div>
+                    {s<3 && <div style={{ width:24,height:2,background:fStep>s?G.green:'#E5E7EB',borderRadius:1 }} />}
+                  </div>
+                ))}
+                <span style={{ marginLeft:6,fontSize:11,color:G.muted }}>
+                  {fStep===1?'Username':fStep===2?'Verify Phone':'New Password'}
+                </span>
+              </div>
+
               <p style={{ color:G.muted,fontSize:14,margin:'0 0 24px' }}>
-                {fStep===1 ? 'Enter your username and registered phone number' : `Verified — @${fProfile?.username}`}
+                {fStep===1 ? S.resetSubtitle1 : fStep===2 ? S.resetSubtitle2 : `Reset for @${fProfile?.username}`}
               </p>
 
               {fErr && <div style={{ background:G.redBg,border:'1px solid #FECACA',borderRadius:10,padding:'10px 14px',marginBottom:14,display:'flex',justifyContent:'space-between' }}>
                 <span style={{ color:G.red,fontSize:13 }}>{fErr}</span>
                 <button type="button" onClick={()=>setFErr('')} style={{ background:'none',border:'none',color:G.red,cursor:'pointer',fontSize:16 }}>✕</button>
               </div>}
+              {fMsg && <div style={{ background:G.greenLight,border:'1px solid #97C459',borderRadius:10,padding:'10px 14px',marginBottom:14 }}>
+                <span style={{ color:G.greenDark,fontSize:13 }}>✓ {fMsg}</span>
+              </div>}
 
-              {fMsg && (
-                <div style={{ background:G.greenLight,border:'1px solid #97C459',borderRadius:12,padding:'14px 16px',marginBottom:14 }}>
-                  <p style={{ margin:'0 0 6px',fontSize:13,fontWeight:700,color:G.greenDark }}>✓ Request Submitted</p>
-                  <p style={{ margin:0,fontSize:12,color:G.greenDark,lineHeight:1.7 }}>{fMsg}</p>
-                  <button type="button" onClick={()=>switchMode('login')} style={{ marginTop:12,width:'100%',padding:10,background:G.green,color:G.white,border:'none',borderRadius:9,fontSize:13,fontWeight:700,cursor:'pointer' }}>
-                    Back to Login
-                  </button>
-                </div>
-              )}
-
-              {/* Step 1: username + phone */}
-              {!fMsg && fStep === 1 && (
+              {/* Step 1: Enter username */}
+              {fStep===1 && (
                 <>
-                  <div style={{ marginBottom:14 }}>
+                  <div style={{ marginBottom:20 }}>
                     <label style={lbl}>{S.usernameLbl}</label>
-                    <input type="text" value={fUser} onChange={e=>setFUser(e.target.value.trim().toLowerCase())}
-                      placeholder="Enter your username" autoFocus style={inp}
-                      onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+                    <input type="text" value={fUser} onChange={e=>setFUser(e.target.value.trim().toLowerCase())} placeholder="Enter your username" autoFocus style={inp} onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
                   </div>
-                  <div style={{ marginBottom:14 }}>
-                    <label style={lbl}>Registered Phone Number</label>
-                    <input type="tel" value={fPhone} onChange={e=>setFPhone(e.target.value.trim())}
-                      placeholder="Mobile number on your account" style={inp}
-                      onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
-                  </div>
-                  <div style={{ background:'#FFFBEB',border:'1px solid #FCD34D',borderRadius:10,padding:'10px 14px',marginBottom:16 }}>
-                    <p style={{ margin:0,fontSize:12,color:'#92400E',lineHeight:1.6 }}>
-                      🔒 For security, both your username and registered phone number must match our records before a reset request can be submitted.
-                    </p>
-                  </div>
-                  <button type="button" onClick={checkUsernameAndPhone}
-                    disabled={fLoading||!fUser.trim()||!fPhone.trim()}
-                    style={{ ...btn(fLoading||!fUser.trim()||!fPhone.trim()?'#9CA3AF':G.green),marginBottom:10 }}>
+                  <button type="button" onClick={checkUsername} disabled={fLoading||!fUser.trim()} style={{ ...btn(fLoading||!fUser.trim()?'#9CA3AF':G.green),marginBottom:10 }}>
                     {fLoading ? S.loading : S.continueBtn}
                   </button>
                 </>
               )}
 
-              {/* Step 2: confirm and submit admin-approval request */}
-              {!fMsg && fStep === 2 && fProfile && (
+              {/* ✅ FIX: Step 2 — Phone verification gate */}
+              {fStep===2 && fProfile && (
                 <>
-                  <div style={{ background:G.greenLight,borderRadius:10,padding:'12px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10 }}>
+                  {/* Show who we found, but mask the phone */}
+                  <div style={{ background:G.greenLight,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10 }}>
                     <div style={{ width:34,height:34,borderRadius:'50%',background:G.green,display:'flex',alignItems:'center',justifyContent:'center',color:G.white,fontSize:14,fontWeight:700,flexShrink:0 }}>
                       {fProfile.full_name?.[0]||fProfile.username?.[0]?.toUpperCase()}
                     </div>
                     <div>
                       <p style={{ margin:0,fontWeight:700,fontSize:13,color:G.greenDark }}>{fProfile.full_name||fProfile.username}</p>
-                      <p style={{ margin:0,fontSize:11,color:G.green }}>@{fProfile.username} · ✓ Phone verified</p>
+                      <p style={{ margin:0,fontSize:11,color:G.green }}>@{fProfile.username}</p>
                     </div>
                   </div>
 
-                  <div style={{ background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:12,padding:'14px 16px',marginBottom:20 }}>
-                    <p style={{ margin:'0 0 6px',fontSize:13,fontWeight:700,color:'#1E40AF' }}>How this works</p>
-                    <ol style={{ margin:0,paddingLeft:18,fontSize:12,color:'#1E40AF',lineHeight:1.8 }}>
-                      <li>Your reset request is sent to our admin team</li>
-                      <li>Admin verifies your identity and sets a temporary password</li>
-                      <li>You will be contacted at your registered phone number</li>
-                      <li>Log in with the temporary password and change it immediately</li>
-                    </ol>
+                  {/* Security notice */}
+                  <div style={{ background:'#FFFBEB',border:'1px solid #FCD34D',borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',gap:8 }}>
+                    <span style={{ fontSize:14,flexShrink:0 }}>🔒</span>
+                    <p style={{ margin:0,fontSize:12,color:'#92400E',lineHeight:1.5 }}>
+                      To confirm it's you, enter the phone number registered to this account.
+                    </p>
                   </div>
 
-                  <button type="button" onClick={submitResetRequest} disabled={fLoading}
-                    style={{ ...btn(fLoading?'#9CA3AF':G.amber),marginBottom:10 }}>
-                    {fLoading ? 'Submitting...' : S.resetBtn}
+                  <div style={{ marginBottom:20 }}>
+                    <label style={lbl}>{S.phoneLbl2}</label>
+                    <input type="tel" value={fPhone} onChange={e=>setFPhone(e.target.value)} placeholder={S.phonePlaceholder} autoFocus style={inp} onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+                  </div>
+                  <button type="button" onClick={verifyPhone} disabled={fLoading||!fPhone.trim()} style={{ ...btn(fLoading||!fPhone.trim()?'#9CA3AF':G.green),marginBottom:10 }}>
+                    {fLoading ? S.loading : S.verifyBtn}
                   </button>
-                  <button type="button" onClick={()=>setFStep(1)} style={{ width:'100%',padding:9,background:'none',border:'none',color:G.muted,fontSize:13,cursor:'pointer' }}>
-                    ← Try different username
+                  <button type="button" onClick={()=>{ setFStep(1); setFErr('') }} style={{ width:'100%',padding:9,background:'none',border:'none',color:G.muted,fontSize:13,cursor:'pointer' }}>← Try different username</button>
+                </>
+              )}
+
+              {/* Step 3: Set new password (only reachable after phone verified) */}
+              {fStep===3 && fProfile && (
+                <>
+                  <div style={{ background:G.greenLight,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:8 }}>
+                    <span style={{ fontSize:14 }}>✅</span>
+                    <p style={{ margin:0,fontSize:12,color:G.greenDark,fontWeight:600 }}>Phone verified — set your new password</p>
+                  </div>
+                  <div style={{ marginBottom:14 }}>
+                    <label style={lbl}>{S.passwordLbl} (New)</label>
+                    <input type="password" value={fNewPw} onChange={e=>setFNewPw(e.target.value)} placeholder="Min 6 characters" autoFocus style={inp} onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+                  </div>
+                  <div style={{ marginBottom:20 }}>
+                    <label style={lbl}>{S.confirmLbl}</label>
+                    <input type="password" value={fConfPw} onChange={e=>setFConfPw(e.target.value)} placeholder="Re-enter new password" style={{ ...inp,borderColor:fConfPw&&fNewPw!==fConfPw?G.red:G.border }} onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=fConfPw&&fNewPw!==fConfPw?G.red:G.border} />
+                    {fConfPw&&fNewPw!==fConfPw && <p style={{ margin:'4px 0 0',fontSize:12,color:G.red }}>{S.mismatch}</p>}
+                  </div>
+                  <button type="button" onClick={doReset} disabled={fLoading||!fNewPw||fNewPw!==fConfPw} style={{ ...btn(fLoading||!fNewPw||fNewPw!==fConfPw?'#9CA3AF':G.amber),marginBottom:10 }}>
+                    {fLoading ? S.resetting : S.resetBtn}
                   </button>
                 </>
               )}
@@ -526,8 +409,7 @@ export default function AuthPage({ defaultMode }) {
             </>
           )}
 
-          {/* FIX #19: copyright year corrected to 2026 */}
-          <p style={{ textAlign:'center',color:'#9CA3AF',fontSize:11,marginTop:28 }}>© 2026 Green Village Rice. All Rights Reserved</p>
+          <p style={{ textAlign:'center',color:'#9CA3AF',fontSize:11,marginTop:28 }}>© 2014–2026 Green Village Rice. All Rights Reserved</p>
         </div>
       </div>
     </div>
