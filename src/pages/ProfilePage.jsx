@@ -21,7 +21,10 @@ const inp = (readOnly) => ({
 })
 
 export default function ProfilePage({ onClose }) {
-  const { user, signOut } = useAuth()
+  // ✅ FIX #8: get updateLocalUser from the store — it uses saveSession()
+  // which writes the correct { user, expiresAt } format and calls set()
+  // directly, so no storage event or Zustand listener is needed.
+  const { user, signOut, updateLocalUser } = useAuth()
   const navigate = useNavigate()
   const fileRef = useRef()
 
@@ -46,12 +49,6 @@ export default function ProfilePage({ onClose }) {
 
   const initials = (user?.full_name || user?.username || 'U')
     .split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2)
-
-  function updateLocalUser(updates) {
-    const updated = { ...user, ...updates }
-    localStorage.setItem('gvr_user', JSON.stringify(updated))
-    window.dispatchEvent(new Event('storage'))
-  }
 
   // ✅ FIX: Upload avatar to Supabase Storage instead of storing base64 in DB
   // Base64 in DB causes row sizes to exceed 1MB — this stores only a URL
