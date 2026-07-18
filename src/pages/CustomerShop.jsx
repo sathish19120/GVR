@@ -1,20 +1,58 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
 import ProfilePage from './ProfilePage'
 
+// ── Language strings ──────────────────────────────────────
 const SHOP_STRINGS = {
-  en: { orderRice:'Order Rice', myOrders:'My Orders', subscribe:'Subscribe', referEarn:'Refer & Earn', addToCart:'Add +', checkout:'Checkout', placeOrder:'Place Order', homeDelivery:'Home Delivery', storePickup:'Store Pickup', cashOnDelivery:'Cash on Delivery', upiPayment:'UPI Payment', walletPayment:'GVR Wallet', orderPlaced:'Order Placed!', trackOrder:'Track My Order', orderMore:'Order More Rice', outOfStock:'Out of Stock', logout:'Logout', whereWeWork:'Where We Work', whatWeDo:'What We Do', about:'About', freshStock:'Fresh stock available today' },
-  te: { orderRice:'బియ్యం ఆర్డర్', myOrders:'నా ఆర్డర్లు', subscribe:'సబ్‌స్క్రైబ్', referEarn:'రెఫర్ & సంపాదించండి', addToCart:'చేర్చండి +', checkout:'చెక్అవుట్', placeOrder:'ఆర్డర్ పెట్టండి', homeDelivery:'ఇంటికి డెలివరీ', storePickup:'స్టోర్ పికప్', cashOnDelivery:'డెలివరీలో నగదు', upiPayment:'UPI చెల్లింపు', walletPayment:'GVR వాలెట్', orderPlaced:'ఆర్డర్ పెట్టారు!', trackOrder:'ఆర్డర్ ట్రాక్ చేయండి', orderMore:'మరింత బియ్యం', outOfStock:'స్టాక్ లేదు', logout:'లాగ్ అవుట్', whereWeWork:'మేము ఎక్కడ పని చేస్తాం', whatWeDo:'మేము ఏమి చేస్తాం', about:'గురించి', freshStock:'ఈరోజు తాజా స్టాక్ అందుబాటులో ఉంది' }
+  en: {
+    myOrders:'My Orders', subscribe:'Subscribe', referEarn:'Refer & Earn',
+    home:'Home', checkout:'Checkout', placeOrder:'Place Order',
+    homeDelivery:'Home Delivery', storePickup:'Store Pickup',
+    cashOnDelivery:'Cash on Delivery', upiPayment:'UPI Payment',
+    orderPlaced:'Order Placed!', trackOrder:'Track My Order',
+    orderMore:'Order More Rice', outOfStock:'Out of Stock', logout:'Logout',
+    whereWeWork:'Where We Work', whatWeDo:'What We Do', about:'About',
+    orderNow:'Order Now', callUs:'Call Us', whatsappUs:'WhatsApp Us',
+    freshStock:'Fresh stock available today',
+    heroTitle:'Fresh Rice, Delivered Daily',
+    heroSub:'Premium Sona Masoori from Telangana farms — direct to your kitchen.',
+    stat1:'Farm Direct', stat2:'FSSAI Certified', stat3:'Same Day Delivery',
+  },
+  te: {
+    myOrders:'నా ఆర్డర్లు', subscribe:'సభ్యత్వం', referEarn:'రెఫర్ & సంపాదించండి',
+    home:'హోమ్', checkout:'చెక్అవుట్', placeOrder:'ఆర్డర్ పెట్టండి',
+    homeDelivery:'ఇంటికి డెలివరీ', storePickup:'స్టోర్ పికప్',
+    cashOnDelivery:'డెలివరీలో నగదు', upiPayment:'UPI చెల్లింపు',
+    orderPlaced:'ఆర్డర్ పెట్టారు!', trackOrder:'ఆర్డర్ ట్రాక్ చేయండి',
+    orderMore:'మరింత బియ్యం', outOfStock:'స్టాక్ లేదు', logout:'లాగ్ అవుట్',
+    whereWeWork:'మేము ఎక్కడ పని చేస్తాం', whatWeDo:'మేము ఏమి చేస్తాం', about:'గురించి',
+    orderNow:'ఇప్పుడే ఆర్డర్ చేయండి', callUs:'కాల్ చేయండి', whatsappUs:'వాట్సాప్ చేయండి',
+    freshStock:'ఈరోజు తాజా స్టాక్ అందుబాటులో ఉంది',
+    heroTitle:'తాజా బియ్యం, రోజూ డెలివరీ',
+    heroSub:'తెలంగాణ పొలాల నుండి నేరుగా మీ వంటగదికి సోనా మసూరి.',
+    stat1:'నేరుగా పొలం నుండి', stat2:'FSSAI సర్టిఫైడ్', stat3:'అదే రోజు డెలివరీ',
+  }
 }
+
+const G = {
+  green:'#3B6D11', greenDark:'#27500A', greenLight:'#EAF3DE', green2:'#639922',
+  amber:'#BA7517', amberLight:'#FAEEDA', blue:'#1E5FA5', blueLight:'#E6F1FB',
+  red:'#DC2626', redLight:'#FEE2E2',
+  border:'#E5E7EB', text:'#111827', muted:'#6B7280', white:'#fff', surface:'#F4F6F3'
+}
+
+const STATUS_COLOR = { pending:G.amber, confirmed:G.blue, packed:G.green2, dispatched:'#7C3AED', delivered:G.green, cancelled:G.red }
+const STATUS_BG    = { pending:G.amberLight, confirmed:G.blueLight, packed:G.greenLight, dispatched:'#EDE9FE', delivered:G.greenLight, cancelled:G.redLight }
+const BRANCHES     = ['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu']
 
 function ShopLangToggle({ lang, setLang }) {
   const [open, setOpen] = useState(false)
   return (
     <div style={{ position:'relative' }}>
       <button onClick={()=>setOpen(!open)} style={{ display:'flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:20,padding:'4px 10px',cursor:'pointer',color:'#fff',fontSize:11,fontWeight:600 }}>
-        <span>{lang==='te'?'🇮🇳':'🌐'}</span>{lang==='te'?'తె':'EN'}
+        {lang==='te'?'🇮🇳':'🌐'} {lang==='te'?'తె':'EN'}
       </button>
       {open && (
         <div style={{ position:'absolute',top:'110%',right:0,background:'#fff',borderRadius:12,boxShadow:'0 4px 16px rgba(0,0,0,0.15)',overflow:'hidden',minWidth:120,zIndex:999 }}>
@@ -31,30 +69,20 @@ function ShopLangToggle({ lang, setLang }) {
   )
 }
 
-const G = {
-  green:'#3B6D11',greenDark:'#27500A',greenLight:'#EAF3DE',green2:'#639922',
-  amber:'#BA7517',amberLight:'#FAEEDA',blue:'#1E5FA5',blueLight:'#E6F1FB',
-  red:'#DC2626',redLight:'#FEE2E2',
-  border:'#E5E7EB',text:'#111827',muted:'#6B7280',white:'#fff',surface:'#F4F6F3'
-}
-
-const STATUS_COLOR = { pending:G.amber,confirmed:G.blue,packed:G.green2,dispatched:'#7C3AED',delivered:G.green,cancelled:G.red }
-const STATUS_BG    = { pending:G.amberLight,confirmed:G.blueLight,packed:G.greenLight,dispatched:'#EDE9FE',delivered:G.greenLight,cancelled:G.redLight }
-const BRANCHES     = ['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu']
-
+// ── Top nav modals ────────────────────────────────────────
 function TopNavModal({ modal, onClose }) {
   if (!modal) return null
   return (
     <div onClick={onClose} style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
-      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff',borderRadius:20,width:'100%',maxWidth:580,maxHeight:'85vh',overflowY:'auto',padding:32 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff',borderRadius:20,width:'100%',maxWidth:560,maxHeight:'85vh',overflowY:'auto',padding:28 }}>
         {modal==='where' && <>
           <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20 }}>
             <h2 style={{ margin:0,fontSize:20,fontWeight:800,color:'#27500A' }}>📍 Where We Work</h2>
             <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#6B7280' }}>✕</button>
           </div>
-          <p style={{ color:'#6B7280',fontSize:14,lineHeight:1.7,marginBottom:18 }}>Green Village Rice serves customers across <strong style={{color:'#3B6D11'}}>Hyderabad and Secunderabad</strong>.</p>
+          <p style={{ color:'#6B7280',fontSize:14,lineHeight:1.7,marginBottom:18 }}>Green Village Rice serves customers across <strong style={{color:'#3B6D11'}}>Hyderabad and Secunderabad</strong>, delivering farm-fresh Sona Masoori rice to homes, apartments, and businesses.</p>
           <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
-            {[{area:'Kukatpally',icon:'🏙️',desc:'KPHB, JNTU, Miyapur'},{area:'Hitech City',icon:'💻',desc:'Madhapur, Gachibowli'},{area:'Secunderabad',icon:'🏛️',desc:'Trimulgherry, Karkhana'},{area:'Dilsukhnagar',icon:'🌆',desc:'LB Nagar, Malakpet'},{area:'Ameerpet',icon:'🏢',desc:'SR Nagar, Punjagutta'},{area:'Uppal',icon:'🏭',desc:'Nacharam, Habsiguda'}].map(a=>(
+            {[{area:'Kukatpally',icon:'🏙️',desc:'KPHB, JNTU, Miyapur'},{area:'Hitech City',icon:'💻',desc:'Madhapur, Gachibowli, Kondapur'},{area:'Secunderabad',icon:'🏛️',desc:'Trimulgherry, Karkhana'},{area:'Dilsukhnagar',icon:'🌆',desc:'LB Nagar, Malakpet'},{area:'Ameerpet',icon:'🏢',desc:'SR Nagar, Punjagutta'},{area:'Uppal',icon:'🏭',desc:'Nacharam, Habsiguda'}].map(a=>(
               <div key={a.area} style={{ background:'#F4F6F3',borderRadius:12,padding:'12px 14px',display:'flex',gap:10 }}>
                 <span style={{ fontSize:20 }}>{a.icon}</span>
                 <div><p style={{ margin:'0 0 2px',fontWeight:700,fontSize:13 }}>{a.area}</p><p style={{ margin:0,fontSize:11,color:'#6B7280' }}>{a.desc}</p></div>
@@ -67,7 +95,7 @@ function TopNavModal({ modal, onClose }) {
             <h2 style={{ margin:0,fontSize:20,fontWeight:800,color:'#27500A' }}>🌾 What We Do</h2>
             <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#6B7280' }}>✕</button>
           </div>
-          {[{icon:'🌱',title:'Farm Sourcing',desc:'Directly from certified paddy farmers in Nalgonda, Khammam, and Warangal.'},{icon:'⚙️',title:'Fresh Milling',desc:'Milled in small batches with packing date on every pack.'},{icon:'📦',title:'Quality Packing',desc:'1kg and 5kg packs. FSSAI-compliant with best-before dates.'},{icon:'🚪',title:'Doorstep Delivery',desc:'Orders delivered to your home within hours.'},{icon:'💰',title:'Fair Pricing',desc:'Sona Masoori 1kg ₹68, Sona Masoori 5kg ₹320, Basmati 1kg ₹95, and Basmati 5kg ₹440.'}].map(item=>(
+          {[{icon:'🌱',title:'Farm Sourcing',desc:'Directly from certified paddy farmers in Nalgonda, Khammam, and Warangal.'},{icon:'⚙️',title:'Fresh Milling',desc:'Milled in small batches with packing date on every pack.'},{icon:'📦',title:'Quality Packing',desc:'1kg and 5kg packs. FSSAI-compliant with best-before dates.'},{icon:'🚪',title:'Doorstep Delivery',desc:'Orders delivered to your home within hours.'},{icon:'💰',title:'Fair Pricing',desc:'₹60/kg for 1kg packs, ₹250 for 5kg packs.'}].map(item=>(
             <div key={item.title} style={{ display:'flex',gap:12,padding:'12px 14px',background:'#F9FAF7',borderRadius:12,borderLeft:'3px solid #3B6D11',marginBottom:8 }}>
               <span style={{ fontSize:22,flexShrink:0 }}>{item.icon}</span>
               <div><p style={{ margin:'0 0 3px',fontWeight:700,fontSize:14 }}>{item.title}</p><p style={{ margin:0,fontSize:13,color:'#6B7280',lineHeight:1.6 }}>{item.desc}</p></div>
@@ -79,11 +107,11 @@ function TopNavModal({ modal, onClose }) {
             <h2 style={{ margin:0,fontSize:20,fontWeight:800,color:'#27500A' }}>🌾 About Green Village Rice</h2>
             <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#6B7280' }}>✕</button>
           </div>
-          <p style={{ color:'#6B7280',fontSize:14,lineHeight:1.8,marginBottom:16 }}>We are a <strong style={{color:'#3B6D11'}}>direct-to-consumer rice brand</strong> sourcing premium Sona Masoori from Telangana farms.</p>
+          <p style={{ color:'#6B7280',fontSize:14,lineHeight:1.8,marginBottom:16 }}>We are a <strong style={{color:'#3B6D11'}}>direct-to-consumer rice brand</strong> sourcing premium Sona Masoori from Telangana farms, milling fresh, and delivering to your kitchen.</p>
           <div style={{ background:'#EAF3DE',borderRadius:12,padding:'12px 16px' }}>
             <p style={{ margin:'0 0 8px',fontWeight:700,fontSize:13,color:'#27500A' }}>Our Products</p>
             <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-              {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Basmati 1kg','₹95'],['Basmati 5kg','₹440']].map(([name,price])=>(
+              {[['Sona Masoori 1kg','₹60'],['Sona Masoori 5kg','₹250']].map(([name,price])=>(
                 <span key={name} style={{ fontSize:12,padding:'4px 12px',borderRadius:20,background:'#fff',color:'#3B6D11',fontWeight:600 }}>{name} — {price}</span>
               ))}
             </div>
@@ -94,104 +122,89 @@ function TopNavModal({ modal, onClose }) {
   )
 }
 
-// FIX #1 & #2: ReferralSection now receives D as a prop so it doesn't crash
-function ReferralSection({ user, D }) {
+// ── Referral section ──────────────────────────────────────
+function ReferralSection({ user }) {
   const [profile, setProfile] = useState(null)
   const [copied, setCopied]   = useState(false)
+  const [wallet, setWallet]   = useState([])
 
   useEffect(() => {
     if (!user?.id) return
-
-    async function loadReferralProfile() {
-      const { data } = await supabase
-        .from('profiles')
-        .select('referral_code,wallet_balance')
-        .eq('id', user.id)
-        .single()
-
-      setProfile(data || null)
-    }
-
-    loadReferralProfile()
+    Promise.all([
+      supabase.from('profiles').select('referral_code,wallet_balance').eq('id',user.id).single(),
+      supabase.from('wallet_transactions').select('*').eq('user_id',user.id).order('created_at',{ascending:false}).limit(5)
+    ]).then(([p,w]) => { setProfile(p.data); setWallet(w.data||[]) })
   }, [user])
 
-  function share() {
-    const code = profile?.referral_code || ''
-    const msg  = `🌾 Order fresh Sona Masoori rice from Green Village Rice!\nUse my referral code *${code}* and get ₹20 off!\nOrder: https://gvr-lemon.vercel.app`
-    navigator.clipboard.writeText(msg).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+  function copyCode() {
+    navigator.clipboard.writeText(profile?.referral_code||'').then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2500) })
   }
 
   return (
-    <div style={{ padding:16 }}>
-      <div style={{ background:`linear-gradient(135deg,${G.green},${G.greenDark})`, borderRadius:16, padding:'20px 22px', marginBottom:16, color:G.white }}>
-        <p style={{ margin:'0 0 4px', fontSize:12, color:'rgba(255,255,255,0.7)' }}>GVR Wallet</p>
-        <p style={{ margin:'0 0 12px', fontSize:32, fontWeight:800 }}>₹{Number(profile?.wallet_balance||0).toFixed(0)}</p>
-        <p style={{ margin:0, fontSize:12, color:'rgba(255,255,255,0.7)' }}>Earn ₹20 for every friend you refer</p>
+    <div style={{ maxWidth:560,margin:'0 auto',padding:'16px 16px 32px' }}>
+      <div style={{ background:`linear-gradient(135deg,${G.green},${G.greenDark})`,borderRadius:16,padding:'20px 22px',marginBottom:16,color:G.white }}>
+        <p style={{ margin:'0 0 4px',fontSize:12,color:'rgba(255,255,255,0.7)' }}>GVR Wallet</p>
+        <p style={{ margin:'0 0 12px',fontSize:36,fontWeight:800 }}>₹{Number(profile?.wallet_balance||0).toFixed(0)}</p>
+        <p style={{ margin:0,fontSize:12,color:'rgba(255,255,255,0.7)' }}>Earn ₹20 for every friend you refer</p>
       </div>
-      <div style={{ background:D.card, borderRadius:14, padding:18, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-        <p style={{ margin:'0 0 4px', fontSize:14, fontWeight:700 }}>🎁 Your Referral Code</p>
-        <p style={{ margin:'0 0 14px', fontSize:12, color:D.muted }}>Share with friends — you both get ₹20 when they place first order</p>
-        <div style={{ padding:'14px 18px', background:'#F9FAF7', borderRadius:12, border:`2px dashed ${G.green}`, textAlign:'center', marginBottom:12 }}>
-          <p style={{ margin:0, fontSize:26, fontWeight:900, letterSpacing:'4px', color:G.greenDark, fontFamily:'monospace' }}>{profile?.referral_code || 'Loading...'}</p>
+      <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+        <p style={{ margin:'0 0 4px',fontSize:14,fontWeight:700 }}>🎁 Your Referral Code</p>
+        <p style={{ margin:'0 0 14px',fontSize:12,color:G.muted }}>Share with friends — you both get ₹20 when they place their first order</p>
+        <div style={{ padding:'14px 18px',background:'#F9FAF7',borderRadius:12,border:`2px dashed ${G.green}`,textAlign:'center',marginBottom:12 }}>
+          <p style={{ margin:0,fontSize:26,fontWeight:900,letterSpacing:'4px',color:G.greenDark,fontFamily:'monospace' }}>{profile?.referral_code||'Loading...'}</p>
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-          <button onClick={share} style={{ padding:'11px', background:copied?G.green:G.greenLight, color:copied?G.white:G.green, border:'none', borderRadius:10, fontSize:13, fontWeight:700, cursor:'pointer' }}>
-            {copied ? '✓ Copied!' : '📋 Copy Code'}
+        <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
+          <button onClick={copyCode} style={{ padding:'11px',background:copied?G.green:G.greenLight,color:copied?G.white:G.green,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
+            {copied?'✓ Copied!':'📋 Copy Code'}
           </button>
-          <button onClick={() => {
-            const code = profile?.referral_code||''
-            const msg  = `🌾 Order fresh rice from Green Village Rice!\nUse code *${code}* — get ₹20 off!\nhttps://gvr-lemon.vercel.app`
-            window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
-          }} style={{ padding:'11px', background:'#25D366', color:G.white, border:'none', borderRadius:10, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+          <button onClick={()=>{ const code=profile?.referral_code||''; window.open(`https://wa.me/?text=${encodeURIComponent(`🌾 Order fresh rice from Green Village Rice!\nUse code *${code}* — get ₹20 off!\nhttps://gvr-lemon.vercel.app`)}`, '_blank') }}
+            style={{ padding:'11px',background:'#25D366',color:G.white,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
             💬 WhatsApp
           </button>
         </div>
       </div>
+      {wallet.length>0 && (
+        <div style={{ background:G.white,borderRadius:14,padding:16,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+          <p style={{ margin:'0 0 12px',fontSize:13,fontWeight:700 }}>💳 Recent Wallet Activity</p>
+          {wallet.map((w,i)=>(
+            <div key={w.id} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:i<wallet.length-1?`1px solid ${G.border}`:'none' }}>
+              <div>
+                <p style={{ margin:'0 0 1px',fontSize:13,fontWeight:500 }}>{w.reason||'Transaction'}</p>
+                <p style={{ margin:0,fontSize:11,color:G.muted }}>{new Date(w.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</p>
+              </div>
+              <span style={{ fontWeight:700,fontSize:14,color:w.type==='credit'?G.green:G.red }}>{w.type==='credit'?'+':'−'}₹{Number(w.amount).toFixed(0)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-// FIX #1 & #2: SubscribeSection receives both switchTab and D as props
-function SubscribeSection({ user, D, switchTab }) {
+// ── Subscribe section ─────────────────────────────────────
+function SubscribeSection({ user }) {
   const [products, setProducts] = useState([])
   const [mySubs, setMySubs]     = useState([])
   const [loading, setLoading]   = useState(true)
-  const [tab, setTab]           = useState('browse') // local tab within subscribe section
+  const [subTab, setSubTab]     = useState('browse')
 
   useEffect(() => {
     Promise.all([
       supabase.from('products').select('*').eq('active',true).order('weight_kg'),
       supabase.from('subscriptions').select('*').eq('customer_id',user.id).order('created_at',{ascending:false})
-    ]).then(([pRes, sRes]) => {
-      setProducts(pRes.data||[])
-      setMySubs(sRes.data||[])
-      setLoading(false)
-    }).catch(() => setLoading(false))
+    ]).then(([pRes,sRes]) => { setProducts(pRes.data||[]); setMySubs(sRes.data||[]); setLoading(false) })
+    .catch(()=>setLoading(false))
   }, [])
 
   async function subscribe(product, freq) {
-    const days   = freq==='weekly'?7:freq==='biweekly'?14:30
-    const disc   = freq==='weekly'?3:freq==='biweekly'?4:5
-    const next   = new Date(); next.setDate(next.getDate()+days)
+    const days = freq==='weekly'?7:freq==='biweekly'?14:30
+    const disc = freq==='weekly'?3:freq==='biweekly'?4:5
+    const next = new Date(); next.setDate(next.getDate()+days)
     try {
-      await supabase.from('subscriptions').insert({
-        customer_id:    user.id,
-        customer_name:  user.full_name||user.username,
-        product_id:     product.id,
-        product_name:   product.name,
-        quantity_bags:  1,
-        frequency:      freq,
-        next_order_date: next.toISOString().split('T')[0],
-        discount_pct:   disc,
-        status:         'active',
-        address:        user.address||'',
-        phone:          user.phone||'',
-        payment_method: 'upi',
-        created_at:     new Date().toISOString()
-      })
+      await supabase.from('subscriptions').insert({ customer_id:user.id, customer_name:user.full_name||user.username, product_id:product.id, product_name:product.name, quantity_bags:1, frequency:freq, next_order_date:next.toISOString().split('T')[0], discount_pct:disc, status:'active', address:user.address||'', phone:user.phone||'', payment_method:'upi', created_at:new Date().toISOString() })
       const { data } = await supabase.from('subscriptions').select('*').eq('customer_id',user.id).order('created_at',{ascending:false})
       setMySubs(data||[])
-      setTab('mysubs')
+      setSubTab('mysubs')
     } catch(e) { alert('Subscribe failed: '+e.message) }
   }
 
@@ -203,31 +216,29 @@ function SubscribeSection({ user, D, switchTab }) {
   if (loading) return <div style={{ textAlign:'center',padding:40,color:G.muted }}>Loading...</div>
 
   return (
-    <div style={{ padding:16 }}>
+    <div style={{ maxWidth:560,margin:'0 auto',padding:'16px 16px 32px' }}>
       <div style={{ display:'flex',gap:6,marginBottom:14 }}>
         {[['browse','🛒 Plans'],['mysubs',`📋 My Subs (${mySubs.filter(s=>s.status==='active').length})`]].map(([key,label])=>(
-          // FIX #1: use local setTab, not the undefined parent switchTab
-          <button key={key} onClick={()=>setTab(key)} style={{ padding:'7px 16px',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,background:tab===key?G.green:'#F3F4F6',color:tab===key?G.white:G.muted }}>
+          <button key={key} onClick={()=>setSubTab(key)} style={{ padding:'7px 16px',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,background:subTab===key?G.green:'#F3F4F6',color:subTab===key?G.white:G.muted }}>
             {label}
           </button>
         ))}
       </div>
-
-      {tab==='browse' && (
+      {subTab==='browse' && (
         <>
           <div style={{ background:G.greenLight,borderRadius:12,padding:'12px 14px',marginBottom:14,fontSize:12,color:G.greenDark }}>
             💡 Subscribe and save 3–5% on every delivery. Cancel anytime.
           </div>
           {products.map(p=>(
-            <div key={p.id} style={{ background:D.card,borderRadius:14,padding:16,marginBottom:12,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${D.border}` }}>
+            <div key={p.id} style={{ background:G.white,borderRadius:14,padding:16,marginBottom:12,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${G.border}` }}>
               <div style={{ display:'flex',alignItems:'center',gap:12,marginBottom:12 }}>
-                <div style={{ width:44,height:44,borderRadius:10,background:G.greenLight,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22 }}>🌾</div>
-                <div style={{ flex:1 }}>
+                <div style={{ width:44,height:44,borderRadius:10,background:G.greenLight,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0 }}>🌾</div>
+                <div style={{ flex:1,minWidth:0 }}>
                   <p style={{ margin:'0 0 2px',fontWeight:700,fontSize:14 }}>{p.name}</p>
                   <p style={{ margin:0,fontSize:12,color:G.muted }}>₹{p.price_per_bag}/bag · {p.weight_kg}kg</p>
                 </div>
               </div>
-              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8 }}>
+              <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8 }}>
                 {[['weekly','Weekly','3%'],['biweekly','2 Weeks','4%'],['monthly','Monthly','5% ⭐']].map(([key,label,disc])=>(
                   <button key={key} onClick={()=>subscribe(p,key)} style={{ padding:'10px 6px',background:G.greenLight,border:`1.5px solid ${G.green}`,borderRadius:10,cursor:'pointer',textAlign:'center' }}>
                     <p style={{ margin:'0 0 2px',fontSize:11,fontWeight:700,color:G.greenDark }}>{label}</p>
@@ -240,18 +251,17 @@ function SubscribeSection({ user, D, switchTab }) {
           ))}
         </>
       )}
-
-      {tab==='mysubs' && (
+      {subTab==='mysubs' && (
         <>
-          {mySubs.length===0 && <div style={{ textAlign:'center',padding:'40px 20px',background:D.card,borderRadius:14,color:D.muted }}><p style={{ fontSize:36,marginBottom:8 }}>🔄</p><p>No subscriptions yet</p></div>}
+          {mySubs.length===0 && <div style={{ textAlign:'center',padding:'40px 20px',background:G.white,borderRadius:14,color:G.muted }}><p style={{ fontSize:36,marginBottom:8 }}>🔄</p><p>No subscriptions yet</p></div>}
           {mySubs.map(s=>(
-            <div key={s.id} style={{ background:D.card,borderRadius:14,padding:16,marginBottom:12,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',borderLeft:`4px solid ${s.status==='active'?G.green:s.status==='paused'?G.amber:G.red}` }}>
+            <div key={s.id} style={{ background:G.white,borderRadius:14,padding:16,marginBottom:12,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',borderLeft:`4px solid ${s.status==='active'?G.green:s.status==='paused'?G.amber:G.red}` }}>
               <div style={{ display:'flex',justifyContent:'space-between',marginBottom:8 }}>
                 <div>
                   <p style={{ margin:'0 0 2px',fontWeight:700,fontSize:14 }}>{s.product_name}</p>
-                  <p style={{ margin:0,fontSize:12,color:D.muted }}>{s.frequency} · {s.discount_pct}% off</p>
+                  <p style={{ margin:0,fontSize:12,color:G.muted }}>{s.frequency} · {s.discount_pct}% off · {s.total_orders??0} orders so far</p>
                 </div>
-                <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:s.status==='active'?G.greenLight:s.status==='paused'?G.amberLight:G.redLight,color:s.status==='active'?G.green:s.status==='paused'?G.amber:G.red,textTransform:'capitalize' }}>
+                <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:s.status==='active'?G.greenLight:s.status==='paused'?G.amberLight:G.redLight,color:s.status==='active'?G.green:s.status==='paused'?G.amber:G.red,textTransform:'capitalize',height:'fit-content' }}>
                   {s.status}
                 </span>
               </div>
@@ -269,557 +279,115 @@ function SubscribeSection({ user, D, switchTab }) {
   )
 }
 
-
-// ── Wallet Recharge Section ───────────────────────────────
-function WalletSection({ user, D, walletBalance, setWalletBalance, upiId }) {
-  const [amount, setAmount] = useState('')
-  const [utrRef, setUtrRef] = useState('')
-  const [rechargeApp, setRechargeApp] = useState('upi')
-  const [requests, setRequests] = useState([])
-  const [transactions, setTransactions] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState('')
-  const [err, setErr] = useState('')
-
-  useEffect(() => { loadWallet() }, [user?.id])
-
-  async function loadWallet() {
-    if (!user?.id) return
-    setLoading(true)
-    setErr('')
-    try {
-      const [profileRes, requestRes, txRes] = await Promise.all([
-        supabase.from('profiles').select('wallet_balance').eq('id', user.id).single(),
-        supabase.from('wallet_recharge_requests').select('*').eq('user_id', user.id).order('created_at', { ascending:false }).limit(20),
-        supabase.from('wallet_transactions').select('*').eq('user_id', user.id).order('created_at', { ascending:false }).limit(20),
-      ])
-
-      if (profileRes.data) setWalletBalance(Number(profileRes.data.wallet_balance || 0))
-      setRequests(requestRes.data || [])
-      setTransactions(txRes.data || [])
-    } catch (e) {
-      console.error('Wallet load failed:', e)
-      setErr('Unable to load wallet details. Please refresh.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function submitRecharge() {
-    const rechargeAmount = Number(amount)
-    const utr = utrRef.trim()
-
-    if (!rechargeAmount || rechargeAmount <= 0) {
-      setErr('Enter a valid recharge amount')
-      return
-    }
-
-    if (!utr || utr.length < 6) {
-      setErr('Enter UTR / transaction reference from your payment app')
-      return
-    }
-
-    if (!user?.id) {
-      setErr('Please login again to recharge wallet')
-      return
-    }
-
-    setSaving(true)
-    setErr('')
-    setMsg('')
-
-    try {
-      const { data: existing } = await supabase
-        .from('wallet_recharge_requests')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('utr_ref', utr)
-        .maybeSingle()
-
-      if (existing) {
-        setErr('This UTR is already submitted. Please wait for admin verification.')
-        return
-      }
-
-      const { error } = await supabase.from('wallet_recharge_requests').insert({
-        user_id: user.id,
-        username: user.username || null,
-        full_name: user.full_name || null,
-        amount: rechargeAmount,
-        payment_method: rechargeApp,
-        utr_ref: utr,
-        status: 'verification_pending',
-        created_at: new Date().toISOString()
-      })
-
-      if (error) throw error
-
-      setMsg('Recharge request submitted. Admin will verify the UTR and credit your wallet.')
-      setAmount('')
-      setUtrRef('')
-      await loadWallet()
-    } catch (e) {
-      console.error('Recharge request failed:', e)
-      setErr(e.message || 'Unable to submit recharge request')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const rechargeAmount = Number(amount || 0)
-  const upiParams = new URLSearchParams({
-    pa: upiId,
-    pn: 'Green Village Rice',
-    am: rechargeAmount ? String(rechargeAmount) : '',
-    cu: 'INR',
-    tn: 'GVR Wallet Recharge'
-  }).toString()
-  const upiUrl = `upi://pay?${upiParams}`
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiUrl)}`
-
-  function getRechargeAppUrl(appKey) {
-    const appUrls = {
-      phonepe: `phonepe://pay?${upiParams}`,
-      gpay: `tez://upi/pay?${upiParams}`,
-      paytm: `paytmmp://pay?${upiParams}`,
-      amazonpay: `amazonpay://upi/pay?${upiParams}`,
-      payzapp: `upi://pay?${upiParams}`,
-      other_upi: `upi://pay?${upiParams}`,
-    }
-
-    return appUrls[appKey] || upiUrl
-  }
-
-  const statusPill = (status) => {
-    const map = {
-      verification_pending: [G.amber, G.amberLight, 'Verification Pending'],
-      approved: [G.green, G.greenLight, 'Approved'],
-      rejected: [G.red, G.redLight, 'Rejected'],
-    }
-    const [color, bg, label] = map[status] || [G.muted, '#F3F4F6', status || '—']
-    return <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:bg,color }}>{label}</span>
-  }
-
-  const formatDateTime = (value) => {
-    if (!value) return '—'
-    return new Date(value).toLocaleString('en-IN', {
-      day:'numeric', month:'short', year:'numeric',
-      hour:'2-digit', minute:'2-digit'
-    })
-  }
-
-  const rechargeApps = [
-    ['phonepe', '📲 PhonePe'],
-    ['gpay', '🟢 Google Pay'],
-    ['paytm', '🔵 Paytm'],
-    ['amazonpay', '🛒 Amazon Pay'],
-    ['payzapp', '💳 PayZapp'],
-    ['other_upi', '🏦 Other UPI App'],
-  ]
-
-  const selectedAppLabel = rechargeApps.find(([key]) => key === rechargeApp)?.[1]?.replace(/^\S+\s*/, '') || 'UPI App'
-
-  if (loading) return <div style={{ textAlign:'center',padding:40,color:G.muted }}>Loading wallet...</div>
-
-  return (
-    <div className="customer-shop-list" style={{ maxWidth:600,margin:'0 auto',padding:16,width:'100%' }}>
-      <div style={{ background:`linear-gradient(135deg,${G.green},${G.greenDark})`,borderRadius:18,padding:'22px 20px',marginBottom:14,color:G.white,boxShadow:'0 4px 14px rgba(59,109,17,0.22)' }}>
-        <p style={{ margin:'0 0 4px',fontSize:12,color:'rgba(255,255,255,0.7)',fontWeight:600 }}>GVR Wallet Balance</p>
-        <p style={{ margin:'0 0 8px',fontSize:34,fontWeight:900 }}>₹{Number(walletBalance || 0).toLocaleString('en-IN')}</p>
-        <p style={{ margin:0,fontSize:12,color:'rgba(255,255,255,0.75)' }}>Recharge from your own PhonePe, Google Pay, Paytm, Amazon Pay, PayZapp, or any UPI app. Admin verifies UTR before crediting wallet.</p>
-      </div>
-
-      {err && <div style={{ background:G.redLight,border:'1px solid #FECACA',borderRadius:10,padding:'10px 14px',marginBottom:12,color:G.red,fontSize:13,display:'flex',justifyContent:'space-between',gap:10 }}>
-        <span>{err}</span>
-        <button onClick={()=>setErr('')} style={{ background:'none',border:'none',color:G.red,cursor:'pointer',fontSize:16 }}>✕</button>
-      </div>}
-
-      {msg && <div style={{ background:G.greenLight,border:'1px solid #97C459',borderRadius:10,padding:'10px 14px',marginBottom:12,color:G.greenDark,fontSize:13 }}>
-        ✓ {msg}
-      </div>}
-
-      <div style={{ background:D.card,borderRadius:16,padding:18,marginBottom:14,border:`1px solid ${D.border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-        <p style={{ margin:'0 0 4px',fontSize:15,fontWeight:800,color:D.text }}>➕ Add Money</p>
-        <p style={{ margin:'0 0 14px',fontSize:12,color:D.muted,lineHeight:1.6 }}>
-          Enter amount, choose your payment app, pay to the GVR company UPI account, then submit your UTR. Wallet balance updates only after admin approval.
-        </p>
-
-        <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12 }}>
-          {[100, 200, 500, 1000].map(v => (
-            <button key={v} onClick={()=>setAmount(String(v))} style={{
-              padding:'10px 12px',borderRadius:10,border:`2px solid ${Number(amount)===v?G.green:D.border}`,
-              background:Number(amount)===v?G.greenLight:'transparent',color:Number(amount)===v?G.greenDark:D.text,
-              fontSize:13,fontWeight:800,cursor:'pointer'
-            }}>₹{v}</button>
-          ))}
-        </div>
-
-        <input type="number" min="1" value={amount} onChange={e=>setAmount(e.target.value)}
-          placeholder="Enter recharge amount"
-          style={{ width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${amount?G.green:D.border}`,fontSize:16,outline:'none',boxSizing:'border-box',background:D.bg,color:D.text,marginBottom:12 }} />
-
-        {rechargeAmount > 0 && (
-          <div style={{ textAlign:'center',padding:14,background:'#F9FAF7',borderRadius:12,border:`1px solid ${G.border}`,marginBottom:12 }}>
-            <p style={{ margin:'0 0 8px',fontSize:13,fontWeight:800,color:G.greenDark }}>Pay ₹{rechargeAmount} to GVR company UPI account</p>
-            <div style={{ background:G.white,display:'inline-block',padding:10,borderRadius:12,border:`1px solid ${G.border}`,marginBottom:8 }}>
-              <img src={qrUrl} alt="GVR company UPI QR" width={150} height={150} style={{ display:'block',borderRadius:8 }} />
-            </div>
-            <p style={{ margin:'0 0 10px',fontSize:12,color:G.muted }}>GVR Company UPI ID: <strong style={{ color:G.text }}>{upiId}</strong></p>
-
-            <p style={{ margin:'0 0 8px',fontSize:12,fontWeight:800,color:G.text }}>Pay using your app</p>
-            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10 }}>
-              {rechargeApps.map(([key, label]) => (
-                <a key={key} href={getRechargeAppUrl(key)} onClick={() => setRechargeApp(key)} style={{
-                  display:'block',textDecoration:'none',padding:'9px 8px',borderRadius:10,
-                  border:`2px solid ${rechargeApp===key?G.green:G.border}`,
-                  background:rechargeApp===key?G.greenLight:G.white,
-                  color:rechargeApp===key?G.greenDark:G.text,
-                  fontSize:12,fontWeight:800
-                }}>
-                  {label}
-                </a>
-              ))}
-            </div>
-            <p style={{ margin:0,fontSize:11,color:G.muted,lineHeight:1.5 }}>
-              These buttons open the selected payment app if it is installed. If your phone does not open that app, choose Other UPI App or scan the QR. After payment, copy the UTR / transaction ID from {selectedAppLabel} and submit below.
-            </p>
-          </div>
-        )}
-
-        <input type="text" value={utrRef} onChange={e=>setUtrRef(e.target.value.trim())}
-          placeholder="Enter UTR / Transaction ID from payment app"
-          style={{ width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${utrRef?G.green:D.border}`,fontSize:14,outline:'none',boxSizing:'border-box',background:D.bg,color:D.text,marginBottom:12 }} />
-
-        <button onClick={submitRecharge} disabled={saving || !amount || !utrRef.trim()} style={{
-          width:'100%',padding:13,border:'none',borderRadius:12,
-          background:saving || !amount || !utrRef.trim() ? '#9CA3AF' : G.green,
-          color:G.white,fontSize:15,fontWeight:800,cursor:saving || !amount || !utrRef.trim() ? 'not-allowed' : 'pointer'
-        }}>
-          {saving ? 'Submitting...' : 'Submit Recharge Request'}
-        </button>
-      </div>
-
-      <div style={{ background:D.card,borderRadius:16,padding:18,marginBottom:14,border:`1px solid ${D.border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12 }}>
-          <p style={{ margin:0,fontSize:15,fontWeight:800,color:D.text }}>Recharge Requests</p>
-          <button onClick={loadWallet} style={{ background:G.greenLight,border:'none',borderRadius:8,padding:'6px 12px',fontSize:12,fontWeight:700,color:G.green,cursor:'pointer' }}>↻ Refresh</button>
-        </div>
-        {requests.length === 0 && <p style={{ margin:0,fontSize:13,color:D.muted,textAlign:'center',padding:18 }}>No recharge requests yet</p>}
-        {requests.map(r => (
-          <div key={r.id} style={{ display:'flex',justifyContent:'space-between',gap:10,padding:'10px 0',borderTop:`1px solid ${D.border}` }}>
-            <div>
-              <p style={{ margin:'0 0 3px',fontSize:13,fontWeight:800,color:D.text }}>₹{Number(r.amount || 0).toLocaleString('en-IN')}</p>
-              <p style={{ margin:'0 0 2px',fontSize:11,color:D.muted }}>UTR: {r.utr_ref}</p>
-              <p style={{ margin:'0 0 2px',fontSize:11,color:D.muted }}>Paid using: {r.payment_method?.replace('_',' ') || 'UPI app'}</p>
-              <p style={{ margin:'0 0 2px',fontSize:11,color:D.muted }}>Submitted: {formatDateTime(r.created_at)}</p>
-              {r.verified_at && <p style={{ margin:0,fontSize:11,color:D.muted }}>Verified: {formatDateTime(r.verified_at)}</p>}
-            </div>
-            <div style={{ flexShrink:0 }}>{statusPill(r.status)}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ background:D.card,borderRadius:16,padding:18,border:`1px solid ${D.border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-        <p style={{ margin:'0 0 12px',fontSize:15,fontWeight:800,color:D.text }}>Wallet History</p>
-        {transactions.length === 0 && <p style={{ margin:0,fontSize:13,color:D.muted,textAlign:'center',padding:18 }}>No wallet transactions yet</p>}
-        {transactions.map(tx => (
-          <div key={tx.id} style={{ display:'flex',justifyContent:'space-between',gap:10,padding:'10px 0',borderTop:`1px solid ${D.border}` }}>
-            <div>
-              <p style={{ margin:'0 0 3px',fontSize:13,fontWeight:700,color:D.text,textTransform:'capitalize' }}>{tx.type?.replace('_',' ') || 'Transaction'}</p>
-              <p style={{ margin:'0 0 2px',fontSize:11,color:D.muted }}>{tx.reason || '—'}</p>
-              <p style={{ margin:0,fontSize:11,color:D.muted }}>Date & Time: {formatDateTime(tx.created_at)}</p>
-            </div>
-            <span style={{ fontSize:14,fontWeight:900,color:Number(tx.amount || 0) >= 0 ? G.green : G.red }}>
-              {Number(tx.amount || 0) >= 0 ? '+' : ''}₹{Number(tx.amount || 0).toLocaleString('en-IN')}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-
-// ── Helper: safe order number using MAX ───────────────────
-// FIX #5: avoids duplicate GVR-XXXX when orders are deleted
-async function getNextOrderNumber(prefix = 'GVR') {
-  const { data } = await supabase
-    .from('orders')
-    .select('order_number')
-    .like('order_number', `${prefix}-%`)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const lastNum = data?.order_number
-    ? parseInt(data.order_number.replace(`${prefix}-`, '').replace(/\D/g, ''), 10) || 0
-    : 0
-  return `${prefix}-${String(lastNum + 1).padStart(4, '0')}`
-}
-
+// ── Main component ────────────────────────────────────────
 export default function CustomerShop() {
-  const { user, signOut }         = useAuth()
-  const [lang, setLangState]      = useState(localStorage.getItem('gvr_lang')||'en')
-  const [dark, setDarkState]      = useState(localStorage.getItem('gvr_dark')==='1')
-  const setDark = (v) => { localStorage.setItem('gvr_dark', v?'1':'0'); setDarkState(v) }
-  const D = dark ? {
-    bg:'#111827', card:'#1F2937', border:'#374151',
-    text:'#F9FAFB', muted:'#9CA3AF', surface:'#0F172A'
-  } : {
-    bg:G.surface, card:G.white, border:G.border,
-    text:G.text, muted:G.muted, surface:G.surface
-  }
-  const T = SHOP_STRINGS[lang] || SHOP_STRINGS.en
-  const setLang = (l) => { localStorage.setItem('gvr_lang',l); setLangState(l) }
-  const navigate = useNavigate()
-
-  const [tab, setTab]             = useState('shop')
-  // FIX #3: switchTab defined at top level so it can be passed to child components
-  const switchTab = useCallback((t) => {
-    setTab(t)
-    if (t === 'myorders') loadMyOrders()
-  }, [])
-
-  // FIX #14: load cart keyed by user ID so different users don't share carts
-  const cartKey = `gvr_cart_${user?.id || 'guest'}`
-  const [products, setProducts]   = useState([])
-  const [cart, setCart]           = useState(() => {
-    try { return JSON.parse(localStorage.getItem(cartKey) || '{}') } catch { return {} }
-  })
-  const [step, setStep]           = useState('shop')
-  const [address, setAddress]     = useState(user?.address || localStorage.getItem('gvr_address') || '')
-  const [phone, setPhone]         = useState(user?.phone || '')
-  const [payMethod, setPayMethod] = useState('cod')
-  const [orderType, setOrderType] = useState('delivery')
+  const { user, signOut }             = useAuth()
+  const navigate                      = useNavigate()
+  const [lang, setLangState]          = useState(localStorage.getItem('gvr_lang')||'en')
+  const [tab, setTab]                 = useState('home')
+  const [products, setProducts]       = useState([])
+  const [cart, setCart]               = useState(()=>{ try { return JSON.parse(localStorage.getItem('gvr_cart')||'{}') } catch { return {} } })
+  const [step, setStep]               = useState('shop')
+  const [address, setAddress]         = useState(user?.address||localStorage.getItem('gvr_address')||'')
+  const [phone, setPhone]             = useState(user?.phone||'')
+  const [payMethod, setPayMethod]     = useState('cod')
+  const [orderType, setOrderType]     = useState('delivery')
   const [pickupBranch, setPickupBranch] = useState('')
-  const [pickupTime, setPickupTime]     = useState('')
-  const [utrRef, setUtrRef]       = useState('')
-  const [placing, setPlacing]     = useState(false)
-  const placingRef                = useRef(false)
-  const [orderNum, setOrderNum]   = useState('')
-  const [myOrders, setMyOrders]   = useState([])
-  const [reviews, setReviews]     = useState({})
-  const [reviewModal, setRevModal]  = useState(null)
-  const [reportModal, setRepModal]  = useState(null)
-  const [notifyModal, setNotifyModal] = useState(null)
-  const [notified, setNotified]   = useState({})
-  const [ordersLoading, setOL]    = useState(false)
-  const [error, setError]         = useState('')
-  const [loading, setLoading]     = useState(true)
-  const [topModal, setTopModal]   = useState(null)
+  const [pickupTime, setPickupTime]   = useState('')
+  const [utrRef, setUtrRef]           = useState('')
+  const [placing, setPlacing]         = useState(false)
+  const [orderNum, setOrderNum]       = useState('')
+  const [myOrders, setMyOrders]       = useState([])
+  const [reviews, setReviews]         = useState({})
+  const [reviewModal, setRevModal]    = useState(null)
+  const [reportModal, setRepModal]    = useState(null)
+  const [ordersLoading, setOL]        = useState(false)
+  const [error, setError]             = useState('')
+  const [topModal, setTopModal]       = useState(null)
   const [showProfile, setShowProfile] = useState(false)
-  const [points, setPoints]       = useState(0)
-  const [walletBalance, setWalletBalance] = useState(0)
 
-  useEffect(() => {
-    loadProducts()
-    try {
-      if ('Notification' in window && Notification.permission === 'default') {
-        setTimeout(() => Notification.requestPermission(), 3000)
-      }
-    } catch(e) {}
-    if (user?.id) {
-      supabase.from('profiles').select('wallet_balance,total_orders,total_spent')
-        .eq('id', user.id).single()
-        .then(({ data }) => {
-          if (data) {
-            setPoints(Math.floor((data.total_spent||0)/100))
-            setWalletBalance(Number(data.wallet_balance || 0))
-          }
-        })
-    }
-  }, [])
+  const T   = SHOP_STRINGS[lang] || SHOP_STRINGS.en
+  const setLang = (l) => { localStorage.setItem('gvr_lang',l); setLangState(l) }
 
-  useEffect(() => {
-    try { localStorage.setItem(cartKey, JSON.stringify(cart)) } catch {}
-  }, [cart, cartKey])
+  const totalItems  = Object.values(cart).reduce((s,q)=>s+q,0)
+  const totalAmount = products.reduce((s,p)=>s+(cart[p.id]||0)*p.price_per_bag,0)
+  const gst         = Math.round(totalAmount*0.05)
+  const grand       = totalAmount+gst
 
-  useEffect(() => {
-    if (address.trim()) {
-      try { localStorage.setItem('gvr_address', address) } catch {}
-    }
-  }, [address])
-
-  useEffect(() => { if (tab === 'myorders') { setOL(true); loadMyOrders() } }, [tab])
-
-  useEffect(() => {
-    if (tab !== 'myorders') return
-    const interval = setInterval(() => { loadMyOrders() }, 30000)
-    return () => clearInterval(interval)
-  }, [tab])
+  useEffect(()=>{ loadProducts() },[])
+  useEffect(()=>{ try { localStorage.setItem('gvr_cart',JSON.stringify(cart)) } catch {} },[cart])
+  useEffect(()=>{ if(address.trim()) { try { localStorage.setItem('gvr_address',address) } catch {} } },[address])
+  useEffect(()=>{ if(tab==='myorders') loadMyOrders() },[tab])
 
   async function loadProducts() {
-    setLoading(true)
-    try {
-      const { data } = await supabase.from('products').select('*').eq('active', true).order('weight_kg')
-      setProducts(data || [])
-    } catch(e) { setError('Failed to load products') }
-    finally { setLoading(false) }
+    try { const { data } = await supabase.from('products').select('*').eq('active',true).order('weight_kg'); setProducts(data||[]) }
+    catch(e) { setError('Failed to load products') }
   }
 
   async function loadMyOrders() {
     if (!user) return
     setOL(true)
     try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*, order_items(name,weight_kg,quantity,price_per_unit)')
-        .eq('customer_id', user.id)
-        .order('created_at', { ascending: false })
-      if (error) throw error
-      setMyOrders(data || [])
-    } catch(e) {
-      console.error(e)
-      setMyOrders([])
-    } finally { setOL(false) }
+      const { data } = await supabase.from('orders').select('*,order_items(name,weight_kg,quantity,price_per_unit)').eq('customer_id',user.id).order('created_at',{ascending:false})
+      setMyOrders(data||[])
+    } catch { setMyOrders([]) }
+    finally { setOL(false) }
   }
 
-  // FIX #14: clear this user's cart on logout
-  const handleLogout = async () => {
-    try { localStorage.removeItem(cartKey) } catch {}
-    await signOut()
-    navigate('/login')
+  // Auto-refresh orders tab
+  useEffect(()=>{ if(tab!=='myorders') return; const t=setInterval(loadMyOrders,30000); return()=>clearInterval(t) },[tab])
+
+  const handleLogout = async () => { await signOut(); navigate('/login') }
+
+  const updateCart = (id,delta) => {
+    setCart(prev=>{ const qty=Math.max(0,(prev[id]||0)+delta); if(qty===0){const n={...prev};delete n[id];return n} return {...prev,[id]:qty} })
   }
 
+  // ── PDF invoice ───────────────────────────────────────
   function printInvoice(order) {
-    const items = order.order_items || []
-    const subtotal = items.reduce((s,i)=>s+(i.price_per_unit*i.quantity),0)
-    const gst = Math.round(subtotal*0.05)
-    const total = subtotal + gst
-    const w = window.open('', '_blank')
+    const items=order.order_items||[]; const subtotal=items.reduce((s,i)=>s+i.price_per_unit*i.quantity,0); const gst=Math.round(subtotal*0.05); const total=subtotal+gst
+    const date=new Date(order.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})
+    const w=window.open('','_blank')
     w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice ${order.order_number}</title>
-    <style>body{font-family:Arial,sans-serif;padding:30px;max-width:700px;margin:0 auto}h1{color:#3B6D11}table{width:100%;border-collapse:collapse}th{background:#3B6D11;color:#fff;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #eee}.total{font-size:18px;font-weight:700;color:#3B6D11}@media print{button{display:none}}</style></head>
-    <body><h1>🌾 Green Village Rice</h1><p>Invoice: ${order.order_number} · ${new Date(order.created_at).toLocaleDateString('en-IN')}</p>
-    <p>Customer: ${order.customer_name} · ${order.delivery_address}</p>
-    <table><thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>
-    ${items.map(i=>`<tr><td>${i.name}</td><td>${i.quantity}</td><td>₹${i.price_per_unit}</td><td>₹${i.price_per_unit*i.quantity}</td></tr>`).join('')}
+    <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;padding:30px;max-width:700px;margin:0 auto}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid #3B6D11}
+    .logo{width:50px;height:50px;background:#3B6D11;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px}
+    table{width:100%;border-collapse:collapse;margin-bottom:20px}th{background:#3B6D11;color:#fff;padding:10px 12px;text-align:left;font-size:12px}
+    td{padding:10px 12px;border-bottom:1px solid #E5E7EB;font-size:13px}th:last-child,td:last-child{text-align:right}
+    @media print{button{display:none}}</style></head><body>
+    <div class="hdr"><div style="display:flex;gap:12px;align-items:center"><div class="logo">🌾</div><div><div style="font-size:18px;font-weight:800;color:#3B6D11">Green Village Rice</div><div style="font-size:11px;color:#6B7280">FSSAI Licensed · Hyderabad</div></div></div>
+    <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:#3B6D11">TAX INVOICE</div><div style="font-size:13px;color:#6B7280">${order.order_number} · ${date}</div></div></div>
+    <table><thead><tr><th>#</th><th>Product</th><th>Weight</th><th>Qty</th><th>Rate (₹)</th><th>Amount (₹)</th></tr></thead><tbody>
+    ${items.map((item,i)=>`<tr><td>${i+1}</td><td>${item.name}</td><td>${item.weight_kg}kg</td><td>${item.quantity}</td><td>₹${item.price_per_unit}</td><td>₹${item.price_per_unit*item.quantity}</td></tr>`).join('')}
     </tbody></table>
-    <p>Subtotal: ₹${subtotal} | GST 5%: ₹${gst}</p>
-    <p class="total">Total: ₹${total}</p>
-    <button onclick="window.print()" style="padding:12px 32px;background:#3B6D11;color:#fff;border:none;border-radius:10px;font-size:14px;cursor:pointer;margin-top:16px">🖨 Print</button>
+    <div style="margin-left:auto;width:260px">
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #E5E7EB;font-size:13px"><span>Subtotal</span><span>₹${subtotal}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #E5E7EB;font-size:13px"><span>GST 5%</span><span>₹${gst}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;font-size:16px;font-weight:800;color:#3B6D11;border-top:2px solid #3B6D11;margin-top:4px"><span>Total</span><span>₹${total}</span></div></div>
+    <div style="text-align:center;margin-top:32px"><button onclick="window.print()" style="padding:12px 32px;background:#3B6D11;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">🖨 Print / Save as PDF</button></div>
     </body></html>`)
-    w.document.close()
-    setTimeout(() => w.print(), 600)
+    w.document.close(); setTimeout(()=>w.print(),800)
   }
 
-  function NotifyModal({ product, onClose }) {
-    const [ph, setPh]       = useState(user?.phone || '')
-    const [saving, setSaving] = useState(false)
-    const [done, setDone]   = useState(false)
-
-    async function save() {
-      if (!ph.trim()) return
-      setSaving(true)
-      try {
-        const { data: existing } = await supabase
-          .from('stock_notifications').select('id')
-          .eq('product_id', product.id).eq('customer_id', user.id).eq('notified', false).single()
-        if (!existing) {
-          await supabase.from('stock_notifications').insert({
-            product_id: product.id, product_name: product.name,
-            customer_id: user.id, customer_name: user.full_name || user.username,
-            phone: ph.trim(), notified: false, created_at: new Date().toISOString()
-          })
-        }
-        setNotified(prev => ({ ...prev, [product.id]: true }))
-        setDone(true)
-        setTimeout(() => onClose(), 2000)
-      } catch(e) { console.error(e) }
-      finally { setSaving(false) }
-    }
-
-    return (
-      <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16 }}>
-        <div style={{ background:D.card,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:480,padding:28 }}>
-          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14 }}>
-            <p style={{ margin:0,fontSize:17,fontWeight:700,color:D.text }}>🔔 Notify Me</p>
-            <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:D.muted }}>✕</button>
-          </div>
-          {done ? (
-            <div style={{ textAlign:'center',padding:'24px 0' }}>
-              <div style={{ fontSize:48,marginBottom:12 }}>✅</div>
-              <p style={{ fontSize:16,fontWeight:700,color:G.green }}>You are on the list!</p>
-            </div>
-          ) : (
-            <>
-              <p style={{ margin:'0 0 14px',fontSize:13,color:D.muted,lineHeight:1.7 }}>We'll notify you on WhatsApp when <strong>{product.name}</strong> is back in stock.</p>
-              <input type="tel" value={ph} onChange={e=>setPh(e.target.value)}
-                placeholder="Your mobile number"
-                style={{ width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${ph?G.green:D.border}`,fontSize:14,outline:'none',background:D.bg,color:D.text,boxSizing:'border-box',marginBottom:14 }} />
-              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
-                <button onClick={onClose} style={{ padding:12,background:'transparent',border:`1px solid ${D.border}`,borderRadius:10,fontSize:13,fontWeight:600,color:D.muted,cursor:'pointer' }}>Cancel</button>
-                <button onClick={save} disabled={saving||!ph.trim()} style={{ padding:12,background:saving||!ph.trim()?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
-                  {saving ? 'Saving...' : '🔔 Notify Me'}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  function ReportModal({ order, onClose }) {
-    const [issue, setIssue]     = useState('')
-    const [details, setDetails] = useState('')
-    const [saving, setSaving]   = useState(false)
-    const [done, setDone]       = useState(false)
-    const ISSUES = ['📦 Wrong item received','⚖️ Less quantity / short weight','🍚 Poor rice quality','💧 Damaged / wet packaging','🚚 Late delivery','💰 Payment issue','📱 App / order problem','🔄 Other issue']
-    async function submit() {
-      if (!issue) return
-      setSaving(true)
-      try {
-        await supabase.from('orders').update({ notes: (order.notes||'') + ` | ⚠️ ISSUE: ${issue} — ${details}` }).eq('id', order.id)
-        setDone(true); setTimeout(() => onClose(), 2000)
-      } catch(e) { console.error(e) } finally { setSaving(false) }
-    }
-    return (
-      <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16 }}>
-        <div style={{ background:D.card,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:500,padding:28,maxHeight:'85vh',overflowY:'auto' }}>
-          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16 }}>
-            <p style={{ margin:0,fontSize:17,fontWeight:700,color:D.text }}>⚠️ Report an Issue</p>
-            <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:D.muted }}>✕</button>
-          </div>
-          {done ? <div style={{ textAlign:'center',padding:'24px 0' }}><p style={{ fontSize:40,marginBottom:10 }}>✅</p><p style={{ fontSize:16,fontWeight:700,color:G.green }}>Issue reported!</p><p style={{ fontSize:13,color:D.muted,marginTop:6 }}>Our team will contact you within 24 hours.</p></div> : <>
-            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14 }}>
-              {ISSUES.map(i=>(<button key={i} onClick={()=>setIssue(i)} style={{ padding:'10px 8px',borderRadius:10,border:`1.5px solid ${issue===i?G.red:D.border}`,background:issue===i?G.redLight:'transparent',color:issue===i?G.red:D.text,fontSize:12,fontWeight:issue===i?700:400,cursor:'pointer',textAlign:'left' }}>{i}</button>))}
-            </div>
-            <textarea value={details} onChange={e=>setDetails(e.target.value)} rows={3} placeholder="Describe the issue..." style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${D.border}`,fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',background:D.bg,color:D.text,boxSizing:'border-box',marginBottom:14 }} />
-            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
-              <button onClick={onClose} style={{ padding:12,background:'transparent',border:`1px solid ${D.border}`,borderRadius:10,fontSize:13,fontWeight:600,color:D.muted,cursor:'pointer' }}>Cancel</button>
-              <button onClick={submit} disabled={saving||!issue} style={{ padding:12,background:saving||!issue?'#9CA3AF':G.red,color:G.white,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>{saving?'Reporting...':'Report Issue'}</button>
-            </div>
-          </>}
-        </div>
-      </div>
-    )
-  }
-
+  // ── Review modal ──────────────────────────────────────
   function ReviewModal({ order, onClose }) {
-    const [rating, setRating]   = useState(5)
-    const [comment, setComment] = useState('')
-    const [saving, setSaving]   = useState(false)
-    const [done, setDone]       = useState(false)
+    const [rating,setRating]=useState(5); const [comment,setComment]=useState(''); const [saving,setSaving]=useState(false); const [done,setDone]=useState(false)
     async function submit() {
       setSaving(true)
-      try {
-        await supabase.from('orders').update({ notes: (order.notes||'') + ` | ⭐${rating} — ${comment}` }).eq('id', order.id)
-        setReviews(prev => ({ ...prev, [order.id]: { rating, comment } }))
-        setDone(true); setTimeout(() => onClose(), 1500)
-      } catch(e) { console.error(e) } finally { setSaving(false) }
+      try { await supabase.from('orders').update({notes:(order.notes||'')+` | ⭐${rating} — ${comment}`}).eq('id',order.id); setReviews(p=>({...p,[order.id]:{rating,comment}})); setDone(true); setTimeout(()=>onClose(),1500) }
+      catch(e){ console.error(e) } finally { setSaving(false) }
     }
     return (
-      <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16 }}>
-        <div style={{ background:D.card,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:500,padding:28 }}>
-          <p style={{ margin:'0 0 4px',fontSize:17,fontWeight:700,color:D.text }}>Rate Your Order</p>
-          <p style={{ margin:'0 0 16px',fontSize:13,color:D.muted }}>{order.order_number}</p>
-          {done ? <div style={{ textAlign:'center',padding:'20px 0' }}><p style={{ fontSize:40,marginBottom:10 }}>🙏</p><p style={{ fontSize:16,fontWeight:700,color:G.green }}>Thank you!</p></div> : <>
+      <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:300,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16 }}>
+        <div style={{ background:G.white,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:500,padding:28 }}>
+          <p style={{ margin:'0 0 16px',fontSize:17,fontWeight:700 }}>Rate Your Order — {order.order_number}</p>
+          {done ? <div style={{ textAlign:'center',padding:'20px 0' }}><p style={{ fontSize:40,marginBottom:8 }}>🙏</p><p style={{ fontWeight:700,color:G.green }}>Thanks for your feedback!</p></div> : <>
             <div style={{ display:'flex',gap:8,justifyContent:'center',marginBottom:16 }}>
-              {[1,2,3,4,5].map(s=>(<button key={s} onClick={()=>setRating(s)} style={{ fontSize:36,background:'none',border:'none',cursor:'pointer',opacity:s<=rating?1:0.3 }}>★</button>))}
+              {[1,2,3,4,5].map(s=><button key={s} onClick={()=>setRating(s)} style={{ fontSize:36,background:'none',border:'none',cursor:'pointer',opacity:s<=rating?1:0.3 }}>★</button>)}
             </div>
-            <textarea value={comment} onChange={e=>setComment(e.target.value)} rows={2} placeholder="Tell us more..." style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${D.border}`,fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',background:D.bg,color:D.text,boxSizing:'border-box',marginBottom:14 }} />
+            <textarea value={comment} onChange={e=>setComment(e.target.value)} rows={2} placeholder="Tell us about your experience..." style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',marginBottom:14,boxSizing:'border-box' }} />
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
-              <button onClick={onClose} style={{ padding:12,background:'transparent',border:`1px solid ${D.border}`,borderRadius:10,fontSize:13,fontWeight:600,color:D.muted,cursor:'pointer' }}>Skip</button>
+              <button onClick={onClose} style={{ padding:12,background:'transparent',border:`1px solid ${G.border}`,borderRadius:10,fontSize:13,fontWeight:600,color:G.muted,cursor:'pointer' }}>Skip</button>
               <button onClick={submit} disabled={saving} style={{ padding:12,background:saving?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>{saving?'Saving...':'Submit ⭐'}</button>
             </div>
           </>}
@@ -828,256 +396,112 @@ export default function CustomerShop() {
     )
   }
 
-  const totalItems  = Object.values(cart).reduce((s,q) => s+q, 0)
-  const totalAmount = products.reduce((s,p) => s+(cart[p.id]||0)*p.price_per_bag, 0)
-  const gst         = Math.round(totalAmount * 0.05)
-  const grand       = totalAmount + gst
-
-  const updateCart = (id, delta) => {
-    setCart(prev => {
-      const product = products.find(p => p.id === id)
-      const maxStock = Number(product?.stock_bags || 0)
-      const nextQty = Math.max(0, (prev[id] || 0) + delta)
-      const qty = Math.min(nextQty, maxStock)
-
-      if (qty === 0) {
-        const n = { ...prev }
-        delete n[id]
-        return n
-      }
-
-      return { ...prev, [id]: qty }
-    })
+  // ── Report modal ──────────────────────────────────────
+  function ReportModal({ order, onClose }) {
+    const [issue,setIssue]=useState(''); const [details,setDetails]=useState(''); const [saving,setSaving]=useState(false); const [done,setDone]=useState(false)
+    const ISSUES=['📦 Wrong item received','⚖️ Less quantity','🍚 Poor quality','💧 Damaged packaging','🚚 Late delivery','💰 Payment issue','🔄 Other']
+    async function submit() {
+      if(!issue) return; setSaving(true)
+      try { await supabase.from('orders').update({notes:(order.notes||'')+` | ⚠️ ${issue} — ${details}`}).eq('id',order.id); setDone(true); setTimeout(()=>onClose(),2000) }
+      catch(e){ console.error(e) } finally { setSaving(false) }
+    }
+    return (
+      <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:300,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16 }}>
+        <div style={{ background:G.white,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:500,padding:28,maxHeight:'85vh',overflowY:'auto' }}>
+          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16 }}>
+            <p style={{ margin:0,fontSize:17,fontWeight:700 }}>⚠️ Report an Issue</p>
+            <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:G.muted }}>✕</button>
+          </div>
+          {done ? <div style={{ textAlign:'center',padding:'24px 0' }}><p style={{ fontSize:40,marginBottom:8 }}>✅</p><p style={{ fontWeight:700,color:G.green }}>Issue reported! We will contact you within 24 hours.</p></div> : <>
+            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14 }}>
+              {ISSUES.map(i=><button key={i} onClick={()=>setIssue(i)} style={{ padding:'10px 8px',borderRadius:10,border:`1.5px solid ${issue===i?G.red:G.border}`,background:issue===i?G.redLight:'transparent',color:issue===i?G.red:G.text,fontSize:12,fontWeight:issue===i?700:400,cursor:'pointer',textAlign:'left' }}>{i}</button>)}
+            </div>
+            <textarea value={details} onChange={e=>setDetails(e.target.value)} rows={3} placeholder="Describe the issue..." style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',marginBottom:14,boxSizing:'border-box' }} />
+            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
+              <button onClick={onClose} style={{ padding:12,background:'transparent',border:`1px solid ${G.border}`,borderRadius:10,fontSize:13,fontWeight:600,color:G.muted,cursor:'pointer' }}>Cancel</button>
+              <button onClick={submit} disabled={saving||!issue} style={{ padding:12,background:saving||!issue?'#9CA3AF':G.red,color:G.white,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>{saving?'Reporting...':'Report Issue'}</button>
+            </div>
+          </>}
+        </div>
+      </div>
+    )
   }
 
   async function placeOrder() {
-    // Prevent double-click / repeated submit from creating duplicate orders
-    if (placingRef.current || placing) return
-
-    if (orderType === 'delivery' && !address.trim()) {
-      setError('Please enter delivery address')
-      return
-    }
-
-    if (orderType === 'pickup' && !pickupBranch) {
-      setError('Please select a pickup branch')
-      return
-    }
-
-    if (payMethod === 'upi' && !utrRef.trim()) {
-      setError('Please enter UPI transaction ID after payment')
-      return
-    }
-
-    placingRef.current = true
-    setError('')
-    setPlacing(true)
-
-    let order = null
-
+    if(orderType==='delivery'&&!address.trim()){setError('Please enter delivery address');return}
+    if(orderType==='pickup'&&!pickupBranch){setError('Please select a pickup branch');return}
+    setError(''); setPlacing(true)
     try {
-      let finalTotal = grand
-
-      // Wallet is an explicit payment method. The database trigger will debit
-      // the wallet atomically when the order is created, but we check here first
-      // to show a friendly message before submitting.
-      if (payMethod === 'wallet') {
-        if (!user?.id) {
-          throw new Error('Please login to use GVR Wallet')
-        }
-
-        const { data: prof, error: profErr } = await supabase
-          .from('profiles')
-          .select('wallet_balance')
-          .eq('id', user.id)
-          .single()
-
-        if (profErr) throw profErr
-
-        const walletBal = Number(prof?.wallet_balance || 0)
-        setWalletBalance(walletBal)
-
-        if (walletBal < grand) {
-          throw new Error(`Insufficient wallet balance. Available ₹${walletBal}, order total ₹${grand}.`)
-        }
+      const { count } = await supabase.from('orders').select('*',{count:'exact',head:true})
+      const orderNumber = `GVR-${String((count||0)+1).padStart(4,'0')}`
+      const { data:order,error:oErr } = await supabase.from('orders').insert({
+        order_number:orderNumber, customer_id:user?.id||null, customer_name:user?.full_name||user?.username||'Customer',
+        delivery_address:orderType==='pickup'?`Pickup: ${pickupBranch}`:address,
+        total_amount:grand, status:'pending', order_type:orderType,
+        pickup_branch:orderType==='pickup'?pickupBranch:null, pickup_time:orderType==='pickup'?pickupTime:null,
+        payment_status:utrRef.trim()?'paid':'pending', payment_method:payMethod,
+        notes:utrRef.trim()?`Payment Ref: ${utrRef.trim()}`:null, created_at:new Date().toISOString()
+      }).select().single()
+      if(oErr||!order) throw new Error(oErr?.message||'Failed to create order')
+      for(const p of products.filter(p=>cart[p.id])) {
+        await supabase.from('order_items').insert({ order_id:order.id,product_id:p.id,name:p.name,weight_kg:p.weight_kg,quantity:cart[p.id],price_per_unit:p.price_per_bag })
+        await supabase.from('products').update({ stock_bags:Math.max(0,p.stock_bags-cart[p.id]) }).eq('id',p.id)
       }
-
-      const orderNumber = await getNextOrderNumber('GVR')
-
-      const { data: newOrder, error: oErr } = await supabase
-        .from('orders')
-        .insert({
-          order_number:     orderNumber,
-          customer_id:      user?.id || null,
-          customer_name:    user?.full_name || user?.username || 'Customer',
-          delivery_address: orderType === 'pickup' ? `Pickup: ${pickupBranch}` : address,
-          total_amount:     finalTotal,
-          status:           'pending',
-          order_type:       orderType,
-          branch:           orderType === 'pickup' ? pickupBranch : 'Hyderabad',
-          pickup_branch:    orderType === 'pickup' ? pickupBranch : null,
-          pickup_time:      orderType === 'pickup' ? pickupTime : null,
-          payment_status:   payMethod === 'wallet' ? 'paid' : utrRef.trim() ? 'verification_pending' : 'pending',
-          payment_method:   payMethod,
-          notes:            [
-            utrRef.trim() ? `Payment Ref: ${utrRef.trim()}` : null,
-            payMethod === 'wallet' ? `Paid by GVR Wallet: ₹${grand}` : null
-          ].filter(Boolean).join(' · ') || null,
-          created_at:       new Date().toISOString()
-        })
-        .select()
-        .single()
-
-      if (oErr || !newOrder) {
-        throw new Error(oErr?.message || 'Failed to create order')
-      }
-
-      order = newOrder
-
-      // Critical step: create order items.
-      // Do NOT reduce product stock here. Supabase trigger deducts branch stock when order items are inserted.
-      for (const p of products.filter(p => cart[p.id])) {
-        const { error: itemErr } = await supabase.from('order_items').insert({
-          order_id:       order.id,
-          product_id:     p.id,
-          name:           p.name,
-          weight_kg:      p.weight_kg,
-          quantity:       cart[p.id],
-          price_per_unit: p.price_per_bag
-        })
-
-        if (itemErr) {
-          throw itemErr
-        }
-      }
-
-      // Non-critical updates below must not fail the completed order.
-      // If any of these fail, the order still remains created and customer sees success.
-      if (user?.id) {
-        try {
-          const { error: statsErr } = await supabase.rpc('increment_customer_stats', {
-            user_id: user.id,
-            order_amount: finalTotal
-          })
-
-          if (statsErr) {
-            const { data: statsProfile } = await supabase
-              .from('profiles')
-              .select('total_spent,total_orders')
-              .eq('id', user.id)
-              .single()
-
-            if (statsProfile) {
-              await supabase
-                .from('profiles')
-                .update({
-                  total_spent: Number(statsProfile.total_spent || 0) + finalTotal,
-                  total_orders: Number(statsProfile.total_orders || 0) + 1
-                })
-                .eq('id', user.id)
-            }
-          }
-        } catch (statsErr) {
-          console.error('Customer stats update failed:', statsErr)
-        }
-
-        try {
-          const { data: profCheck } = await supabase
-            .from('profiles')
-            .select('referred_by,total_orders')
-            .eq('id', user.id)
-            .single()
-
-          if (profCheck?.referred_by && Number(profCheck.total_orders || 0) <= 1) {
-            await supabase.rpc('credit_referral_reward', {
-              new_customer_id: user.id,
-              referrer_code:   profCheck.referred_by
-            })
-          }
-        } catch (referralErr) {
-          console.error('Referral reward failed:', referralErr)
-        }
-      }
-
-      try { localStorage.removeItem(cartKey) } catch {}
-
-      try {
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('🌾 Order Placed! ✅', {
-            body: `Order ${orderNumber} for ₹${finalTotal} received.`
-          })
-        }
-      } catch (notificationErr) {
-        console.error('Notification failed:', notificationErr)
-      }
-
-      if (payMethod === 'wallet') {
-        setWalletBalance(prev => Math.max(0, Number(prev || 0) - grand))
-      }
-
-      setOrderNum(orderNumber)
-      setCart({})
-      setAddress('')
-      setUtrRef('')
-      setStep('success')
-    } catch (e) {
-      console.error('Place order failed:', e)
-
-      // Roll back only if the critical item insert failed after the order was created.
-      if (order?.id) {
-        try {
-          await supabase.from('order_items').delete().eq('order_id', order.id)
-          await supabase.from('orders').delete().eq('id', order.id)
-        } catch (rollbackErr) {
-          console.error('Order rollback failed:', rollbackErr)
-        }
-      }
-
-      setError(e.message || 'Failed to place order')
-    } finally {
-      placingRef.current = false
-      setPlacing(false)
-    }
+      localStorage.removeItem('gvr_cart')
+      setOrderNum(orderNumber); setCart({}); setAddress(''); setStep('success')
+    } catch(e) { setError(e.message||'Failed to place order') }
+    finally { setPlacing(false) }
   }
 
   const UPI_ID = import.meta.env.VITE_UPI_ID || '19120sathish.ss1@ybl'
   const upiUrl = `upi://pay?pa=${UPI_ID}&pn=Green+Village+Rice&am=${grand}&cu=INR&tn=GVR+Order`
   const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiUrl)}`
 
-  if (step === 'success') return (
+  // ── Success screen ────────────────────────────────────
+  if (step==='success') return (
     <div style={{ minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:G.surface,padding:20 }}>
-      <div style={{ textAlign:'center',background:G.white,borderRadius:20,padding:'48px 40px',maxWidth:400,width:'100%',boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
+      <div style={{ textAlign:'center',background:G.white,borderRadius:20,padding:'48px 32px',maxWidth:400,width:'100%',boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
         <div style={{ fontSize:60,marginBottom:16 }}>✅</div>
         <h2 style={{ fontSize:24,fontWeight:800,color:G.greenDark,margin:'0 0 8px' }}>{T.orderPlaced}</h2>
         <p style={{ color:G.muted,margin:'0 0 4px',fontSize:14 }}>Order: <strong style={{color:G.green}}>{orderNum}</strong></p>
-        <p style={{ color:G.green,margin:'0 0 4px',fontSize:13 }}>⭐ +{Math.floor(grand/100)} loyalty points earned!</p>
-        <p style={{ color:G.muted,margin:'0 0 28px',fontSize:13 }}>We will deliver your fresh rice soon 🌾</p>
+        <p style={{ color:G.muted,margin:'0 0 28px',fontSize:13 }}>Fresh rice coming soon 🌾</p>
         <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
-          <button onClick={()=>{ setStep('shop'); setTab('myorders') }} style={{ background:G.green,color:G.white,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer' }}>{T.trackOrder} →</button>
-          <button onClick={()=>{ setStep('shop'); setTab('shop') }} style={{ background:G.greenLight,color:G.green,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer' }}>{T.orderMore}</button>
+          <button onClick={()=>{setStep('shop');setTab('myorders')}} style={{ background:G.green,color:G.white,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer' }}>{T.trackOrder} →</button>
+          <button onClick={()=>{setStep('shop');setTab('home')}} style={{ background:G.greenLight,color:G.green,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer' }}>Back to Home</button>
         </div>
       </div>
     </div>
   )
 
-  if (step === 'checkout') return (
-    <div className="customer-shop-root checkout-root" style={{ minHeight:'100dvh',background:D.bg,width:'100%',maxWidth:'100vw',overflowX:'hidden' }}>
+  // ── Checkout screen ───────────────────────────────────
+  if (step==='checkout') return (
+    <div style={{ minHeight:'100vh',background:G.surface }}>
       <TopNavModal modal={topModal} onClose={()=>setTopModal(null)} />
-      <header style={{ background:G.green,padding:'14px 20px',display:'flex',alignItems:'center',gap:12 }}>
-        <button onClick={()=>{ setStep('shop'); setError('') }} style={{ background:'none',border:'none',color:G.white,fontSize:22,cursor:'pointer' }}>←</button>
+      <header style={{ background:G.green,padding:'14px 20px',display:'flex',alignItems:'center',gap:12,position:'sticky',top:0,zIndex:100 }}>
+        <button onClick={()=>{setStep('shop');setError('')}} style={{ background:'none',border:'none',color:G.white,fontSize:22,cursor:'pointer',lineHeight:1 }}>←</button>
         <span style={{ color:G.white,fontWeight:700,fontSize:16 }}>Checkout</span>
       </header>
-      <div style={{ maxWidth:500,margin:'0 auto',padding:'16px 16px 100px' }}>
+      <div style={{ maxWidth:560,margin:'0 auto',padding:'16px 16px 100px' }}>
         {error && <div style={{ background:G.redLight,border:`1px solid #FECACA`,borderRadius:10,padding:'10px 14px',marginBottom:14,color:G.red,fontSize:13,display:'flex',justifyContent:'space-between' }}>
           <span>{error}</span><button onClick={()=>setError('')} style={{ background:'none',border:'none',cursor:'pointer',color:G.red,fontSize:16 }}>✕</button>
         </div>}
-
+        {/* Cart summary */}
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>Your Order</p>
           {products.filter(p=>cart[p.id]).map(p=>(
-            <div key={p.id} style={{ display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${G.border}` }}>
-              <div><p style={{ margin:'0 0 2px',fontSize:14,fontWeight:500 }}>{p.name}</p><p style={{ margin:0,fontSize:12,color:G.muted }}>₹{p.price_per_bag} × {cart[p.id]}</p></div>
-              <span style={{ fontWeight:700 }}>₹{cart[p.id]*p.price_per_bag}</span>
+            <div key={p.id} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:`1px solid ${G.border}` }}>
+              <div>
+                <p style={{ margin:'0 0 2px',fontSize:14,fontWeight:500 }}>{p.name}</p>
+                <p style={{ margin:0,fontSize:12,color:G.muted }}>₹{p.price_per_bag} × {cart[p.id]}</p>
+              </div>
+              <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+                <div style={{ display:'flex',alignItems:'center',gap:8,background:G.greenLight,borderRadius:8,padding:'4px 8px' }}>
+                  <button onClick={()=>updateCart(p.id,-1)} style={{ background:'none',border:'none',color:G.green,fontSize:18,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>−</button>
+                  <span style={{ fontWeight:700,color:G.greenDark,minWidth:16,textAlign:'center' }}>{cart[p.id]}</span>
+                  <button onClick={()=>updateCart(p.id,1)} style={{ background:'none',border:'none',color:G.green,fontSize:18,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>+</button>
+                </div>
+                <span style={{ fontWeight:700,minWidth:48,textAlign:'right' }}>₹{cart[p.id]*p.price_per_bag}</span>
+              </div>
             </div>
           ))}
           <div style={{ marginTop:10,fontSize:13 }}>
@@ -1086,9 +510,9 @@ export default function CustomerShop() {
             <div style={{ display:'flex',justifyContent:'space-between',padding:'8px 0 0',fontWeight:700,fontSize:15,color:G.green,borderTop:`1px solid ${G.border}`,marginTop:4 }}><span>Total</span><span>₹{grand}</span></div>
           </div>
         </div>
-
+        {/* Order type */}
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-          <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>How do you want your order?</p>
+          <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>Delivery or Pickup?</p>
           <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14 }}>
             {[['delivery','🚚',T.homeDelivery,'₹15 delivery fee'],['pickup','🏪',T.storePickup,'Free — collect at branch']].map(([val,icon,label,sub])=>(
               <div key={val} onClick={()=>setOrderType(val)} style={{ padding:12,borderRadius:12,cursor:'pointer',border:`2px solid ${orderType===val?G.green:G.border}`,background:orderType===val?G.greenLight:G.white,textAlign:'center' }}>
@@ -1100,46 +524,46 @@ export default function CustomerShop() {
           </div>
           {orderType==='delivery' && (
             <>
-              <textarea value={address} onChange={e=>setAddress(e.target.value)} placeholder="House/flat number, street, area, landmark..." rows={3}
+              <textarea value={address} onChange={e=>setAddress(e.target.value)} placeholder="House/flat, street, area, landmark..." rows={3}
                 style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${address?G.green:G.border}`,fontSize:14,resize:'none',outline:'none',boxSizing:'border-box',fontFamily:'inherit',marginBottom:8 }} />
-              <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone number for delivery" type="tel"
+              <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone number" type="tel"
                 style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box' }} />
             </>
           )}
           {orderType==='pickup' && (
             <>
-              <p style={{ margin:'0 0 8px',fontSize:13,fontWeight:600 }}>Select Pickup Branch *</p>
               <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10 }}>
                 {BRANCHES.map(b=>(
                   <div key={b} onClick={()=>setPickupBranch(b)} style={{ padding:'9px 12px',borderRadius:10,cursor:'pointer',border:`2px solid ${pickupBranch===b?G.green:G.border}`,background:pickupBranch===b?G.greenLight:G.white,display:'flex',alignItems:'center',gap:8 }}>
                     <span style={{ fontSize:14 }}>🏪</span>
                     <span style={{ fontSize:13,fontWeight:pickupBranch===b?700:400 }}>{b}</span>
+                    {pickupBranch===b&&<span style={{ marginLeft:'auto',color:G.green,fontWeight:700 }}>✓</span>}
                   </div>
                 ))}
               </div>
-              <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone number" type="tel"
-                style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box',marginTop:10 }} />
+              <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginBottom:10 }}>
+                {['9–11 AM','11 AM–1 PM','1–3 PM','3–5 PM','5–7 PM'].map(t=>(
+                  <button key={t} onClick={()=>setPickupTime(t)} style={{ padding:'6px 12px',borderRadius:20,border:`1.5px solid ${pickupTime===t?G.green:G.border}`,background:pickupTime===t?G.greenLight:G.white,cursor:'pointer',fontSize:11,fontWeight:600,color:pickupTime===t?G.greenDark:G.muted }}>{t}</button>
+                ))}
+              </div>
+              <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone number" type="tel" style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box' }} />
             </>
           )}
         </div>
-
+        {/* Payment */}
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-          <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>Payment Method</p>
-          {[
-            ['cod','💵',T.cashOnDelivery,'Pay when your order arrives'],
-            ['upi','📱',T.upiPayment,'GPay, PhonePe, Paytm'],
-            ['wallet','👛',T.walletPayment || 'GVR Wallet',`Available ₹${Number(walletBalance || 0).toFixed(0)}`]
-          ].map(([val,icon,label,sub])=>(
+          <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>Payment</p>
+          {[['cod','💵',T.cashOnDelivery,'Pay when order arrives'],['upi','📱',T.upiPayment,'GPay, PhonePe, Paytm']].map(([val,icon,label,sub])=>(
             <div key={val} onClick={()=>setPayMethod(val)} style={{ display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderRadius:10,marginBottom:8,cursor:'pointer',border:`2px solid ${payMethod===val?G.green:G.border}`,background:payMethod===val?G.greenLight:G.white }}>
               <span style={{ fontSize:22 }}>{icon}</span>
               <div style={{ flex:1 }}><p style={{ margin:0,fontWeight:600,fontSize:14 }}>{label}</p><p style={{ margin:0,fontSize:12,color:G.muted }}>{sub}</p></div>
-              {payMethod===val && <span style={{ color:G.green,fontWeight:700 }}>✓</span>}
+              {payMethod===val&&<span style={{ color:G.green,fontWeight:700 }}>✓</span>}
             </div>
           ))}
           {payMethod==='cod' && (
-            <div style={{ marginTop:10,padding:14,background:G.greenLight,borderRadius:12,border:`1px solid #97C459` }}>
+            <div style={{ marginTop:10,padding:14,background:G.greenLight,borderRadius:12 }}>
               <button onClick={placeOrder} disabled={placing||(orderType==='delivery'&&!address.trim())} style={{ width:'100%',padding:13,background:placing?'#9CA3AF':G.greenDark,color:G.white,border:'none',borderRadius:10,fontSize:15,fontWeight:700,cursor:'pointer' }}>
-                {placing?'⏳ Placing...':'⚡ Place COD Order Now'}
+                {placing?'⏳ Placing...':'⚡ Place COD Order'}
               </button>
             </div>
           )}
@@ -1149,389 +573,259 @@ export default function CustomerShop() {
               <div style={{ background:G.white,display:'inline-block',padding:12,borderRadius:12,border:`1px solid ${G.border}`,marginBottom:10 }}>
                 <img src={qrUrl} alt="UPI QR" width={160} height={160} style={{ display:'block',borderRadius:8 }} />
               </div>
-              <div style={{ borderTop:`1px solid ${G.border}`,paddingTop:12,marginTop:8 }}>
-                <p style={{ margin:'0 0 6px',fontSize:12,fontWeight:700 }}>Enter Transaction ID after payment</p>
-                <input type="text" value={utrRef} onChange={e=>setUtrRef(e.target.value.trim())}
-                  placeholder="12-digit UTR / Transaction ID"
-                  style={{ width:'100%',padding:'11px 14px',borderRadius:10,border:`2px solid ${utrRef.length>=10?G.green:G.border}`,fontSize:14,outline:'none',boxSizing:'border-box' }} />
+              <div style={{ display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap',marginBottom:14 }}>
+                {[{name:'GPay',color:'#1A73E8'},{name:'PhonePe',color:'#5F259F'},{name:'Paytm',color:'#00BAF2'}].map(app=>(
+                  <a key={app.name} href={upiUrl} style={{ padding:'5px 14px',borderRadius:20,background:app.color+'18',color:app.color,fontSize:12,fontWeight:700,textDecoration:'none',border:`1px solid ${app.color}40` }}>{app.name}</a>
+                ))}
               </div>
-            </div>
-          )}
-          {payMethod==='wallet' && (
-            <div style={{ marginTop:12,padding:14,background:walletBalance>=grand?G.greenLight:G.redLight,borderRadius:12,border:`1px solid ${walletBalance>=grand?'#97C459':'#FECACA'}` }}>
-              <p style={{ margin:'0 0 4px',fontSize:13,fontWeight:700,color:walletBalance>=grand?G.greenDark:G.red }}>👛 GVR Wallet</p>
-              <p style={{ margin:0,fontSize:12,color:walletBalance>=grand?G.greenDark:G.red,lineHeight:1.6 }}>
-                Balance ₹{Number(walletBalance || 0).toFixed(0)} · Order ₹{grand}
-                {walletBalance>=grand ? ` · Balance after order ₹${Math.max(0, walletBalance-grand).toFixed(0)}` : ' · Not enough balance'}
-              </p>
+              <p style={{ margin:'0 0 8px',fontSize:12,fontWeight:700 }}>Enter Transaction ID to confirm</p>
+              <input type="text" value={utrRef} onChange={e=>setUtrRef(e.target.value.trim())}
+                placeholder="12-digit UTR / Transaction ID"
+                style={{ width:'100%',padding:'11px 14px',borderRadius:10,border:`2px solid ${utrRef.length>=10?G.green:G.border}`,fontSize:14,outline:'none',boxSizing:'border-box' }} />
             </div>
           )}
         </div>
-
         {payMethod!=='cod' && (
-          <button onClick={placeOrder} disabled={placing||(orderType==='delivery'&&!address.trim())||(payMethod==='upi'&&!utrRef.trim())||(payMethod==='wallet'&&walletBalance<grand)} style={{ width:'100%',padding:14,background:placing||(orderType==='delivery'&&!address.trim())||(payMethod==='upi'&&!utrRef.trim())||(payMethod==='wallet'&&walletBalance<grand)?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:14,fontSize:15,fontWeight:700,cursor:'pointer' }}>
-            {placing?'⏳ Placing...':`${orderType==='pickup'?'🏪 Place Pickup Order':'✅ Place Order'} — ₹${grand}`}
+          <button onClick={placeOrder} disabled={placing||(orderType==='delivery'&&!address.trim())} style={{ width:'100%',padding:14,background:placing?'#9CA3AF':G.green,color:G.white,border:'none',borderRadius:14,fontSize:15,fontWeight:700,cursor:'pointer' }}>
+            {placing?'⏳ Placing...':`✅ Place Order — ₹${grand}`}
           </button>
         )}
       </div>
     </div>
   )
 
+  // ── Main layout ───────────────────────────────────────
   return (
-    <div className="customer-shop-root" style={{ minHeight:'100dvh',background:D.bg,width:'100%',maxWidth:'100vw',overflowX:'hidden' }}>
-      <TopNavModal modal={topModal} onClose={()=>setTopModal(null)} />
+    <div style={{ minHeight:'100vh', background:G.surface, overflowX:'hidden' }}>
       <style>{`
-        .customer-shop-root,
-        .customer-shop-root * {
-          box-sizing: border-box;
-        }
-
-        .customer-shop-root {
-          overflow-x: hidden;
-          max-width: 100vw;
-        }
-
-        .customer-shop-info-nav,
-        .customer-shop-tabs {
-          max-width: 100vw;
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
-          scrollbar-width: none;
-        }
-
-        .customer-shop-info-nav::-webkit-scrollbar,
-        .customer-shop-tabs::-webkit-scrollbar {
-          display: none;
-        }
-
-        .customer-shop-info-button,
-        .customer-shop-tab-button {
-          flex: 0 0 auto !important;
-          white-space: nowrap;
-        }
-
-        @media (max-width: 640px) {
-          .customer-shop-header {
-            display: grid !important;
-            grid-template-columns: 1fr !important;
-            gap: 12px !important;
-            padding: 14px 16px !important;
-            align-items: flex-start !important;
-            justify-content: flex-start !important;
-          }
-
-          .customer-shop-brand {
-            width: 100% !important;
-            min-width: 0 !important;
-          }
-
-          .customer-shop-brand p:first-child {
-            font-size: 16px !important;
-            line-height: 1.15 !important;
-          }
-
-          .customer-shop-actions {
-            width: 100% !important;
-            display: grid !important;
-            grid-template-columns: minmax(0, 1fr) 72px 88px !important;
-            gap: 8px !important;
-            align-items: center !important;
-          }
-
-          .customer-shop-actions > button,
-          .customer-shop-actions > div {
-            min-width: 0 !important;
-          }
-
-          .customer-shop-actions > button:first-of-type {
-            width: 100% !important;
-            justify-content: flex-start !important;
-            padding: 4px 8px 4px 4px !important;
-            border-radius: 999px !important;
-          }
-
-          .customer-shop-actions > button:first-of-type span {
-            max-width: 92px !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            white-space: nowrap !important;
-          }
-
-          .customer-shop-actions > div > button {
-            width: 100% !important;
-            justify-content: center !important;
-            padding: 8px 8px !important;
-            font-size: 13px !important;
-            border-radius: 14px !important;
-          }
-
-          .customer-shop-actions > button:last-child {
-            width: 100% !important;
-            padding: 8px 8px !important;
-            font-size: 13px !important;
-            border-radius: 14px !important;
-          }
-
-          .customer-shop-info-nav {
-            padding: 0 8px !important;
-            justify-content: flex-start !important;
-          }
-
-          .customer-shop-info-button {
-            min-width: 126px !important;
-            padding: 10px 12px !important;
-            font-size: 13px !important;
-            text-align: center !important;
-          }
-
-          .customer-shop-tabs {
-            padding: 0 8px !important;
-            justify-content: flex-start !important;
-          }
-
-          .customer-shop-tab-button {
-            min-width: 126px !important;
-            padding: 11px 12px !important;
-            font-size: 13px !important;
-            text-align: center !important;
-          }
-
-          .customer-shop-list {
-            width: 100% !important;
-            max-width: 100% !important;
-            padding: 12px !important;
-          }
-
-          .customer-product-card {
-            width: 100% !important;
-            padding: 14px !important;
-            gap: 10px !important;
-            border-radius: 14px !important;
-          }
-
-          .customer-product-icon {
-            width: 54px !important;
-            height: 54px !important;
-            font-size: 25px !important;
-          }
-
-          .customer-product-info {
-            min-width: 0 !important;
-          }
-
-          .customer-product-info p:first-child {
-            font-size: 14px !important;
-            line-height: 1.25 !important;
-          }
-
-          .customer-product-info p {
-            overflow-wrap: anywhere !important;
-          }
-
-          .customer-product-actions {
-            min-width: 88px !important;
-            max-width: 108px !important;
-          }
-
-          .customer-product-actions p {
-            font-size: 17px !important;
-          }
-
-          .customer-product-actions button {
-            padding: 8px 12px !important;
-            font-size: 13px !important;
-            border-radius: 10px !important;
-            white-space: nowrap !important;
-          }
-        }
-
-        @media (max-width: 360px) {
-          .customer-shop-actions {
-            grid-template-columns: minmax(0, 1fr) 66px 80px !important;
-            gap: 6px !important;
-          }
-
-          .customer-shop-info-button,
-          .customer-shop-tab-button {
-            min-width: 116px !important;
-            font-size: 12px !important;
-          }
-
-          .customer-product-icon {
-            width: 48px !important;
-            height: 48px !important;
-          }
-
-          .customer-product-actions {
-            min-width: 80px !important;
-            max-width: 92px !important;
-          }
+        * { box-sizing: border-box; }
+        body { margin: 0; overflow-x: hidden; }
+        @media (max-width: 480px) {
+          .top-nav-links { display: none !important; }
+          .header-name   { display: none !important; }
         }
       `}</style>
-      {showProfile && <ProfilePage onClose={()=>setShowProfile(false)} />}
-      {reviewModal && <ReviewModal order={reviewModal} onClose={()=>setRevModal(null)} />}
-      {reportModal && <ReportModal order={reportModal} onClose={()=>setRepModal(null)} />}
-      {notifyModal && <NotifyModal product={notifyModal} onClose={()=>setNotifyModal(null)} />}
 
-      <header className="customer-shop-header" style={{ background:G.green,padding:'14px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12 }}>
-        <div className="customer-shop-brand" style={{ display:'flex',alignItems:'center',gap:10,minWidth:0 }}>
-          <span style={{ fontSize:22,flexShrink:0 }}>🌾</span>
+      <TopNavModal modal={topModal} onClose={()=>setTopModal(null)} />
+      {showProfile  && <ProfilePage onClose={()=>setShowProfile(false)} />}
+      {reviewModal  && <ReviewModal order={reviewModal}  onClose={()=>setRevModal(null)} />}
+      {reportModal  && <ReportModal order={reportModal}  onClose={()=>setRepModal(null)} />}
+
+      {/* ── Sticky header ──────────────────────────────── */}
+      <header style={{ background:G.green, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100, boxShadow:'0 2px 8px rgba(0,0,0,0.15)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+          <span style={{ fontSize:22 }}>🌾</span>
           <div>
-            <p style={{ color:G.white,fontWeight:700,margin:0,fontSize:15 }}>Green Village Rice</p>
-            <p style={{ color:'rgba(255,255,255,0.6)',margin:0,fontSize:11 }}>Fresh Sona Masoori</p>
+            <p style={{ color:G.white, fontWeight:700, margin:0, fontSize:15, lineHeight:1.2 }}>Green Village Rice</p>
+            <p style={{ color:'rgba(255,255,255,0.6)', margin:0, fontSize:10 }}>Fresh Sona Masoori</p>
           </div>
         </div>
-        <div className="customer-shop-actions" style={{ display:'flex',alignItems:'center',gap:8,minWidth:0 }}>
-          {totalItems>0 && tab==='shop' && (
-            <button onClick={()=>{ setStep('checkout'); setError('') }} style={{ background:G.white,border:'none',borderRadius:20,padding:'6px 14px',fontWeight:700,color:G.green,cursor:'pointer',fontSize:13 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          {totalItems>0 && (
+            <button onClick={()=>setStep('checkout')} style={{ background:G.white, border:'none', borderRadius:20, padding:'6px 12px', fontWeight:700, color:G.green, cursor:'pointer', fontSize:12, flexShrink:0 }}>
               🛒 {totalItems} · ₹{totalAmount}
             </button>
           )}
-          <button onClick={()=>setShowProfile(true)} style={{ display:'flex',alignItems:'center',gap:7,background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:20,padding:'4px 12px 4px 4px',cursor:'pointer' }}>
-            <div style={{ width:26,height:26,borderRadius:'50%',background:'rgba(255,255,255,0.25)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:G.white,overflow:'hidden',flexShrink:0 }}>
-              {user?.avatar_url ? <img src={user.avatar_url} alt="avatar" style={{ width:'100%',height:'100%',objectFit:'cover' }} /> : (user?.full_name?.[0]||user?.username?.[0]?.toUpperCase()||'U')}
+          <button onClick={()=>setShowProfile(true)} style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:20, padding:'4px 10px 4px 4px', cursor:'pointer', flexShrink:0 }}>
+            <div style={{ width:26, height:26, borderRadius:'50%', background:'rgba(255,255,255,0.25)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:G.white, overflow:'hidden', flexShrink:0 }}>
+              {user?.avatar_url ? <img src={user.avatar_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : (user?.full_name?.[0]||user?.username?.[0]?.toUpperCase()||'U')}
             </div>
-            <span style={{ color:G.white,fontSize:12,fontWeight:600,maxWidth:70,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{user?.full_name?.split(' ')[0]||user?.username}</span>
+            <span className="header-name" style={{ color:G.white, fontSize:12, fontWeight:600, maxWidth:60, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.full_name?.split(' ')[0]||user?.username}</span>
           </button>
           <ShopLangToggle lang={lang} setLang={setLang} />
-          <button onClick={handleLogout} style={{ background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:8,padding:'5px 12px',color:G.white,fontSize:12,fontWeight:600,cursor:'pointer' }}>
-            {T.logout}
-          </button>
         </div>
       </header>
 
-      <div className="customer-shop-info-nav" style={{ background:G.white,borderBottom:`1px solid ${G.border}`,padding:'0 16px',display:'flex',alignItems:'center',overflowX:'auto' }}>
+      {/* ── Info nav bar ───────────────────────────────── */}
+      <div className="top-nav-links" style={{ background:G.white, borderBottom:`1px solid ${G.border}`, padding:'0 16px', display:'flex', alignItems:'center', overflowX:'auto' }}>
         {[['where','📍 '+T.whereWeWork],['what','🌾 '+T.whatWeDo],['about','ℹ️ '+T.about]].map(([key,label])=>(
-          <button className="customer-shop-info-button" key={key} onClick={()=>setTopModal(key)} style={{ padding:'10px 14px',border:'none',background:'none',cursor:'pointer',fontSize:12,fontWeight:600,color:G.green,flex:'0 0 auto',whiteSpace:'nowrap' }}>{label}</button>
+          <button key={key} onClick={()=>setTopModal(key)} style={{ padding:'10px 14px', border:'none', background:'none', cursor:'pointer', fontSize:12, fontWeight:600, color:G.green, whiteSpace:'nowrap' }}>{label}</button>
         ))}
       </div>
 
-      {/* FIX #3: tabs array is now flat — was double-nested before causing only 1 tab to render */}
-      <div className="customer-shop-tabs" style={{ background:G.white,borderBottom:`1px solid ${G.border}`,display:'flex',overflowX:'auto' }}>
-        {[
-          ['shop',    `🌾 ${T.orderRice}`],
-          ['myorders',`📋 ${T.myOrders}`],
-          ['subscribe',`🔄 ${T.subscribe}`],
-          ['referral', `🎁 ${T.referEarn}`],
-          ['wallet', '👛 Wallet'],
-        ].map(([key,label])=>(
-          <button className="customer-shop-tab-button" key={key} onClick={()=>switchTab(key)} style={{ padding:'10px 16px',border:'none',background:'none',cursor:'pointer',fontSize:13,fontWeight:600,borderBottom:`3px solid ${tab===key?G.green:'transparent'}`,color:tab===key?G.green:G.muted,whiteSpace:'nowrap',flex:'0 0 auto',textAlign:'center' }}>
+      {/* ── Bottom tab bar ─────────────────────────────── */}
+      <div style={{ background:G.white, borderBottom:`1px solid ${G.border}`, display:'flex', position:'sticky', top:56, zIndex:99, boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
+        {[['home','🏠 '+T.home],['myorders','📋 '+T.myOrders],['subscribe','🔄 '+T.subscribe],['referral','🎁 '+T.referEarn]].map(([key,label])=>(
+          <button key={key} onClick={()=>setTab(key)} style={{ flex:1, padding:'11px 4px', border:'none', background:'none', cursor:'pointer', fontSize:11, fontWeight:600, borderBottom:`3px solid ${tab===key?G.green:'transparent'}`, color:tab===key?G.green:G.muted, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
             {label}
           </button>
         ))}
       </div>
 
-      {/* FIX #1 & #2: pass D and switchTab as props */}
-      {tab==='subscribe' && <SubscribeSection user={user} D={D} switchTab={switchTab} />}
-      {tab==='referral'  && <ReferralSection  user={user} D={D} />}
-      {tab==='wallet'    && <WalletSection user={user} D={D} walletBalance={walletBalance} setWalletBalance={setWalletBalance} upiId={UPI_ID} />}
+      {/* ── Tab: Home (replaces product listing) ───────── */}
+      {tab==='home' && (
+        <div style={{ maxWidth:600, margin:'0 auto', padding:'0 0 32px' }}>
 
-      {tab==='myorders' && (
-        <div className="customer-shop-list" style={{ maxWidth:600,margin:'0 auto',padding:16,width:'100%' }}>
-          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',margin:'4px 0 16px' }}>
-            <p style={{ margin:0,fontSize:15,fontWeight:700 }}>My Orders</p>
-            <button onClick={loadMyOrders} style={{ background:G.greenLight,border:'none',borderRadius:8,padding:'6px 14px',fontSize:12,fontWeight:600,color:G.green,cursor:'pointer' }}>↻ Refresh</button>
+          {/* Hero banner */}
+          <div style={{ background:`linear-gradient(135deg,${G.green} 0%,${G.greenDark} 100%)`, padding:'32px 24px 28px', textAlign:'center', position:'relative', overflow:'hidden' }}>
+            <div style={{ position:'absolute', top:-20, right:-20, fontSize:120, opacity:0.08, lineHeight:1 }}>🌾</div>
+            <p style={{ margin:'0 0 6px', fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.6)', textTransform:'uppercase', letterSpacing:'1.5px' }}>Welcome back, {user?.full_name?.split(' ')[0]||user?.username} 👋</p>
+            <h1 style={{ margin:'0 0 10px', fontSize:26, fontWeight:800, color:G.white, lineHeight:1.2 }}>{T.heroTitle}</h1>
+            <p style={{ margin:'0 0 20px', fontSize:13, color:'rgba(255,255,255,0.75)', lineHeight:1.6 }}>{T.heroSub}</p>
+            <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
+              {[[T.stat1,'🌱'],[T.stat2,'✅'],[T.stat3,'⚡']].map(([label,icon])=>(
+                <span key={label} style={{ fontSize:11, fontWeight:700, padding:'5px 12px', borderRadius:20, background:'rgba(255,255,255,0.15)', color:G.white, border:'1px solid rgba(255,255,255,0.2)' }}>
+                  {icon} {label}
+                </span>
+              ))}
+            </div>
           </div>
-          {ordersLoading && <p style={{ textAlign:'center',color:G.muted,padding:40 }}>Loading...</p>}
+
+          {/* Quick actions */}
+          <div style={{ padding:'20px 16px 0' }}>
+            <p style={{ margin:'0 0 12px', fontSize:13, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.8px' }}>Quick Actions</p>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
+
+              {/* Order via WhatsApp */}
+              <a href={`https://wa.me/919999999999?text=${encodeURIComponent('Hi, I want to order Sona Masoori rice.')}`} target="_blank" rel="noreferrer"
+                style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, padding:'18px 12px', background:'#25D366', borderRadius:16, textDecoration:'none', boxShadow:'0 2px 8px rgba(37,211,102,0.3)' }}>
+                <span style={{ fontSize:28 }}>💬</span>
+                <div style={{ textAlign:'center' }}>
+                  <p style={{ margin:0, fontWeight:700, fontSize:13, color:G.white }}>{T.whatsappUs}</p>
+                  <p style={{ margin:0, fontSize:11, color:'rgba(255,255,255,0.8)' }}>Order via WhatsApp</p>
+                </div>
+              </a>
+
+              {/* Call to order */}
+              <a href="tel:+919999999999"
+                style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, padding:'18px 12px', background:G.white, borderRadius:16, textDecoration:'none', border:`1.5px solid ${G.border}`, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                <span style={{ fontSize:28 }}>📞</span>
+                <div style={{ textAlign:'center' }}>
+                  <p style={{ margin:0, fontWeight:700, fontSize:13, color:G.text }}>{T.callUs}</p>
+                  <p style={{ margin:0, fontSize:11, color:G.muted }}>Mon–Sat, 8 AM–8 PM</p>
+                </div>
+              </a>
+
+              {/* My Orders shortcut */}
+              <div onClick={()=>setTab('myorders')} style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, padding:'18px 12px', background:G.white, borderRadius:16, cursor:'pointer', border:`1.5px solid ${G.border}`, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                <span style={{ fontSize:28 }}>📋</span>
+                <div style={{ textAlign:'center' }}>
+                  <p style={{ margin:0, fontWeight:700, fontSize:13, color:G.text }}>{T.myOrders}</p>
+                  <p style={{ margin:0, fontSize:11, color:G.muted }}>Track your deliveries</p>
+                </div>
+              </div>
+
+              {/* Subscribe shortcut */}
+              <div onClick={()=>setTab('subscribe')} style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, padding:'18px 12px', background:G.greenLight, borderRadius:16, cursor:'pointer', border:`1.5px solid ${G.green}33`, boxShadow:'0 1px 4px rgba(59,109,17,0.1)' }}>
+                <span style={{ fontSize:28 }}>🔄</span>
+                <div style={{ textAlign:'center' }}>
+                  <p style={{ margin:0, fontWeight:700, fontSize:13, color:G.greenDark }}>{T.subscribe}</p>
+                  <p style={{ margin:0, fontSize:11, color:G.green2 }}>Save up to 5%</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Products available — compact cards (no cart, just info) */}
+            <p style={{ margin:'0 0 12px', fontSize:13, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.8px' }}>Available Products</p>
+            {products.map(p=>(
+              <div key={p.id} style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:10, display:'flex', alignItems:'center', gap:12, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border:`1px solid ${G.border}` }}>
+                <div style={{ width:48, height:48, borderRadius:12, background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, flexShrink:0 }}>🌾</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:14 }}>{p.name}</p>
+                  <p style={{ margin:'0 0 2px', fontSize:12, color:G.muted }}>{p.name_telugu} · {p.weight_kg}kg</p>
+                  {p.packing_date && <p style={{ margin:0, fontSize:11, color:G.green }}>✓ Packed {new Date(p.packing_date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</p>}
+                </div>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  <p style={{ margin:'0 0 4px', fontWeight:800, fontSize:18, color:G.green }}>₹{p.price_per_bag}</p>
+                  {p.stock_bags>0
+                    ? <span style={{ fontSize:11, color:G.green, fontWeight:600 }}>✓ In stock</span>
+                    : <span style={{ fontSize:11, color:G.red, fontWeight:600 }}>Out of stock</span>
+                  }
+                </div>
+              </div>
+            ))}
+
+            {/* Refer & Earn banner */}
+            <div onClick={()=>setTab('referral')} style={{ marginTop:8, background:`linear-gradient(135deg,#7C3AED,#5B21B6)`, borderRadius:16, padding:'18px 20px', cursor:'pointer', display:'flex', alignItems:'center', gap:16 }}>
+              <span style={{ fontSize:32 }}>🎁</span>
+              <div style={{ flex:1 }}>
+                <p style={{ margin:'0 0 3px', fontWeight:700, fontSize:14, color:G.white }}>{T.referEarn}</p>
+                <p style={{ margin:0, fontSize:12, color:'rgba(255,255,255,0.75)' }}>Share your code — you both get ₹20</p>
+              </div>
+              <span style={{ color:'rgba(255,255,255,0.7)', fontSize:18 }}>›</span>
+            </div>
+
+            {/* Logout */}
+            <button onClick={handleLogout} style={{ width:'100%', marginTop:20, padding:'11px', background:'transparent', border:`1px solid ${G.border}`, borderRadius:12, fontSize:13, fontWeight:600, color:G.muted, cursor:'pointer' }}>
+              ↩ {T.logout}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tab: My Orders ─────────────────────────────── */}
+      {tab==='myorders' && (
+        <div style={{ maxWidth:600, margin:'0 auto', padding:'16px 16px 32px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+            <p style={{ margin:0, fontSize:15, fontWeight:700 }}>My Orders</p>
+            <button onClick={loadMyOrders} style={{ background:G.greenLight, border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:600, color:G.green, cursor:'pointer' }}>↻ Refresh</button>
+          </div>
+          {ordersLoading && <p style={{ textAlign:'center', color:G.muted, padding:40 }}>Loading...</p>}
           {!ordersLoading && myOrders.length===0 && (
-            <div style={{ textAlign:'center',padding:'40px 20px',background:D.card,borderRadius:14,border:`1px solid ${D.border}` }}>
-              <div style={{ fontSize:48,marginBottom:12 }}>📦</div>
-              <p style={{ fontWeight:700,color:D.text,margin:'0 0 6px',fontSize:16 }}>No orders yet</p>
-              <button onClick={()=>switchTab('shop')} style={{ background:G.green,color:G.white,border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,cursor:'pointer',fontSize:13,marginTop:12 }}>
-                Order Now →
-              </button>
+            <div style={{ textAlign:'center', padding:'40px 20px', background:G.white, borderRadius:14, border:`1px solid ${G.border}` }}>
+              <div style={{ fontSize:48, marginBottom:12 }}>📦</div>
+              <p style={{ fontWeight:700, margin:'0 0 6px', fontSize:16 }}>No orders yet</p>
+              <p style={{ fontSize:13, color:G.muted, margin:'0 0 16px' }}>Order via WhatsApp or Call to get started.</p>
+              <button onClick={()=>setTab('home')} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 24px', fontWeight:700, cursor:'pointer', fontSize:13 }}>Go to Home →</button>
             </div>
           )}
           {myOrders.map(order=>(
-            <div key={order.id} style={{ background:D.card,borderRadius:14,padding:16,marginBottom:12,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${D.border}` }}>
-              <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10 }}>
+            <div key={order.id} style={{ background:G.white, borderRadius:14, padding:16, marginBottom:12, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border:`1px solid ${G.border}` }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
                 <div>
-                  <p style={{ margin:'0 0 3px',fontWeight:700,fontSize:15,color:G.green }}>{order.order_number}</p>
-                  <p style={{ margin:0,fontSize:12,color:G.muted }}>{new Date(order.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>
+                  <p style={{ margin:'0 0 3px', fontWeight:700, fontSize:15, color:G.green }}>{order.order_number}</p>
+                  <p style={{ margin:0, fontSize:12, color:G.muted }}>{new Date(order.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>
                 </div>
-                <div style={{ display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4 }}>
-                  <span style={{ fontSize:11,fontWeight:600,padding:'4px 12px',borderRadius:20,background:STATUS_BG[order.status]||'#F3F4F6',color:STATUS_COLOR[order.status]||G.muted }}>
+                <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
+                  <span style={{ fontSize:11, fontWeight:600, padding:'4px 12px', borderRadius:20, background:STATUS_BG[order.status]||'#F3F4F6', color:STATUS_COLOR[order.status]||G.muted, whiteSpace:'nowrap' }}>
                     {order.status?.charAt(0).toUpperCase()+order.status?.slice(1)}
                   </span>
+                  {order.status==='dispatched' && order.delivery_address && (
+                    <a href={`https://maps.google.com/?q=${encodeURIComponent(order.delivery_address)}`} target="_blank" rel="noreferrer"
+                      style={{ fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.blueLight, color:G.blue, textDecoration:'none' }}>🗺 Track</a>
+                  )}
                   {order.status==='delivered' && !reviews[order.id] && (
-                    <button onClick={()=>setRevModal(order)} style={{ fontSize:10,fontWeight:700,padding:'3px 10px',borderRadius:20,background:'#FEF9C3',color:'#854D0E',border:'none',cursor:'pointer' }}>⭐ Rate</button>
+                    <button onClick={()=>setRevModal(order)} style={{ fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'#FEF9C3', color:'#854D0E', border:'none', cursor:'pointer' }}>⭐ Rate</button>
                   )}
                   {order.status==='delivered' && (
-                    <button onClick={()=>setRepModal(order)} style={{ fontSize:10,fontWeight:700,padding:'3px 10px',borderRadius:20,background:G.amberLight,color:G.amber,border:'none',cursor:'pointer' }}>⚠️ Issue</button>
+                    <button onClick={()=>setRepModal(order)} style={{ fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.amberLight, color:G.amber, border:'none', cursor:'pointer' }}>⚠️ Issue</button>
                   )}
                   {(order.status==='delivered'||order.status==='dispatched') && (
-                    <button onClick={()=>printInvoice(order)} style={{ fontSize:10,fontWeight:700,padding:'3px 10px',borderRadius:20,background:G.blueLight,color:G.blue,border:'none',cursor:'pointer' }}>🧾 Invoice</button>
+                    <button onClick={()=>printInvoice(order)} style={{ fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.blueLight, color:G.blue, border:'none', cursor:'pointer' }}>🧾 Invoice</button>
                   )}
                 </div>
               </div>
-              <div style={{ display:'flex',flexWrap:'wrap',gap:6,marginBottom:10 }}>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
                 {(order.order_items||[]).map((item,i)=>(
-                  <span key={i} style={{ fontSize:11,padding:'3px 10px',borderRadius:20,background:G.greenLight,color:G.greenDark,fontWeight:600 }}>{item.name} × {item.quantity}</span>
+                  <span key={i} style={{ fontSize:11, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.greenDark, fontWeight:600 }}>{item.name} × {item.quantity}</span>
                 ))}
               </div>
-              <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:order.status!=='cancelled'?12:0 }}>
-                <span style={{ fontSize:12,color:G.muted }}>{order.order_type==='pickup'?`🏪 Pickup: ${order.pickup_branch}`:`📍 ${order.delivery_address?.slice(0,40)}`} · {order.payment_method?.toUpperCase()}</span>
-                <span style={{ fontWeight:700,fontSize:15,color:G.green }}>₹{Number(order.total_amount).toLocaleString('en-IN')}</span>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                <span style={{ fontSize:12, color:G.muted }}>
+                  {order.order_type==='pickup'?`🏪 ${order.pickup_branch}`:`📍 ${(order.delivery_address||'').slice(0,35)}…`} · {(order.payment_method||'').toUpperCase()}
+                </span>
+                <span style={{ fontWeight:700, fontSize:15, color:G.green }}>₹{Number(order.total_amount).toLocaleString('en-IN')}</span>
               </div>
               {order.status!=='cancelled' && (
-                <div>
-                  <div style={{ display:'flex',gap:3 }}>
-                    {['pending','confirmed','packed','dispatched','delivered'].map((s,i)=>{ const idx=['pending','confirmed','packed','dispatched','delivered'].indexOf(order.status); return <div key={s} style={{ flex:1,height:4,borderRadius:2,background:i<=idx?G.green:'#E5E7EB' }} /> })}
+                <>
+                  <div style={{ display:'flex', gap:3 }}>
+                    {['pending','confirmed','packed','dispatched','delivered'].map((s,i)=>{ const idx=['pending','confirmed','packed','dispatched','delivered'].indexOf(order.status); return <div key={s} style={{ flex:1, height:4, borderRadius:2, background:i<=idx?G.green:'#E5E7EB' }} /> })}
                   </div>
-                  <div style={{ display:'flex',justifyContent:'space-between',marginTop:4 }}>
-                    {['Placed','Confirmed','Packed','Shipped','Delivered'].map((s,i)=>{ const idx=['pending','confirmed','packed','dispatched','delivered'].indexOf(order.status); return <span key={s} style={{ fontSize:9,color:i<=idx?G.green:'#9CA3AF',fontWeight:i<=idx?600:400 }}>{s}</span> })}
+                  <div style={{ display:'flex', justifyContent:'space-between', marginTop:4 }}>
+                    {['Placed','Confirmed','Packed','Shipped','Delivered'].map((s,i)=>{ const idx=['pending','confirmed','packed','dispatched','delivered'].indexOf(order.status); return <span key={s} style={{ fontSize:9, color:i<=idx?G.green:'#9CA3AF', fontWeight:i<=idx?600:400 }}>{s}</span> })}
                   </div>
-                </div>
+                </>
               )}
             </div>
           ))}
         </div>
       )}
 
-      {tab==='shop' && (
-        <div className="customer-shop-list" style={{ maxWidth:600,margin:'0 auto',padding:16,width:'100%' }}>
-          {error && <div style={{ background:G.redLight,border:`1px solid #FECACA`,borderRadius:10,padding:'10px 14px',marginBottom:16,color:G.red,fontSize:13,display:'flex',justifyContent:'space-between' }}>
-            <span>{error}</span><button onClick={()=>setError('')} style={{ background:'none',border:'none',cursor:'pointer',color:G.red,fontSize:16 }}>✕</button>
-          </div>}
-          <p style={{ fontSize:13,color:G.muted,margin:'12px 0 16px' }}>
-            👋 Hello, <strong style={{color:G.text}}>{user?.full_name||user?.username}</strong> · {T.freshStock}
-          </p>
-          {loading && <p style={{ textAlign:'center',color:G.muted,padding:40 }}>Loading products...</p>}
-          {products.map(p=>(
-            <div className="customer-product-card" key={p.id} style={{ background:D.card,borderRadius:14,padding:16,marginBottom:12,display:'flex',alignItems:'center',gap:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${D.border}`,width:'100%',maxWidth:'100%' }}>
-              <div className="customer-product-icon" style={{ width:56,height:56,borderRadius:12,background:G.greenLight,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,flexShrink:0 }}>🌾</div>
-              <div className="customer-product-info" style={{ flex:1,minWidth:0 }}>
-                <p style={{ margin:'0 0 2px',fontWeight:700,fontSize:15 }}>{p.name}</p>
-                <p style={{ margin:'0 0 2px',fontSize:12,color:G.muted }}>{p.name_telugu} · {p.weight_kg}kg</p>
-                {p.packing_date && <p style={{ margin:0,fontSize:11,color:G.green }}>✓ Packed: {new Date(p.packing_date).toLocaleDateString('en-IN')}</p>}
-              </div>
-              <div className="customer-product-actions" style={{ textAlign:'right',flexShrink:0 }}>
-                <p style={{ margin:'0 0 8px',fontWeight:800,fontSize:17 }}>₹{p.price_per_bag}</p>
-                {p.stock_bags<=0
-                  ? <button onClick={()=>setNotifyModal(p)} style={{ background:G.amberLight,color:G.amber,border:'none',borderRadius:8,padding:'7px 12px',fontWeight:700,cursor:'pointer',fontSize:12 }}>
-                      {notified[p.id] ? '✓ Notified' : '🔔 Notify Me'}
-                    </button>
-                  : !cart[p.id]
-                    ? <button onClick={()=>updateCart(p.id,1)} style={{ background:G.green,color:G.white,border:'none',borderRadius:8,padding:'7px 18px',fontWeight:700,cursor:'pointer',fontSize:13 }}>{T.addToCart}</button>
-                    : <div style={{ display:'flex',alignItems:'center',gap:10,background:G.greenLight,borderRadius:8,padding:'5px 10px' }}>
-                        <button onClick={()=>updateCart(p.id,-1)} style={{ background:'none',border:'none',color:G.green,fontSize:22,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>−</button>
-                        <span style={{ fontWeight:700,color:G.greenDark,minWidth:20,textAlign:'center',fontSize:15 }}>{cart[p.id]}</span>
-                        <button disabled={(cart[p.id] || 0) >= Number(p.stock_bags || 0)} onClick={()=>updateCart(p.id,1)} style={{ background:'none',border:'none',color:(cart[p.id] || 0) >= Number(p.stock_bags || 0)?G.muted:G.green,fontSize:22,cursor:(cart[p.id] || 0) >= Number(p.stock_bags || 0)?'not-allowed':'pointer',fontWeight:700,lineHeight:1,padding:0 }}>+</button>
-                      </div>
-                }
-              </div>
-            </div>
-          ))}
-          {totalItems>0 && (
-            <div style={{ position:'sticky',bottom:'calc(16px + env(safe-area-inset-bottom))',marginTop:16 }}>
-              <button onClick={()=>{ setStep('checkout'); setError('') }} style={{ width:'100%',padding:16,background:G.green,color:G.white,border:'none',borderRadius:14,fontSize:16,fontWeight:700,cursor:'pointer',boxShadow:'0 4px 14px rgba(59,109,17,0.35)',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
-                <span>🛒 {totalItems} item{totalItems>1?'s':''}</span>
-                <span>{T.checkout} · ₹{totalAmount} →</span>
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      {/* ── Tab: Subscribe ─────────────────────────────── */}
+      {tab==='subscribe' && <SubscribeSection user={user} />}
+
+      {/* ── Tab: Refer & Earn ──────────────────────────── */}
+      {tab==='referral' && <ReferralSection user={user} />}
     </div>
   )
 }
