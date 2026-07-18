@@ -1,174 +1,204 @@
 // src/components/CustomerFooter.jsx
-//
-// Sticky bottom footer shown on all customer pages (/shop).
-// Place this in src/components/CustomerFooter.jsx
-// and add it to App.jsx via the CustomerLayout wrapper (see App.jsx fix).
+// Matches the CustomerShop redesign design tokens
 
-const G = {
-  green:     '#3B6D11',
-  greenDark: '#27500A',
-  greenLight:'#EAF3DE',
-  muted:     '#6B7280',
-  border:    '#E5E7EB',
-  white:     '#fff',
-  text:      '#111827',
+const C = {
+  p900:'#0D2B05', p800:'#1A4A0A', p700:'#27500A', p600:'#3B6D11',
+  p300:'#85B84A', p100:'#D4EDB5', p50:'#EAF3DE',
+  a500:'#E8931A', a400:'#F5A623',
+  n200:'#E1E8ED', n300:'#B0BEC5', n500:'#6B7A8D',
+  white:'#FFFFFF',
 }
 
-const STRINGS = {
-  en: {
-    tagline:   'Farm-fresh Sona Masoori rice, delivered to your door',
-    products:  'Products',
-    support:   'Support',
-    whatsapp:  'WhatsApp Us',
-    call:      'Call Us',
-    rights:    '© 2014–2026 Green Village Rice. All Rights Reserved.',
-    madein:    'Made with ❤️ in Hyderabad',
-    privacy:   'Privacy Policy',
-    terms:     'Terms of Use',
-    fssai:     'FSSAI Lic. No. 10020042009874',
-    links: [
-      { label: 'Shop',          href: '#shop' },
-      { label: 'My Orders',     href: '#orders' },
-      { label: 'Subscriptions', href: '#subscriptions' },
-      { label: 'Refer & Earn',  href: '#referral' },
-    ],
-  },
-  te: {
-    tagline:   'తాజా సోనా మసూరి బియ్యం, మీ తలుపు వద్దకు డెలివరీ',
-    products:  'ఉత్పత్తులు',
-    support:   'సహాయం',
-    whatsapp:  'వాట్సాప్ చేయండి',
-    call:      'కాల్ చేయండి',
-    rights:    '© 2014–2026 గ్రీన్ విలేజ్ రైస్. అన్ని హక్కులు కేటాయించబడినవి.',
-    madein:    'హైదరాబాద్‌లో ❤️ తో తయారు చేయబడింది',
-    privacy:   'గోప్యతా విధానం',
-    terms:     'వినియోగ నిబంధనలు',
-    fssai:     'FSSAI లైసెన్స్ నం. 10020042009874',
-    links: [
-      { label: 'షాప్',            href: '#shop' },
-      { label: 'నా ఆర్డర్లు',     href: '#orders' },
-      { label: 'సభ్యత్వాలు',      href: '#subscriptions' },
-      { label: 'రెఫర్ & సంపాదించండి', href: '#referral' },
-    ],
-  },
-}
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+  .gvr-footer {
+    background: linear-gradient(160deg, ${C.p800} 0%, ${C.p900} 100%);
+    font-family: 'Inter', -apple-system, sans-serif;
+    margin-top: 0;
+  }
+  .gvr-footer-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 20px 28px;
+  }
+  .gvr-footer-grid {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 32px;
+  }
+  .gvr-footer-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(255,255,255,0.6);
+    font-size: 13px;
+    text-decoration: none;
+    padding: 4px 0;
+    transition: color 0.15s;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: inherit;
+  }
+  .gvr-footer-link:hover { color: rgba(255,255,255,0.95); }
+  .gvr-footer-label {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: rgba(255,255,255,0.3);
+    margin-bottom: 14px;
+  }
+  .gvr-contact-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    text-decoration: none;
+    margin-bottom: 10px;
+    transition: all 0.15s;
+    cursor: pointer;
+    font-family: inherit;
+    border: none;
+    width: 100%;
+  }
+  .gvr-divider {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 20px;
+  }
+  .gvr-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  @media (max-width: 600px) {
+    .gvr-footer-grid { grid-template-columns: 1fr; gap: 24px; }
+    .gvr-bottom { flex-direction: column; align-items: flex-start; }
+  }
+`
 
 export default function CustomerFooter() {
   const lang = localStorage.getItem('gvr_lang') || 'en'
-  const S    = STRINGS[lang] || STRINGS.en
+  const isTE = lang === 'te'
+
+  const links = isTE
+    ? [
+        { label: 'షాప్',           href: '#shop' },
+        { label: 'నా ఆర్డర్లు',     href: '#orders' },
+        { label: 'సభ్యత్వాలు',      href: '#subscriptions' },
+        { label: 'రెఫర్ & సంపాదించండి', href: '#referral' },
+      ]
+    : [
+        { label: 'Shop',          href: '#shop' },
+        { label: 'My orders',     href: '#orders' },
+        { label: 'Subscribe',     href: '#subscriptions' },
+        { label: 'Refer & Earn',  href: '#referral' },
+      ]
 
   return (
-    <footer style={{
-      background:   `linear-gradient(160deg, ${G.greenDark} 0%, #1a3a08 100%)`,
-      color:        G.white,
-      marginTop:    48,
-      fontFamily:   "'Inter', sans-serif",
-    }}>
+    <>
+      <style>{css}</style>
+      <footer className="gvr-footer">
+        <div className="gvr-footer-inner">
+          <div className="gvr-footer-grid">
 
-      {/* Main footer content */}
-      <div style={{ maxWidth:960, margin:'0 auto', padding:'40px 24px 28px' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:32, marginBottom:32 }}>
+            {/* Brand column */}
+            <div>
+              <div style={{ display:'flex',alignItems:'center',gap:12,marginBottom:14 }}>
+                <div style={{ width:44,height:44,borderRadius:12,background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,flexShrink:0 }}>🌾</div>
+                <div>
+                  <p style={{ margin:0,fontWeight:800,fontSize:15,color:C.white }}>Green Village Rice</p>
+                  <p style={{ margin:0,fontSize:11,color:'rgba(255,255,255,0.4)' }}>గ్రీన్ విలేజ్ రైస్</p>
+                </div>
+              </div>
+              <p style={{ margin:'0 0 16px',fontSize:13,color:'rgba(255,255,255,0.5)',lineHeight:1.65 }}>
+                {isTE
+                  ? 'తాజా సోనా మసూరి బియ్యం నేరుగా తెలంగాణ పొలాల నుండి మీ వంటగదికి.'
+                  : 'Farm-fresh Sona Masoori rice from Telangana farms — direct to your kitchen.'}
+              </p>
 
-          {/* Brand column */}
-          <div>
-            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-              <div style={{ width:40, height:40, borderRadius:10, background:'rgba(255,255,255,0.12)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>🌾</div>
-              <div>
-                <p style={{ margin:0, fontWeight:800, fontSize:15, color:G.white }}>Green Village Rice</p>
-                <p style={{ margin:0, fontSize:11, color:'rgba(255,255,255,0.55)' }}>గ్రీన్ విలేజ్ రైస్</p>
+              {/* FSSAI badge */}
+              <div style={{ display:'inline-flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.07)',borderRadius:10,padding:'8px 12px',border:'1px solid rgba(255,255,255,0.1)' }}>
+                <span style={{ fontSize:14 }}>✅</span>
+                <span style={{ fontSize:10,color:'rgba(255,255,255,0.55)',fontWeight:700,letterSpacing:'0.3px' }}>FSSAI Lic. 10020042009874</span>
+              </div>
+
+              {/* Star rating */}
+              <div style={{ display:'flex',alignItems:'center',gap:6,marginTop:14 }}>
+                <div style={{ display:'flex',gap:2 }}>
+                  {'★★★★★'.split('').map((s,i)=>(
+                    <span key={i} style={{ color:C.a400,fontSize:14 }}>{s}</span>
+                  ))}
+                </div>
+                <span style={{ fontSize:12,color:'rgba(255,255,255,0.45)' }}>4.8 · 2,000+ happy customers</span>
               </div>
             </div>
-            <p style={{ margin:'0 0 16px', fontSize:13, color:'rgba(255,255,255,0.6)', lineHeight:1.6 }}>{S.tagline}</p>
 
-            {/* FSSAI badge */}
-            <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.08)', borderRadius:8, padding:'6px 10px', border:'1px solid rgba(255,255,255,0.12)' }}>
-              <span style={{ fontSize:14 }}>✅</span>
-              <span style={{ fontSize:10, color:'rgba(255,255,255,0.65)', fontWeight:600 }}>{S.fssai}</span>
-            </div>
-          </div>
-
-          {/* Quick links */}
-          <div>
-            <p style={{ margin:'0 0 14px', fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', color:'rgba(255,255,255,0.45)' }}>{S.products}</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {S.links.map(link => (
-                <a
-                  key={link.label}
-                  href={link.href}
-                  style={{ color:'rgba(255,255,255,0.7)', fontSize:13, textDecoration:'none', display:'flex', alignItems:'center', gap:6, transition:'color 0.15s' }}
-                  onMouseEnter={e => e.target.style.color = G.white}
-                  onMouseLeave={e => e.target.style.color = 'rgba(255,255,255,0.7)'}
-                >
-                  <span style={{ fontSize:10, opacity:0.4 }}>›</span> {link.label}
+            {/* Quick links */}
+            <div>
+              <p className="gvr-footer-label">{isTE?'లింక్‌లు':'Quick links'}</p>
+              {links.map(link => (
+                <a key={link.label} href={link.href} className="gvr-footer-link">
+                  <span style={{ opacity:0.35,fontSize:12 }}>›</span> {link.label}
                 </a>
               ))}
             </div>
-          </div>
 
-          {/* Contact / Support */}
-          <div>
-            <p style={{ margin:'0 0 14px', fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', color:'rgba(255,255,255,0.45)' }}>{S.support}</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {/* Contact */}
+            <div>
+              <p className="gvr-footer-label">{isTE?'సంప్రదించండి':'Contact us'}</p>
 
-              {/* WhatsApp */}
-              <a
-                href="https://wa.me/919999999999"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', background:'rgba(37,211,102,0.15)', border:'1px solid rgba(37,211,102,0.25)', borderRadius:10, textDecoration:'none', transition:'background 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(37,211,102,0.25)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'rgba(37,211,102,0.15)'}
-              >
-                <span style={{ fontSize:18 }}>💬</span>
-                <div>
-                  <p style={{ margin:0, fontSize:12, fontWeight:700, color:'#4ade80' }}>{S.whatsapp}</p>
-                  <p style={{ margin:0, fontSize:11, color:'rgba(255,255,255,0.5)' }}>+91 99999 99999</p>
+              <a href="https://wa.me/919999999999" target="_blank" rel="noopener noreferrer" className="gvr-contact-btn"
+                style={{ background:'rgba(37,211,102,0.12)',border:'1px solid rgba(37,211,102,0.2)' }}>
+                <span style={{ fontSize:20 }}>💬</span>
+                <div style={{ flex:1 }}>
+                  <p style={{ margin:0,fontSize:12,fontWeight:700,color:'#4ADE80' }}>{isTE?'వాట్సాప్ చేయండి':'WhatsApp us'}</p>
+                  <p style={{ margin:0,fontSize:11,color:'rgba(255,255,255,0.4)' }}>+91 99999 99999</p>
                 </div>
               </a>
 
-              {/* Call */}
-              <a
-                href="tel:+919999999999"
-                style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, textDecoration:'none', transition:'background 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-              >
-                <span style={{ fontSize:18 }}>📞</span>
-                <div>
-                  <p style={{ margin:0, fontSize:12, fontWeight:700, color:G.white }}>{S.call}</p>
-                  <p style={{ margin:0, fontSize:11, color:'rgba(255,255,255,0.5)' }}>Mon–Sat, 8 AM – 8 PM</p>
+              <a href="tel:+919999999999" className="gvr-contact-btn"
+                style={{ background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)' }}>
+                <span style={{ fontSize:20 }}>📞</span>
+                <div style={{ flex:1 }}>
+                  <p style={{ margin:0,fontSize:12,fontWeight:700,color:C.white }}>{isTE?'కాల్ చేయండి':'Call us'}</p>
+                  <p style={{ margin:0,fontSize:11,color:'rgba(255,255,255,0.4)' }}>Mon–Sat, 8 AM – 8 PM</p>
                 </div>
               </a>
 
-              {/* Location */}
-              <div style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'9px 12px', background:'rgba(255,255,255,0.04)', borderRadius:10 }}>
-                <span style={{ fontSize:16, marginTop:1 }}>📍</span>
-                <p style={{ margin:0, fontSize:12, color:'rgba(255,255,255,0.55)', lineHeight:1.5 }}>
-                  Hyderabad, Telangana<br />
-                  <span style={{ fontSize:11, color:'rgba(255,255,255,0.35)' }}>Delivering across Hyderabad</span>
-                </p>
+              <div style={{ display:'flex',alignItems:'flex-start',gap:10,padding:'10px 12px',background:'rgba(255,255,255,0.04)',borderRadius:12 }}>
+                <span style={{ fontSize:16,marginTop:1 }}>📍</span>
+                <div>
+                  <p style={{ margin:'0 0 1px',fontSize:12,fontWeight:700,color:C.white }}>Hyderabad, Telangana</p>
+                  <p style={{ margin:0,fontSize:11,color:'rgba(255,255,255,0.4)' }}>Delivering across Hyderabad</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Divider */}
-        <div style={{ borderTop:'1px solid rgba(255,255,255,0.1)', paddingTop:20, display:'flex', flexWrap:'wrap', justifyContent:'space-between', alignItems:'center', gap:12 }}>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:16, alignItems:'center' }}>
-            <p style={{ margin:0, fontSize:11, color:'rgba(255,255,255,0.4)' }}>{S.rights}</p>
-            <span style={{ color:'rgba(255,255,255,0.15)', fontSize:11 }}>|</span>
-            <p style={{ margin:0, fontSize:11, color:'rgba(255,255,255,0.4)' }}>{S.madein}</p>
-          </div>
-          <div style={{ display:'flex', gap:16 }}>
-            {[S.privacy, S.terms].map(label => (
-              <a key={label} href="#" style={{ fontSize:11, color:'rgba(255,255,255,0.4)', textDecoration:'none' }}
-                onMouseEnter={e => e.target.style.color = 'rgba(255,255,255,0.8)'}
-                onMouseLeave={e => e.target.style.color = 'rgba(255,255,255,0.4)'}
-              >{label}</a>
-            ))}
+          <hr className="gvr-divider" />
+
+          <div className="gvr-bottom">
+            <div style={{ display:'flex',flexWrap:'wrap',alignItems:'center',gap:12 }}>
+              <p style={{ margin:0,fontSize:11,color:'rgba(255,255,255,0.3)' }}>
+                © 2014–2026 Green Village Rice. All rights reserved.
+              </p>
+              <span style={{ color:'rgba(255,255,255,0.15)',fontSize:11 }}>·</span>
+              <p style={{ margin:0,fontSize:11,color:'rgba(255,255,255,0.3)' }}>Made with ❤️ in Hyderabad</p>
+            </div>
+            <div style={{ display:'flex',gap:16 }}>
+              {['Privacy policy','Terms of use'].map(label=>(
+                <a key={label} href="#" className="gvr-footer-link" style={{ fontSize:11 }}>{label}</a>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-    </footer>
+      </footer>
+    </>
   )
 }
