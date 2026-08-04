@@ -5,7 +5,7 @@
 
 A modern React + Vite web application with full GitOps CI/CD pipeline for production deployment.
 
-## 📋 Project Overview
+## 📋 Project Overview ##
 
 **GVR** (pronounced "Giver") is a financial management web application built with:
 - **Frontend:** React 18 + Vite (fast build tool)
