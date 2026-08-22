@@ -2,6 +2,7 @@ import AdminPage from './AdminPage'
 import BatchPage from './BatchPage'
 import PickupQueue from './PickupQueue'
 import WalkInBilling from './WalkInBilling'
+import FinancePage from './FinancePage'
 import BulkOrderForm from './BulkOrderForm'
 import SupplierPage from './SupplierPage'
 import HomePage from './HomePage'
@@ -28,6 +29,7 @@ const PAGES = [
   { key:'orders',    icon:'📋', label:'Orders' },
   { key:'inventory', icon:'📦', label:'Inventory' },
   { key:'analytics', icon:'📊', label:'Analytics' },
+  { key:'finance',   icon:'💹', label:'Finance' },
   { key:'users',     icon:'👥', label:'Users' },
   { key:'admin',     icon:'⚙️', label:'Admin' },
   { key:'branches',  icon:'🏪', label:'Branches' },
@@ -913,6 +915,7 @@ export default function Dashboard() {
           </>}
 
           {page==='vendors' && <VendorPage />}
+          {page==='finance' && <FinancePage />}
           {page==='batches' && <BatchPage />}
           {page==='pickup' && <PickupQueue />}
           {page==='bulk' && <BulkOrderForm />}
