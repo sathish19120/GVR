@@ -1,7 +1,17 @@
 import { useEffect, lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './store/auth'
-import CustomerFooter from './components/CustomerFooter'
+// ✅ FIX: ErrorBoundary.jsx already exists in src/pages/ — a fully
+// built component with a friendly "Something went wrong" screen,
+// a Refresh button, and a "Go to Login" reset button — but it was
+// never imported or used anywhere. Every crash found this session
+// (Dashboard's stray logout button, AdminPage's missing setBranch,
+// the earlier SubscribeSection D-is-not-defined bug) would have
+// taken down the ENTIRE app to a blank white screen with no way to
+// recover except manually navigating away or clearing storage.
+// Wrapping the router here means any future component crash — even
+// ones we haven't found yet — shows a real recovery UI instead.
+import ErrorBoundary from './pages/ErrorBoundary'
 
 // ── Lazy load all pages ───────────────────────────────────
 const AuthPage        = lazy(() => import('./pages/AuthPage'))
@@ -71,50 +81,34 @@ function AuthGuard({ children }) {
   return children
 }
 
-// ── Customer layout — wraps all /shop pages with the footer ──
-// Outlet renders the matched child route (CustomerShop and any
-// future customer sub-routes you add under /shop/*).
-function CustomerLayout() {
-  return (
-    <div style={{ display:'flex', flexDirection:'column', minHeight:'100vh' }}>
-      {/* Page content grows to fill available space */}
-      <div style={{ flex:1 }}>
-        <Outlet />
-      </div>
-      {/* Footer always at the bottom */}
-      <CustomerFooter />
-    </div>
-  )
-}
-
 // ── App ───────────────────────────────────────────────────
 export default function App() {
   const { init } = useAuth()
   useEffect(() => { init() }, [])
 
   return (
-    <BrowserRouter>
-      <Suspense fallback={<Loading />}>
-        <Routes>
-          <Route path="/login"  element={<AuthGuard><AuthPage /></AuthGuard>} />
-          <Route path="/signup" element={<AuthGuard><AuthPage defaultMode="signup" /></AuthGuard>} />
-          <Route path="/"       element={<RoleRouter />} />
-
-          {/* Customer pages — all get the footer via CustomerLayout */}
-          <Route element={<Protected><CustomerLayout /></Protected>}>
-            <Route path="/shop" element={<CustomerShop />} />
-            {/* Add future customer sub-routes here, e.g.: */}
-            {/* <Route path="/shop/orders"  element={<OrdersPage />} /> */}
-            {/* <Route path="/shop/track/:id" element={<TrackPage />} /> */}
-          </Route>
-
-          <Route path="/dashboard/*" element={<Protected roles={['superadmin','admin']}><Dashboard /></Protected>} />
-          <Route path="/delivery"    element={<Protected roles={['delivery','superadmin','admin']}><DeliveryPage /></Protected>} />
-          <Route path="/branch/*"    element={<Protected roles={['branch_executive','superadmin','admin']}><BranchDashboard /></Protected>} />
-          <Route path="/vendor/*"    element={<Protected roles={['vendor','superadmin','admin']}><VendorPortal /></Protected>} />
-          <Route path="*"            element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
-    </BrowserRouter>
+    // ✅ FIX: ErrorBoundary now wraps the entire router. If any page
+    // throws an uncaught error, the user sees ErrorBoundary's built-in
+    // recovery screen (Refresh Page / Go to Login) instead of a silent
+    // blank white page — the same class of failure that made earlier
+    // bugs this session (before they were fixed) so hard to diagnose
+    // from the outside, since nothing on screen indicated what broke.
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Suspense fallback={<Loading />}>
+          <Routes>
+            <Route path="/login"      element={<AuthGuard><AuthPage /></AuthGuard>} />
+            <Route path="/signup"     element={<AuthGuard><AuthPage defaultMode="signup" /></AuthGuard>} />
+            <Route path="/"           element={<RoleRouter />} />
+            <Route path="/dashboard/*" element={<Protected roles={['superadmin','admin']}><Dashboard /></Protected>} />
+            <Route path="/shop"       element={<Protected><CustomerShop /></Protected>} />
+            <Route path="/delivery"   element={<Protected roles={['delivery','superadmin','admin']}><DeliveryPage /></Protected>} />
+            <Route path="/branch/*"   element={<Protected roles={['branch_executive','superadmin','admin']}><BranchDashboard /></Protected>} />
+            <Route path="/vendor/*"   element={<Protected roles={['vendor','superadmin','admin']}><VendorPortal /></Protected>} />
+            <Route path="*"           element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
