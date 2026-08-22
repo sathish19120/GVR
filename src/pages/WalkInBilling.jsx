@@ -9,21 +9,6 @@ const G = {
   border:'#E5E7EB',text:'#111827',muted:'#6B7280',white:'#fff',surface:'#F4F6F3'
 }
 
-// FIX #6: MAX-based order number — no duplicates when orders are deleted
-async function getNextWalkInNumber() {
-  const { data } = await supabase
-    .from('orders')
-    .select('order_number')
-    .like('order_number', 'GVR-WI-%')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const lastNum = data?.order_number
-    ? parseInt(data.order_number.replace('GVR-WI-', ''), 10) || 0
-    : 0
-  return `GVR-WI-${String(lastNum + 1).padStart(4, '0')}`
-}
-
 export default function WalkInBilling({ branch }) {
   const { user } = useAuth()
   const [products, setProducts]   = useState([])
@@ -57,23 +42,22 @@ export default function WalkInBilling({ branch }) {
     if (totalBags === 0) return
     setPlacing(true)
     try {
-      // FIX #6: use MAX-based order number
-      const orderNumber = await getNextWalkInNumber()
-
+      const { count } = await supabase.from('orders').select('*',{count:'exact',head:true})
+      const orderNumber = `GVR-WI-${String((count||0)+1).padStart(4,'0')}`
       const { data: order, error: oErr } = await supabase.from('orders').insert({
-        order_number:     orderNumber,
-        customer_id:      null,
-        customer_name:    custName || 'Walk-in Customer',
+        order_number:   orderNumber,
+        customer_id:    null,
+        customer_name:  custName || 'Walk-in Customer',
         delivery_address: `Walk-in — ${branch} Branch`,
-        total_amount:     grand,
-        status:           'delivered',
-        order_type:       'walkin',
-        pickup_branch:    branch,
-        pickup_ready:     true,
-        payment_status:   'paid',
-        payment_method:   payMethod,
-        notes:            `Walk-in billing by ${user?.full_name || user?.username}${custPhone ? ` · Phone: ${custPhone}` : ''}`,
-        created_at:       new Date().toISOString()
+        total_amount:   grand,
+        status:         'delivered',
+        order_type:     'walkin',
+        pickup_branch:  branch,
+        pickup_ready:   true,
+        payment_status: 'paid',
+        payment_method: payMethod,
+        notes:          `Walk-in billing by ${user?.full_name || user?.username}${custPhone ? ` · Phone: ${custPhone}` : ''}`,
+        created_at:     new Date().toISOString()
       }).select().single()
       if (oErr || !order) throw new Error(oErr?.message || 'Failed')
 
@@ -83,7 +67,34 @@ export default function WalkInBilling({ branch }) {
           name: p.name, weight_kg: p.weight_kg,
           quantity: cart[p.id], price_per_unit: p.price_per_bag
         })
-        // Reduce branch stock
+
+        // ✅ FIX: this previously only decremented branch_stock, never
+        // products.stock_bags — the CENTRAL stock number that
+        // CustomerShop.jsx checks before letting an online customer add
+        // an item to their cart, and that Dashboard.jsx's Inventory tab
+        // displays as the overall picture. A walk-in sale at a branch
+        // reduced that branch's local count but left the global total
+        // unchanged, so the app could still show a product as "in
+        // stock" online after it had actually sold out at that branch's
+        // physical counter. Now both are updated in the same
+        // transaction-like sequence, keeping online and in-store
+        // inventory numbers consistent with each other.
+        const { data: product } = await supabase.from('products')
+          .select('stock_bags').eq('id', p.id).single()
+        if (product) {
+          await supabase.from('products').update({
+            stock_bags: Math.max(0, product.stock_bags - cart[p.id])
+          }).eq('id', p.id)
+          await supabase.from('stock_movements').insert({
+            product_id: p.id,
+            change_bags: -cart[p.id],
+            type: 'sale',
+            note: `Walk-in sale at ${branch} · ${orderNumber}`,
+            created_at: new Date().toISOString()
+          })
+        }
+
+        // Reduce branch stock (unchanged from before)
         const { data: bs } = await supabase.from('branch_stock')
           .select('stock_bags').eq('branch_name', branch).eq('product_id', p.id).single()
         if (bs) {
@@ -99,7 +110,6 @@ export default function WalkInBilling({ branch }) {
           })
         }
       }
-
       setSuccess({ orderNumber, items: products.filter(p=>cart[p.id]).map(p=>({...p,qty:cart[p.id]})), grand, payMethod })
       setCart({}); setCustName(''); setCustPhone(''); setPay('cash')
     } catch(e) { alert('Error: ' + e.message) }
@@ -133,12 +143,11 @@ export default function WalkInBilling({ branch }) {
 
   return (
     <div style={{ fontFamily:"'Inter',sans-serif" }}>
-      {/* Success receipt */}
       {success && (
         <div style={{ background:G.greenLight, border:`1px solid #97C459`, borderRadius:14, padding:16, marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
           <div>
             <p style={{ margin:'0 0 3px', fontWeight:700, fontSize:15, color:G.greenDark }}>✅ Billed — {success.orderNumber}</p>
-            <p style={{ margin:0, fontSize:13, color:G.green }}>{success.items.reduce((s,i)=>s+i.qty,0)} bags · ₹{success.grand}</p>
+            <p style={{ margin:0, fontSize:13, color:G.green }}>{totalBags === 0 ? `${success.items.reduce((s,i)=>s+i.qty,0)} bags · ₹${success.grand}` : ''}</p>
           </div>
           <div style={{ display:'flex', gap:8 }}>
             <button onClick={() => printReceipt(success)} style={{ padding:'8px 16px', background:G.green, color:G.white, border:'none', borderRadius:9, fontSize:13, fontWeight:700, cursor:'pointer' }}>🖨 Print Receipt</button>
@@ -148,7 +157,7 @@ export default function WalkInBilling({ branch }) {
       )}
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 300px', gap:16, alignItems:'start' }}>
-        {/* Products */}
+
         <div>
           <p style={{ margin:'0 0 12px', fontSize:14, fontWeight:700, color:G.text }}>Select Products</p>
           {products.map(p => {
@@ -171,9 +180,9 @@ export default function WalkInBilling({ branch }) {
           })}
         </div>
 
-        {/* Bill panel */}
         <div style={{ background:G.white, borderRadius:14, padding:18, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', position:'sticky', top:70 }}>
           <p style={{ margin:'0 0 14px', fontWeight:700, fontSize:15 }}>Bill Summary</p>
+
           {totalBags === 0 ? (
             <p style={{ textAlign:'center', color:G.muted, fontSize:13, padding:'20px 0' }}>No items added yet</p>
           ) : (
