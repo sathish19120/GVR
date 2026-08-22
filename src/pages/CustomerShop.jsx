@@ -798,9 +798,9 @@ export default function CustomerShop() {
       }).select().single()
       if (oErr || !order) throw new Error(oErr?.message || 'Failed to create order')
       for (const p of products.filter(p => cart[p.id])) {
-        await supabase.from('order_items').insert({ order_id:order.id, product_id:p.id, name:p.name, weight_kg:p.weight_kg, quantity:cart[p.id], price_per_unit:p.price_per_bag })
-        await supabase.from('products').update({ stock_bags: Math.max(0, p.stock_bags - cart[p.id]) }).eq('id', p.id)
-      }
+    await supabase.from('order_items').insert({ order_id:order.id, product_id:p.id, name:p.name, weight_kg:p.weight_kg, quantity:cart[p.id], price_per_unit:p.price_per_bag })
+    await supabase.rpc('deplete_product_stock', { p_product_id: p.id, p_qty: cart[p.id], p_note: `Order ${orderNumber}` })
+  }
       localStorage.removeItem('gvr_cart')
       try {
         if (Notification.permission === 'granted') {
