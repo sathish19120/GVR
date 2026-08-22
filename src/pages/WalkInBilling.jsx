@@ -79,20 +79,10 @@ export default function WalkInBilling({ branch }) {
         // physical counter. Now both are updated in the same
         // transaction-like sequence, keeping online and in-store
         // inventory numbers consistent with each other.
-        const { data: product } = await supabase.from('products')
-          .select('stock_bags').eq('id', p.id).single()
-        if (product) {
-          await supabase.from('products').update({
-            stock_bags: Math.max(0, product.stock_bags - cart[p.id])
-          }).eq('id', p.id)
-          await supabase.from('stock_movements').insert({
-            product_id: p.id,
-            change_bags: -cart[p.id],
-            type: 'sale',
-            note: `Walk-in sale at ${branch} · ${orderNumber}`,
-            created_at: new Date().toISOString()
-          })
-        }
+        await supabase.rpc('deplete_product_stock', {
+          p_product_id: p.id, p_qty: cart[p.id],
+          p_note: `Walk-in sale at ${branch} · ${orderNumber}`
+        })
 
         // Reduce branch stock (unchanged from before)
         const { data: bs } = await supabase.from('branch_stock')
