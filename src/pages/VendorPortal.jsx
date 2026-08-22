@@ -147,26 +147,23 @@ export default function VendorPortal() {
       if (oErr || !order) throw new Error(oErr?.message || 'Failed to create order')
 
       // ✅ FIX: B2B orders previously only inserted order_items and never
-      // touched products.stock_bags — unlike CustomerShop.jsx and
-      // Dashboard.jsx's NewOrderModal, which both deduct stock on order
-      // placement. This meant wholesale orders (often the largest
-      // quantities, e.g. 50-500 bags) silently drifted the recorded
-      // inventory away from the true physical stock, since the system
-      // had no record that those bags were committed to a vendor order.
-      // Now mirrors the same pattern used everywhere else in the app.
-      const cartProducts = products.filter(p => cart[p.id])
-      const cartProducts = products.filter(p => cart[p.id])
-  for (const p of cartProducts) {
-    await supabase.from('order_items').insert({
-      order_id: order.id, product_id: p.id,
-      name: p.name, weight_kg: p.weight_kg,
-      quantity: cart[p.id], price_per_unit: p.price_per_bag
-    })
-    await supabase.rpc('deplete_product_stock', {
-      p_product_id: p.id, p_qty: cart[p.id],
-      p_note: `B2B order ${orderNumber} — ${bizName}`
-    })
-  }
+      // touched stock at all. Now deducts via deplete_product_stock()
+      // (the FIFO batch-aware RPC introduced this session), which both
+      // updates products.stock_bags AND keeps batches.remaining_bags
+      // accurate — in one call, no separate stock_movements insert
+      // needed since the RPC logs that internally.
+      for (const p of products.filter(p => cart[p.id])) {
+        await supabase.from('order_items').insert({
+          order_id: order.id, product_id: p.id,
+          name: p.name, weight_kg: p.weight_kg,
+          quantity: cart[p.id], price_per_unit: p.price_per_bag
+        })
+        await supabase.rpc('deplete_product_stock', {
+          p_product_id: p.id,
+          p_qty: cart[p.id],
+          p_note: `B2B order ${orderNumber} — ${bizName}`
+        })
+      }
 
       setOrderNum(orderNumber); setCart({}); setAddress(''); setUtrRef('')
       setStep('success')
