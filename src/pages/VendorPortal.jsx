@@ -155,23 +155,18 @@ export default function VendorPortal() {
       // had no record that those bags were committed to a vendor order.
       // Now mirrors the same pattern used everywhere else in the app.
       const cartProducts = products.filter(p => cart[p.id])
-      for (const p of cartProducts) {
-        await supabase.from('order_items').insert({
-          order_id: order.id, product_id: p.id,
-          name: p.name, weight_kg: p.weight_kg,
-          quantity: cart[p.id], price_per_unit: p.price_per_bag
-        })
-        await supabase.from('products')
-          .update({ stock_bags: Math.max(0, p.stock_bags - cart[p.id]) })
-          .eq('id', p.id)
-        await supabase.from('stock_movements').insert({
-          product_id: p.id,
-          change_bags: -cart[p.id],
-          type: 'sale',
-          note: `B2B order ${orderNumber} — ${bizName}`,
-          created_at: new Date().toISOString()
-        })
-      }
+      const cartProducts = products.filter(p => cart[p.id])
+  for (const p of cartProducts) {
+    await supabase.from('order_items').insert({
+      order_id: order.id, product_id: p.id,
+      name: p.name, weight_kg: p.weight_kg,
+      quantity: cart[p.id], price_per_unit: p.price_per_bag
+    })
+    await supabase.rpc('deplete_product_stock', {
+      p_product_id: p.id, p_qty: cart[p.id],
+      p_note: `B2B order ${orderNumber} — ${bizName}`
+    })
+  }
 
       setOrderNum(orderNumber); setCart({}); setAddress(''); setUtrRef('')
       setStep('success')
