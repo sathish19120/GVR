@@ -10,22 +10,8 @@ const G = {
 }
 
 const BRANCHES = ['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu']
-const BUSINESS_TYPES = ['Restaurant','Hotel','Hostel','Tiffin Center','Grocery Store','Canteen','Other']
 
-// FIX: MAX-based order number — no duplicates when orders are deleted
-async function getNextBulkOrderNumber() {
-  const { data } = await supabase
-    .from('orders')
-    .select('order_number')
-    .like('order_number', 'GVR-BULK-%')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const lastNum = data?.order_number
-    ? parseInt(data.order_number.replace('GVR-BULK-', ''), 10) || 0
-    : 0
-  return `GVR-BULK-${String(lastNum + 1).padStart(4, '0')}`
-}
+const BUSINESS_TYPES = ['Restaurant','Hotel','Hostel','Tiffin Center','Grocery Store','Canteen','Other']
 
 export default function BulkOrderForm() {
   const { user } = useAuth()
@@ -72,40 +58,51 @@ export default function BulkOrderForm() {
     if (orderType === 'pickup' && !branch) { setError('Select pickup branch'); return }
     setError(''); setPlacing(true)
     try {
-      // FIX: use MAX-based order number
-      const orderNumber = await getNextBulkOrderNumber()
-
+      const { count } = await supabase.from('orders').select('*',{count:'exact',head:true})
+      const orderNumber = `GVR-BULK-${String((count||0)+1).padStart(4,'0')}`
       const { data: order, error: oErr } = await supabase.from('orders').insert({
-        order_number:     orderNumber,
-        customer_id:      user?.id || null,
-        customer_name:    `${bizName} (${bizType||'Business'})`,
+        order_number:   orderNumber,
+        customer_id:    user?.id || null,
+        customer_name:  `${bizName} (${bizType||'Business'})`,
         delivery_address: orderType === 'pickup' ? `Pickup: ${branch}${pickupTime?' · '+pickupTime:''}` : address,
-        total_amount:     grand,
-        status:           'pending',
-        order_type:       'bulk',
-        pickup_branch:    orderType === 'pickup' ? branch : null,
-        pickup_time:      orderType === 'pickup' ? pickupTime : null,
-        business_name:    bizName,
-        bag_count:        totalBags,
-        payment_status:   utrRef.trim() ? 'paid' : 'pending',
-        payment_method:   payMethod,
-        notes:            `Bulk Order · ${contactName || user?.full_name || ''} · ${phone}${utrRef?' · Ref:'+utrRef:''}${notes?' · '+notes:''}`,
-        created_at:       new Date().toISOString()
+        total_amount:   grand,
+        status:         'pending',
+        order_type:     'bulk',
+        pickup_branch:  orderType === 'pickup' ? branch : null,
+        pickup_time:    orderType === 'pickup' ? pickupTime : null,
+        business_name:  bizName,
+        bag_count:      totalBags,
+        payment_status: utrRef.trim() ? 'paid' : 'pending',
+        payment_method: payMethod,
+        notes:          `Bulk Order · ${contactName || user?.full_name || ''} · ${phone}${utrRef?' · Ref:'+utrRef:''}${notes?' · '+notes:''}`,
+        created_at:     new Date().toISOString()
       }).select().single()
       if (oErr || !order) throw new Error(oErr?.message)
 
+      // ✅ FIX: previously only inserted order_items and never touched
+      // products.stock_bags — same gap already fixed in VendorPortal.jsx
+      // for B2B orders. Bulk orders require a minimum of 10 bags per
+      // product, so leaving stock untouched drifted recorded inventory
+      // away from reality with every bulk order. Now mirrors the
+      // pattern already used in CustomerShop.jsx, Dashboard.jsx's
+      // NewOrderModal, and the fixed VendorPortal.jsx.
       for (const p of products.filter(p => cart[p.id])) {
         await supabase.from('order_items').insert({
           order_id: order.id, product_id: p.id,
           name: p.name, weight_kg: p.weight_kg,
           quantity: cart[p.id], price_per_unit: p.price_per_bag
         })
-        // Decrement stock for bulk orders
-        await supabase.from('products').update({
-          stock_bags: Math.max(0, p.stock_bags - cart[p.id])
-        }).eq('id', p.id)
+        await supabase.from('products')
+          .update({ stock_bags: Math.max(0, p.stock_bags - cart[p.id]) })
+          .eq('id', p.id)
+        await supabase.from('stock_movements').insert({
+          product_id: p.id,
+          change_bags: -cart[p.id],
+          type: 'sale',
+          note: `Bulk order ${orderNumber} — ${bizName}`,
+          created_at: new Date().toISOString()
+        })
       }
-
       setSuccess(orderNumber)
       setCart({}); setBizName(''); setPhone(''); setAddress(''); setUtrRef(''); setNotes('')
     } catch(e) { setError(e.message || 'Failed to place order') }
@@ -138,7 +135,6 @@ export default function BulkOrderForm() {
 
       {error && <div style={{ background:G.redLight, border:`1px solid #FECACA`, borderRadius:10, padding:'10px 14px', marginBottom:14, color:G.red, fontSize:13 }}>{error}</div>}
 
-      {/* Business details */}
       <div style={{ background:G.white, borderRadius:14, padding:18, marginBottom:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
         <p style={{ fontWeight:700, margin:'0 0 14px', fontSize:15 }}>Business Details</p>
         <div style={{ display:'grid', gap:12 }}>
@@ -175,7 +171,6 @@ export default function BulkOrderForm() {
         </div>
       </div>
 
-      {/* Products */}
       <div style={{ background:G.white, borderRadius:14, padding:18, marginBottom:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
         <p style={{ fontWeight:700, margin:'0 0 14px', fontSize:15 }}>Order Quantity</p>
         {products.map(p => (
@@ -183,7 +178,7 @@ export default function BulkOrderForm() {
             <span style={{ fontSize:20 }}>🌾</span>
             <div style={{ flex:1 }}>
               <p style={{ margin:'0 0 2px', fontWeight:600, fontSize:14 }}>{p.name}</p>
-              <p style={{ margin:0, fontSize:12, color:G.muted }}>₹{p.price_per_bag}/bag · {p.weight_kg}kg · {p.stock_bags} in stock</p>
+              <p style={{ margin:0, fontSize:12, color:G.muted }}>₹{p.price_per_bag}/bag · {p.weight_kg}kg</p>
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <input type="number" min={0} value={cart[p.id]||''} onChange={e=>updateCart(p.id,e.target.value)}
@@ -201,7 +196,6 @@ export default function BulkOrderForm() {
         )}
       </div>
 
-      {/* Delivery / Pickup */}
       <div style={{ background:G.white, borderRadius:14, padding:18, marginBottom:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
         <p style={{ fontWeight:700, margin:'0 0 12px', fontSize:15 }}>Delivery / Pickup</p>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
@@ -235,7 +229,6 @@ export default function BulkOrderForm() {
         )}
       </div>
 
-      {/* Payment */}
       <div style={{ background:G.white, borderRadius:14, padding:18, marginBottom:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
         <p style={{ fontWeight:700, margin:'0 0 12px', fontSize:15 }}>Payment</p>
         {[['upi','📱','UPI Payment','Scan QR — instant'],['cod','💵','Pay on Pickup/Delivery','Pay when order arrives']].map(([val,icon,label,sub])=>(
@@ -251,6 +244,7 @@ export default function BulkOrderForm() {
             <div style={{ background:G.white, display:'inline-block', padding:8, borderRadius:10, border:`1px solid ${G.border}`, marginBottom:10 }}>
               <img src={qrUrl} alt="UPI QR" width={140} height={140} style={{ display:'block', borderRadius:6 }} />
             </div>
+            <p style={{ margin:'0 0 8px', fontSize:12, color:G.muted }}>Powered by UPI · Green Village Rice</p>
             <input type="text" value={utrRef} onChange={e=>setUtrRef(e.target.value.trim())} placeholder="Enter UPI Transaction ID after payment"
               style={{ width:'100%', padding:'9px 12px', borderRadius:9, border:`1.5px solid ${utrRef?G.green:G.border}`, fontSize:13, outline:'none', boxSizing:'border-box' }} />
             {utrRef && <p style={{ margin:'4px 0 0', fontSize:11, color:G.green }}>✓ Transaction ID saved</p>}
