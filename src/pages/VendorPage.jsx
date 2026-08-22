@@ -510,38 +510,40 @@ export default function VendorPage() {
   setLoading(false)
 }
 
-  async function updateVendorOrderPayment(orderId, paymentStatus) {
+   async function updateVendorOrderPayment(orderId, paymentStatus) {
     const confirmMessage =
       paymentStatus === 'paid'
         ? 'Are you sure you want to verify this payment?'
-        : 'Are you sure you want to reject this payment?'
-
+        : 'Are you sure you want to reject this payment? This will cancel the order.'
+ 
     if (!window.confirm(confirmMessage)) return
-
+ 
     const updateData = {
       payment_status: paymentStatus,
     }
-
+ 
     if (paymentStatus === 'paid') {
       updateData.status = 'confirmed'
+    } else if (paymentStatus === 'rejected') {
+      updateData.status = 'cancelled'
     }
-
+ 
     const { error } = await supabase
       .from('orders')
       .update(updateData)
       .eq('id', orderId)
-
+ 
     if (error) {
       alert(error.message)
       return
     }
-
+ 
     alert(
       paymentStatus === 'paid'
         ? 'Payment verified successfully'
-        : 'Payment rejected'
+        : 'Payment rejected — order has been cancelled'
     )
-
+ 
     load()
   }
 
