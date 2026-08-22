@@ -48,11 +48,23 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const { data, error } = await supabase.auth.signInWithPassword({ email: toEmail(email), password })
           if (error) throw error
-          const { data: profile } = await supabase
-            .from('users')
+
+          // ✅ FIX: table is "profiles", not "users" — the old "users"
+          // table does not exist in this Supabase project. The upsert
+          // was failing silently every time, leaving `user` as
+          // undefined/stale and breaking every RLS-protected insert
+          // downstream (e.g. placing an order) because customer_id
+          // sent by the app never matched auth.uid().
+          const { data: profile, error: profileErr } = await supabase
+            .from('profiles')
             .upsert({ id: data.user.id, email: data.user.email }, { onConflict: 'id' })
             .select()
             .single()
+
+          // ✅ FIX: surface the error instead of silently proceeding
+          // with an undefined profile.
+          if (profileErr) throw profileErr
+
           set({ user: profile as User, language: profile?.language || 'en' })
         } catch (e: any) {
           set({ error: e.message || 'Invalid email or password' })
@@ -66,10 +78,15 @@ export const useAuthStore = create<AuthStore>()(
         set({ loading: true, error: null })
         try {
           const { data, error } = await supabase.auth.signUp({ email: toEmail(email), password })
-          if (!error && data.user && name) {
-            await supabase.from("users").upsert({ id: data.user.id, email, name }, { onConflict: "id" })
-          }
           if (error) throw error
+
+          if (data.user && name) {
+            // ✅ FIX: "profiles" instead of "users"
+            const { error: profileErr } = await supabase
+              .from('profiles')
+              .upsert({ id: data.user.id, email, name }, { onConflict: 'id' })
+            if (profileErr) throw profileErr
+          }
         } catch (e: any) {
           set({ error: e.message || 'Failed to create account' })
           throw e
@@ -132,11 +149,16 @@ export const useAuthStore = create<AuthStore>()(
             email, token: otp, type: 'email'
           })
           if (error) throw error
-          const { data: profile } = await supabase
-            .from('users')
+
+          // ✅ FIX: "profiles" instead of "users"
+          const { data: profile, error: profileErr } = await supabase
+            .from('profiles')
             .upsert({ id: data.user!.id, email: data.user!.email }, { onConflict: 'id' })
             .select()
             .single()
+
+          if (profileErr) throw profileErr
+
           set({ user: profile as User, language: profile?.language || 'en' })
         } catch (e: any) {
           set({ error: e.message || 'Invalid OTP' })
@@ -155,7 +177,8 @@ export const useAuthStore = create<AuthStore>()(
         set({ language: lang })
         const user = get().user
         if (user) {
-          supabase.from('users').update({ language: lang }).eq('id', user.id)
+          // ✅ FIX: "profiles" instead of "users"
+          supabase.from('profiles').update({ language: lang }).eq('id', user.id)
         }
       },
 
