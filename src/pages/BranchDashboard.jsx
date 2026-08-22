@@ -111,18 +111,29 @@ export default function BranchDashboard() {
   }
 
   async function updateBranchStock(productId, productName, delta, type, note) {
-    const existing = branchStock.find(b => b.product_id === productId)
-    const newStock = Math.max(0, (existing?.stock_bags || 0) + delta)
-    await supabase.from('branch_stock').upsert({
-      branch_name: branch, product_id: productId,
-      product_name: productName, stock_bags: newStock,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'branch_name,product_id' })
-    await supabase.from('branch_stock_movements').insert({
-      branch_name: branch, product_id: productId,
-      product_name: productName, change_bags: delta,
-      type, note: note || null, created_at: new Date().toISOString()
+    // ✅ FIX: previously computed newStock from this component's own
+    // `branchStock` state (existing?.stock_bags + delta) and upserted
+    // that number directly. BranchStockPage.jsx (the owner's view of
+    // ALL branches) does the exact same kind of stale-read-then-upsert
+    // for the same branch_stock rows, completely independently. If both
+    // pages are open at once — an owner reviewing stock while a branch
+    // executive is also updating it — whichever save() lands second
+    // would silently overwrite the other's change instead of adding to
+    // it, because neither page's state knew about the other's update.
+    //
+    // Now calls the same apply_branch_stock_delta() Postgres function
+    // that BranchStockPage.jsx uses, which increments the CURRENT
+    // database value atomically. This keeps both pages numerically
+    // consistent no matter which one is used or how many are open.
+    const { error } = await supabase.rpc('apply_branch_stock_delta', {
+      p_branch_name: branch,
+      p_product_id: productId,
+      p_product_name: productName,
+      p_delta: delta,
+      p_type: type,
+      p_note: note || null
     })
+    if (error) { console.error(error); return }
     load()
   }
 
