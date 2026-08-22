@@ -7,11 +7,10 @@ import SupplierPage from './SupplierPage'
 import HomePage from './HomePage'
 import VendorPage from './VendorPage'
 import BranchStockPage from './BranchStockPage'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { supabase } from '../lib/supabase'
-import FinancePage from './FinancePage'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid, Cell
@@ -25,22 +24,19 @@ const G = {
 }
 
 const PAGES = [
-  { key:'home',        icon:'🏠', label:'Home' },         // FIX #9: added to PAGES so it's reachable
-  { key:'dashboard',   icon:'⊞',  label:'Dashboard' },
-  { key:'orders',      icon:'📋', label:'Orders' },
-  { key:'inventory',   icon:'📦', label:'Stock' },
-  { key:'analytics',   icon:'📊', label:'Analytics' },
-  { key:'finance',     icon:'💹', label:'Finance' },
-  { key:'users',       icon:'👥', label:'Users' },
-  { key:'admin',       icon:'⚙️', label:'Admin' },
-  { key:'branches',    icon:'🏪', label:'Branches' },
-  { key:'vendors',     icon:'🌾', label:'Vendors' },
-  { key:'batches',     icon:'📦', label:'Batches' },
-  { key:'pickup',      icon:'🏪', label:'Pickup Queue' },
-  { key:'bulk',        icon:'🏢', label:'Bulk Orders' },
-  { key:'suppliers',   icon:'🏭', label:'Suppliers' },
-  { key:'branchstock', icon:'📊', label:'Branch Stock' }, // FIX #8: unique icon
-  { key:'walkin',      icon:'🧾', label:'Walk-in Billing' }, // FIX #6: now reachable from sidebar
+  { key:'dashboard', icon:'⊞', label:'Dashboard' },
+  { key:'orders',    icon:'📋', label:'Orders' },
+  { key:'inventory', icon:'📦', label:'Inventory' },
+  { key:'analytics', icon:'📊', label:'Analytics' },
+  { key:'users',     icon:'👥', label:'Users' },
+  { key:'admin',     icon:'⚙️', label:'Admin' },
+  { key:'branches',  icon:'🏪', label:'Branches' },
+  { key:'vendors',   icon:'🌾', label:'Vendors' },
+  { key:'batches',   icon:'📦', label:'Batches' },
+  { key:'pickup',    icon:'🏪', label:'Pickup Queue' },
+  { key:'bulk',      icon:'🏢', label:'Bulk Orders' },
+  { key:'suppliers', icon:'🏭', label:'Suppliers' },
+  { key:'branchstock',icon:'🏭', label:'Branch Stock' },
 ]
 
 function Badge({ status }) {
@@ -70,7 +66,6 @@ function StatCard({ label, value, icon, color, bg }) {
   )
 }
 
-// ── Invoice PDF Generator ──────────────────────────────────
 function generateInvoice(order, items) {
   const itemRows = items.map(i => `
     <tr>
@@ -107,7 +102,6 @@ function generateInvoice(order, items) {
   w.print()
 }
 
-// ── New Order Modal ────────────────────────────────────────
 function NewOrderModal({ products, onClose, onSaved }) {
   const [customerName, setCustomerName] = useState('')
   const [address, setAddress] = useState('')
@@ -125,54 +119,28 @@ function NewOrderModal({ products, onClose, onSaved }) {
     return {...prev,[id]:qty}
   })
 
-  // FIX #6: wrapped in try/catch with rollback on failure
   async function save() {
     if (!customerName.trim() || Object.keys(cart).length === 0) return
     setSaving(true)
-    let order = null
     try {
-      // FIX #5: use MAX order_number to avoid duplicates when orders are deleted
-      const { data: maxRow } = await supabase
-        .from('orders')
-        .select('order_number')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      const lastNum = maxRow?.order_number
-        ? parseInt(maxRow.order_number.replace('GVR-', ''), 10)
-        : 0
-      const orderNumber = `GVR-${String(lastNum + 1).padStart(4, '0')}`
-
-      const { data: newOrder, error: orderErr } = await supabase.from('orders').insert({
+      const { count } = await supabase.from('orders').select('*',{count:'exact',head:true})
+      const orderNumber = `GVR-${String((count||0)+1).padStart(4,'0')}`
+      const { data: order } = await supabase.from('orders').insert({
         order_number: orderNumber, customer_name: customerName,
         delivery_address: address, total_amount: grand,
-        branch: 'Hyderabad', order_type: 'delivery',
         status:'pending', payment_status:'pending', payment_method: payMethod,
         created_at: new Date().toISOString()
       }).select().single()
-
-      if (orderErr) throw orderErr
-      order = newOrder
-
       for (const p of products.filter(p => cart[p.id])) {
-        const { error: itemErr } = await supabase.from('order_items').insert({
-          order_id: order.id, product_id: p.id, name: p.name,
-          weight_kg: p.weight_kg, quantity: cart[p.id], price_per_unit: p.price_per_bag
+        await supabase.from('order_items').insert({
+          order_id:order.id, product_id:p.id, name:p.name,
+          weight_kg:p.weight_kg, quantity:cart[p.id], price_per_unit:p.price_per_bag
         })
-        if (itemErr) throw itemErr
+        await supabase.from('products').update({stock_bags: p.stock_bags - cart[p.id]}).eq('id',p.id)
       }
       onSaved(); onClose()
-    } catch(e) {
-      console.error('Order save failed:', e)
-      // Rollback: delete the order if it was created but items failed
-      if (order?.id) {
-        await supabase.from('order_items').delete().eq('order_id', order.id)
-        await supabase.from('orders').delete().eq('id', order.id)
-      }
-      alert('Failed to save order. Please try again.')
-    } finally {
-      setSaving(false)
-    }
+    } catch(e){ console.error(e) }
+    finally { setSaving(false) }
   }
 
   return (
@@ -196,7 +164,6 @@ function NewOrderModal({ products, onClose, onSaved }) {
         </div>
         <div style={{ marginBottom:16 }}>
           <label style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:8, display:'block' }}>Select Products</label>
-          {/* FIX #1: removed stray logout button that was here */}
           {products.filter(p=>p.active).map(p => (
             <div key={p.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:`1px solid ${G.border}` }}>
               <div>
@@ -228,7 +195,6 @@ function NewOrderModal({ products, onClose, onSaved }) {
   )
 }
 
-// ── Stock Modal ────────────────────────────────────────────
 function StockModal({ product, onClose, onSaved }) {
   const [bags, setBags] = useState('')
   const [type, setType] = useState('add')
@@ -287,7 +253,6 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [page, setPage]     = useState('dashboard')
   const [filter, setFilter] = useState('monthly')
-  // Sidebar is kept permanently open so the left navigation column stays fixed
   const [collapsed, setCollapsed] = useState(false)
   const [orders, setOrders]   = useState([])
   const [products, setProducts] = useState([])
@@ -302,43 +267,16 @@ export default function Dashboard() {
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [newOrderAlert, setNewOrderAlert] = useState(0)
   const [orderSearch, setOrderSearch] = useState('')
-  const [orderBranchFilter, setOrderBranchFilter] = useState('all')
+  const [selectedBranch, setSelectedBranch] = useState('all')
   const [orderStatusFilter, setOrderStatusFilter] = useState('all')
   const [orderPayFilter, setOrderPayFilter] = useState('all')
   const [orderDateFilter, setOrderDateFilter] = useState('all')
-  const [orderView, setOrderView] = useState('active')
-  const [selectedOrderIds, setSelectedOrderIds] = useState([])
-  const [ordersCompact, setOrdersCompact] = useState(true)
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
-  // Branch stock notification bell
-const [showNotifications, setShowNotifications] = useState(false)
-const [stockNotifications, setStockNotifications] = useState([])
-const [notificationSeenAt, setNotificationSeenAt] = useState(
-  () => localStorage.getItem('gvr_stock_notifications_seen_at') || ''
-)
-
-const normalizedRole = String(profile?.role || '').toLowerCase().replace(/[\s_-]/g, '')
-const rawRole = String(profile?.role || '').toLowerCase()
-
-const canSeeStockNotifications =
-  normalizedRole === 'superadmin' ||
-  normalizedRole === 'admin' ||
-  rawRole.includes('super') ||
-  rawRole.includes('admin')
-  // FIX #10: pagination state
-  const [ordersPage, setOrdersPage] = useState(1)
-  const ORDERS_PER_PAGE = 20
-  const statsPendingRef = useRef(0)
-
-  // FIX #10: reset to page 1 when any filter changes
-  useEffect(() => { setOrdersPage(1); setSelectedOrderIds([]) }, [orderSearch, invoiceSearch, orderStatusFilter, orderPayFilter, orderBranchFilter, orderDateFilter, orderView])
-  useEffect(() => { statsPendingRef.current = stats.pending }, [stats.pending])
 
   useEffect(() => { load() }, [filter])
 
-  // Auto refresh every 30 seconds
   useEffect(() => {
     if (!autoRefresh || page !== 'orders') return
     const interval = setInterval(async () => {
@@ -349,21 +287,20 @@ const canSeeStockNotifications =
           .order('created_at', { ascending: false })
         const newOrders = data || []
         const pendingCount = newOrders.filter(o => o.status === 'pending').length
-        // FIX #7: read from ref instead of stale closure
-        if (pendingCount > statsPendingRef.current) {
-          setNewOrderAlert(pendingCount - statsPendingRef.current)
+        if (pendingCount > stats.pending) {
+          setNewOrderAlert(pendingCount - stats.pending)
         }
         setOrders(newOrders)
         setLastRefresh(new Date())
       } catch(e) { console.error('Auto refresh error:', e) }
     }, 30000)
     return () => clearInterval(interval)
-  }, [autoRefresh, page])
+  }, [autoRefresh, page, stats.pending])
 
   async function load() {
     setLoading(true)
     const [oRes, pRes, uRes, mRes] = await Promise.all([
-      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,order_type,branch,pickup_branch,pickup_time,notes,created_at,stock_deducted,stock_deducted_at,stock_deducted_note,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(500),
+      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,notes,created_at,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(200),
       supabase.from('products').select('*').order('weight_kg'),
       supabase.from('profiles').select('id,username,full_name,role,phone,branch,created_at,active').order('created_at',{ascending:false}),
       supabase.from('stock_movements').select('id,product_id,change_bags,type,note,created_at,products(name)').order('created_at',{ascending:false}).limit(30),
@@ -379,88 +316,7 @@ const canSeeStockNotifications =
     setChart(buildChart(o, filter))
     setLoading(false)
   }
-   async function loadStockNotifications() {
-  if (!canSeeStockNotifications) return
 
-  try {
-    const { data, error } = await supabase
-      .from('branch_stock')
-      .select('*')
-      .order('updated_at', { ascending: false })
-
-    if (error) throw error
-
-    const alerts = (data || [])
-      .map(row => {
-        const stock = Number(row.stock_bags || 0)
-        const threshold = Number(row.low_stock_threshold || row.threshold || 5)
-        const productName = row.product_name || row.product || row.name || 'Product'
-        const branchName = row.branch_name || row.branch || 'Branch'
-
-        if (stock <= 0) {
-          return {
-            id: `zero-${branchName}-${row.product_id || productName}`,
-            level: 'critical',
-            icon: '🚨',
-            title: 'Branch stock is empty',
-            message: `${branchName} has 0 bags of ${productName}. Add stock immediately.`,
-            branch: branchName,
-            product: productName,
-            stock,
-            threshold,
-            created_at: row.updated_at || row.created_at || new Date().toISOString(),
-          }
-        }
-
-        if (stock <= threshold) {
-          return {
-            id: `low-${branchName}-${row.product_id || productName}`,
-            level: 'warning',
-            icon: '⚠️',
-            title: 'Low branch stock',
-            message: `${branchName} has only ${stock} bags of ${productName}. Threshold is ${threshold}.`,
-            branch: branchName,
-            product: productName,
-            stock,
-            threshold,
-            created_at: row.updated_at || row.created_at || new Date().toISOString(),
-          }
-        }
-
-        return null
-      })
-      .filter(Boolean)
-      .sort((a, b) => {
-        const levelRank = { critical: 0, warning: 1 }
-        return (levelRank[a.level] - levelRank[b.level]) || (a.stock - b.stock)
-      })
-
-    setStockNotifications(alerts)
-  } catch (error) {
-    console.error('Stock notification load failed:', error)
-  }
-}
-
-function markStockNotificationsRead() {
-  const now = new Date().toISOString()
-  localStorage.setItem('gvr_stock_notifications_seen_at', now)
-  setNotificationSeenAt(now)
-}
-
-const unreadStockNotifications = stockNotifications.filter(n => {
-  if (!notificationSeenAt) return true
-  return new Date(n.created_at) > new Date(notificationSeenAt)
-}).length
-
-useEffect(() => {
-  if (!canSeeStockNotifications) return
-
-  loadStockNotifications()
-  const interval = setInterval(loadStockNotifications, 60000)
-
-  return () => clearInterval(interval)
-}, [canSeeStockNotifications])
-  
   function buildChart(o, f) {
     const now = new Date()
     const keys=[], labels=[]
@@ -474,239 +330,38 @@ useEffect(() => {
     return keys.map((k,i)=>({ name:labels[i], revenue:o.filter(x=>x.created_at?.startsWith(k)).reduce((s,x)=>s+Number(x.total_amount||0),0), orders:o.filter(x=>x.created_at?.startsWith(k)).length }))
   }
 
-  // Stock is now handled by Supabase triggers:
-  // - order_items insert automatically deducts branch_stock
-  // - orders status changed to cancelled automatically restores branch_stock
-  // Keep Dashboard status changes simple to prevent double deduction/restoration.
   async function updateOrderStatus(id, status) {
-    const order = orders.find(o => o.id === id)
-
-    if (!order) {
-      alert('Order not found.')
-      return
-    }
-
-    if (status === 'cancelled' && !window.confirm('Cancel this order?')) return
-
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status })
-        .eq('id', id)
-
-      if (error) throw error
-
-      await load()
-    } catch (error) {
-      console.error('Order status update failed:', error)
-      alert(error.message || 'Unable to update order status.')
-    }
+    await supabase.from('orders').update({ status }).eq('id', id)
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o))
   }
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
 
-
-  function getOrderBranch(order) {
-    return order?.pickup_branch || order?.branch || 'Hyderabad'
-  }
-
-  const ACTIVE_STATUSES = ['pending','confirmed','packed','dispatched']
-  const HISTORY_STATUSES = ['delivered','cancelled']
-  const ORDER_QUEUE_TABS = [
-    { key:'active',     label:'Active',        icon:'⚡', statuses:ACTIVE_STATUSES },
-    { key:'pending',    label:'New',           icon:'🆕', statuses:['pending'] },
-    { key:'payment',    label:'Payment Check', icon:'💳' },
-    { key:'confirmed',  label:'Confirmed',     icon:'✅', statuses:['confirmed'] },
-    { key:'packed',     label:'Packed',        icon:'📦', statuses:['packed'] },
-    { key:'dispatched', label:'Dispatched',    icon:'🚚', statuses:['dispatched'] },
-    { key:'history',    label:'History',       icon:'🗄️', statuses:HISTORY_STATUSES },
-  ]
-
-  function isPaymentPending(order) {
-    const paymentStatus = order?.payment_status || 'pending'
-    const method = order?.payment_method || ''
-    return paymentStatus !== 'paid' && method !== 'cod'
-  }
-
-  function orderMatchesQueue(order, view) {
-    if (view === 'all') return true
-    if (view === 'active') return ACTIVE_STATUSES.includes(order.status)
-    if (view === 'history') return HISTORY_STATUSES.includes(order.status)
-    if (view === 'payment') return isPaymentPending(order)
-    return order.status === view
-  }
-
-  const orderQueueCounts = {
-    active: orders.filter(o => ACTIVE_STATUSES.includes(o.status)).length,
-    pending: orders.filter(o => o.status === 'pending').length,
-    payment: orders.filter(isPaymentPending).length,
-    confirmed: orders.filter(o => o.status === 'confirmed').length,
-    packed: orders.filter(o => o.status === 'packed').length,
-    dispatched: orders.filter(o => o.status === 'dispatched').length,
-    history: orders.filter(o => HISTORY_STATUSES.includes(o.status)).length,
-  }
-
-  // Orders V2: queue-based filtering keeps the page clean as order volume grows.
-  const filteredOrders = orders.filter(o => {
-    const matchQueue = orderMatchesQueue(o, orderView)
-    const matchSearch = !orderSearch ||
-      o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) ||
-      o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) ||
-      o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
-    const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
-    const matchStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter
-    const matchPay = orderPayFilter === 'all' || o.payment_method === orderPayFilter || (orderPayFilter === 'unpaid' && isPaymentPending(o))
-    const branchName = getOrderBranch(o)
-    const matchBranch = orderBranchFilter === 'all' || branchName === orderBranchFilter
-    const now = new Date()
-    let matchDate = true
-    if (orderDateFilter === 'today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
-    else if (orderDateFilter === 'week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
-    else if (orderDateFilter === 'month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
-    return matchQueue && matchSearch && matchInvoice && matchStatus && matchPay && matchBranch && matchDate
-  })
-
-  const selectedOrders = orders.filter(o => selectedOrderIds.includes(o.id))
-
-  function toggleOrderSelection(id) {
-    setSelectedOrderIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  }
-
-  function toggleCurrentPageSelection() {
-    const pageIds = paginatedOrders.map(o => o.id)
-    setSelectedOrderIds(prev => {
-      const allSelected = pageIds.length > 0 && pageIds.every(id => prev.includes(id))
-      if (allSelected) return prev.filter(id => !pageIds.includes(id))
-      return Array.from(new Set([...prev, ...pageIds]))
+  function getFilteredOrders() {
+    return orders.filter(o => {
+      const matchSearch = !orderSearch ||
+        o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+        o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+        o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
+      const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
+      const matchStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter
+      const matchPay = orderPayFilter === 'all' || o.payment_method === orderPayFilter
+      const now = new Date()
+      let matchDate = true
+      if (orderDateFilter === 'today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
+      else if (orderDateFilter === 'week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
+      else if (orderDateFilter === 'month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
+      return matchSearch && matchInvoice && matchStatus && matchPay && matchDate
     })
-  }
-
-  async function bulkUpdateSelectedStatus(status) {
-    if (!selectedOrderIds.length) return
-    if (status === 'cancelled' && !window.confirm(`Cancel ${selectedOrderIds.length} selected order(s)?`)) return
-    try {
-      const { error } = await supabase.from('orders').update({ status }).in('id', selectedOrderIds)
-      if (error) throw error
-      setSelectedOrderIds([])
-      await load()
-    } catch (e) {
-      console.error('Bulk status update failed:', e)
-      alert(e.message || 'Unable to update selected orders')
-    }
-  }
-
-  async function bulkMarkSelectedPaid() {
-    if (!selectedOrderIds.length) return
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ payment_status:'paid' })
-        .in('id', selectedOrderIds)
-      if (error) throw error
-      setSelectedOrderIds([])
-      await load()
-    } catch (e) {
-      console.error('Bulk payment update failed:', e)
-      alert(e.message || 'Unable to mark selected orders as paid')
-    }
-  }
-
-  function bulkPrintInvoices() {
-    selectedOrders.forEach(o => generateInvoice(o, o.order_items || []))
-  }
-
-  // FIX #9: export orders CSV — inline, no external dependency
-  function handleExportOrders() {
-    if (!filteredOrders.length) { alert('No orders to export'); return }
-    const headers = ['Order Number','Date','Customer','Address','Items','Total','Status','Payment','Payment Status']
-    const rows = filteredOrders.map(o => [
-      o.order_number,
-      o.created_at ? new Date(o.created_at).toLocaleDateString('en-IN') : '',
-      o.customer_name || '',
-      o.delivery_address || '',
-      (o.order_items||[]).map(i=>`${i.name}x${i.quantity}`).join(' | '),
-      Number(o.total_amount||0).toFixed(2),
-      o.status || '',
-      o.payment_method || '',
-      o.payment_status || ''
-    ])
-    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n')
-    const blob = new Blob(['\uFEFF'+csv], { type:'text/csv;charset=utf-8;' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `GVR_Orders_${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-  }
-
-  // FIX #9: export stock CSV — inline
-  function handleExportStock() {
-    const headers = ['Product','SKU','Weight(kg)','Price/Bag','Stock(Bags)','Low Stock Threshold','Status']
-    const rows = products.map(p => [p.name, p.sku||'', p.weight_kg, p.price_per_bag, p.stock_bags||0, p.low_stock_threshold||50, p.active?'Active':'Inactive'])
-    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n')
-    const blob = new Blob(['\uFEFF'+csv], { type:'text/csv;charset=utf-8;' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `GVR_Stock_${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-  }
-
-  // FIX #10: paginate filtered orders
-  const totalOrderPages  = Math.ceil(filteredOrders.length / ORDERS_PER_PAGE)
-  const paginatedOrders  = filteredOrders.slice(
-    (ordersPage - 1) * ORDERS_PER_PAGE,
-    ordersPage * ORDERS_PER_PAGE
-  )
-  const allCurrentPageSelected = paginatedOrders.length > 0 && paginatedOrders.every(o => selectedOrderIds.includes(o.id))
-  function OrderActions({ o }) {
-    return (
-      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-        {o.payment_status==='pending' && o.payment_method!=='cod' && (
-          <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); load() }}
-            style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
-            💰 Mark Paid
-          </button>
-        )}
-        {o.payment_method==='cod' && o.payment_status==='pending' && (
-          <button onClick={async()=>{
-            await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes?o.notes+' · ':'')+'Cash collected by admin' }).eq('id',o.id)
-            load()
-          }} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
-            💵 Mark Cash Collected
-          </button>
-        )}
-        {o.payment_method==='cod' && o.payment_status==='paid' && (
-          <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.green }}>
-            ✅ Cash Collected
-          </span>
-        )}
-        {o.status==='pending'    && <button onClick={()=>updateOrderStatus(o.id,'confirmed')}  style={{ background:G.greenLight,  border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green,     cursor:'pointer' }}>✓ Confirm</button>}
-        {o.status==='confirmed'  && <button onClick={()=>updateOrderStatus(o.id,'packed')}     style={{ background:G.blueLight,   border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue,      cursor:'pointer' }}>📦 Pack</button>}
-        {o.status==='packed'     && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE',     border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED',   cursor:'pointer' }}>🚚 Dispatch</button>}
-        {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')}  style={{ background:G.greenLight,  border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green,     cursor:'pointer' }}>✅ Delivered</button>}
-        {o.status==='dispatched' && o.payment_status!=='paid' && (
-          <button onClick={async()=>{
-            await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes||'')+' · UPI paid on delivery' }).eq('id',o.id)
-            load()
-          }} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>
-            📱 UPI Paid
-          </button>
-        )}
-        {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
-        <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
-      </div>
-    )
   }
 
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
-      {/* FIX #10: mobile overlay — display toggled via useEffect above */}
-      {/* Overlay removed — not needed on web */}
+      <div className="dash-overlay" style={{ display:'none', position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:199 }} onClick={() => setCollapsed(true)} />
 
-      {/* TOP NAV MODALS */}
       {topModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }} onClick={()=>setTopModal(null)}>
           <div style={{ background:'#fff', borderRadius:20, width:'100%', maxWidth:600, maxHeight:'85vh', overflowY:'auto', padding:36 }} onClick={e=>e.stopPropagation()}>
-
             {topModal==='where' && <>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
                 <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>📍 Where We Work</h2>
@@ -738,7 +393,6 @@ useEffect(() => {
                 <p style={{ margin:0, fontSize:13, color:'#27500A' }}>Same-day delivery available for orders placed before <strong>12:00 PM</strong>. Free delivery on orders above <strong>₹500</strong>.</p>
               </div>
             </>}
-
             {topModal==='what' && <>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
                 <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>🌾 What We Do</h2>
@@ -753,7 +407,7 @@ useEffect(() => {
                   { icon:'⚙️', title:'Fresh Milling', desc:'Rice is milled in small batches to preserve freshness. Every pack carries the milling date — you always know how fresh your rice is.' },
                   { icon:'📦', title:'Quality Packing', desc:'Available in 1 kg, 5 kg and 25 kg packs (25 kg coming soon). FSSAI-compliant packaging with best-before dates.' },
                   { icon:'🚪', title:'Doorstep Delivery', desc:'Orders placed through our app are delivered to your home within hours. Track your delivery in real time.' },
-                  { icon:'💰', title:'Fair Pricing', desc:'By cutting out wholesalers and retailers, we offer premium rice at transparent prices — Sona Masoori 1kg ₹68, Sona Masoori 5kg ₹320, Basmati 1kg ₹95, and Basmati 5kg ₹440.' },
+                  { icon:'💰', title:'Fair Pricing', desc:'By cutting out wholesalers and retailers, we offer premium rice at transparent prices.' },
                 ].map(item => (
                   <div key={item.title} style={{ display:'flex', gap:14, padding:'14px 16px', background:'#F9FAF7', borderRadius:12, borderLeft:'3px solid #3B6D11' }}>
                     <span style={{ fontSize:24, flexShrink:0 }}>{item.icon}</span>
@@ -765,7 +419,6 @@ useEffect(() => {
                 ))}
               </div>
             </>}
-
             {topModal==='about' && <>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
                 <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>🌾 About Green Village Rice</h2>
@@ -780,10 +433,7 @@ useEffect(() => {
                 </div>
               </div>
               <p style={{ color:'#6B7280', fontSize:14, lineHeight:1.8, marginBottom:20 }}>
-                Green Village Rice was founded with a simple belief — <em style={{color:'#3B6D11', fontStyle:'italic'}}>every family deserves fresh, clean rice at a fair price</em>. We saw that most rice sold in Hyderabad had been sitting in warehouses for 6–12 months before reaching the customer. We decided to change that.
-              </p>
-              <p style={{ color:'#6B7280', fontSize:14, lineHeight:1.8, marginBottom:24 }}>
-                Today we operate a fully digital ordering system, a direct supply chain from Telangana farms, and a small but dedicated delivery team serving thousands of households across Hyderabad.
+                Green Village Rice was founded with a simple belief — <em style={{color:'#3B6D11', fontStyle:'italic'}}>every family deserves fresh, clean rice at a fair price</em>.
               </p>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:24 }}>
                 {[
@@ -799,14 +449,6 @@ useEffect(() => {
                   </div>
                 ))}
               </div>
-              <div style={{ background:'#EAF3DE', borderRadius:12, padding:'14px 18px' }}>
-                <p style={{ margin:'0 0 8px', fontWeight:700, fontSize:13, color:'#27500A' }}>Product Range</p>
-                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Basmati 1kg','₹95'],['Basmati 5kg','₹440']].map(([name,price])=>(
-                    <span key={name} style={{ fontSize:12, padding:'4px 12px', borderRadius:20, background:'#fff', color:'#3B6D11', fontWeight:600 }}>{name} — {price}</span>
-                  ))}
-                </div>
-              </div>
             </>}
           </div>
         </div>
@@ -815,56 +457,22 @@ useEffect(() => {
       {showNewOrder && <NewOrderModal products={products} onClose={()=>setShowNewOrder(false)} onSaved={load} />}
       {showStock && <StockModal product={showStock} onClose={()=>setShowStock(null)} onSaved={load} />}
 
-      {/* SIDEBAR */}
-      <aside className="dash-sidebar open" style={{ width:220, minWidth:220, maxWidth:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'none', position:'sticky', top:0, height:'100vh', overflow:'hidden', zIndex:50 }}>
-        <div style={{ padding:'18px 18px', borderBottom:`1px solid ${G.border}`, display:'flex', alignItems:'center', gap:10 }}>
+      <aside className={`dash-sidebar${!collapsed?' open':''}`} style={{ width:collapsed?60:220, flexShrink:0, background:G.white, borderRight:`1px solid ${G.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s, transform 0.25s', position:'sticky', top:0, height:'100vh', overflow:'hidden', zIndex:50 }}>
+        <div style={{ padding:collapsed?'18px 10px':'18px 18px', borderBottom:`1px solid ${G.border}`, display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:9, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌾</div>
-          <div><p style={{ margin:0, fontSize:13, fontWeight:700, color:G.greenDark }}>Green Village</p><p style={{ margin:0, fontSize:10, color:G.green2, fontWeight:600 }}>Rice Admin</p></div>
+          {!collapsed && <div><p style={{ margin:0, fontSize:13, fontWeight:700, color:G.greenDark }}>Green Village</p><p style={{ margin:0, fontSize:10, color:G.green2, fontWeight:600 }}>Rice Admin</p></div>}
         </div>
-        <nav style={{ flex:1, padding:'10px 6px', overflowY:'auto' }}>
-          <style>{`
-            .nav-item { position: relative; }
-            .nav-tooltip {
-              position: absolute;
-              left: calc(100% + 10px);
-              top: 50%;
-              transform: translateY(-50%);
-              background: #1F2937;
-              color: #fff;
-              font-size: 12px;
-              font-weight: 600;
-              padding: 5px 10px;
-              border-radius: 7px;
-              white-space: nowrap;
-              pointer-events: none;
-              opacity: 0;
-              transition: opacity 0.15s;
-              z-index: 9999;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-            }
-            .nav-tooltip::before {
-              content: '';
-              position: absolute;
-              right: 100%;
-              top: 50%;
-              transform: translateY(-50%);
-              border: 5px solid transparent;
-              border-right-color: #1F2937;
-            }
-            .nav-item:hover .nav-tooltip { opacity: 1; }
-          `}</style>
+        <nav style={{ flex:1, padding:'10px 6px' }}>
           {PAGES.map(item => (
-            <div key={item.key} className="nav-item">
-              <button onClick={()=>setPage(item.key)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
-                <span style={{ fontSize:17, flexShrink:0 }}>{item.icon}</span>
-                {item.label}
-              </button>
-              
-            </div>
+            <button key={item.key} onClick={()=>setPage(item.key)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:collapsed?'center':'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
+              <span style={{ fontSize:17, flexShrink:0 }}>{item.icon}</span>
+              {!collapsed && item.label}
+            </button>
           ))}
         </nav>
         <div style={{ padding:'8px 6px', borderTop:`1px solid ${G.border}`, flexShrink:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', marginBottom:6, background:'#F9FAF7', borderRadius:10 }}>
+          {!collapsed && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', marginBottom:6, background:'#F9FAF7', borderRadius:10 }}>
               <div style={{ width:30, height:30, borderRadius:'50%', background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:G.greenDark, flexShrink:0, overflow:'hidden' }}>
                 {profile?.avatar_url
                   ? <img src={profile.avatar_url} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
@@ -876,26 +484,21 @@ useEffect(() => {
                 <p style={{ margin:0, fontSize:10, color:G.muted, textTransform:'capitalize' }}>{profile?.role}</p>
               </div>
             </div>
-          <div className="nav-item" style={{ position:'relative' }}>
-            <button onClick={async()=>{ await signOut(); navigate('/login') }}
-              style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:'none', background:G.redLight, color:G.red, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'flex-start', gap:8, transition:'background 0.15s' }}
-              onMouseEnter={e=>e.currentTarget.style.background='#FECACA'}
-              onMouseLeave={e=>e.currentTarget.style.background=G.redLight}>
-              <span style={{ fontSize:16, flexShrink:0 }}>↩</span>
-              <span>Logout</span>
-            </button>
-            
-          </div>
+          )}
+          <button onClick={async()=>{ await signOut(); navigate('/login') }}
+            style={{ width:'100%', padding:collapsed?'9px 0':'9px 12px', borderRadius:10, border:'none', background:G.redLight, color:G.red, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:8, transition:'background 0.15s' }}
+            onMouseEnter={e=>e.currentTarget.style.background='#FECACA'}
+            onMouseLeave={e=>e.currentTarget.style.background=G.redLight}>
+            <span style={{ fontSize:16, flexShrink:0 }}>↩</span>
+            {!collapsed && <span>Logout</span>}
+          </button>
         </div>
       </aside>
 
-      {/* MAIN */}
       <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
-
-        {/* TOPBAR */}
         <header className="dash-topbar" style={{ background:G.white, borderBottom:`1px solid ${G.border}`, height:58, padding:'0 24px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:10 }}>
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-            <button type="button" onClick={()=>setCollapsed(false)} title="Sidebar is fixed" style={{ background:'none', border:'none', cursor:'default', fontSize:18, color:G.muted, padding:4 }}>☰</button>
+            <button onClick={()=>setCollapsed(!collapsed)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:G.muted, padding:4 }}>☰</button>
             <span style={{ fontSize:15, fontWeight:700, color:G.text }}>{PAGES.find(p=>p.key===page)?.label}</span>
           </div>
           <div className="dash-topbar-center" style={{ display:'flex', gap:2 }}>
@@ -906,239 +509,6 @@ useEffect(() => {
             ))}
           </div>
           <div style={{ display:'flex', gap:6 }}>
-            {/* Branch stock notification bell */}
-{canSeeStockNotifications && (
-  <div style={{ position: 'relative' }}>
-    <button
-      type="button"
-      onClick={() => {
-        const next = !showNotifications
-        setShowNotifications(next)
-
-        if (next) {
-          markStockNotificationsRead()
-          loadStockNotifications()
-        }
-      }}
-      title="Branch stock notifications"
-      aria-label="Branch stock notifications"
-      style={{
-        width: 38,
-        height: 38,
-        borderRadius: 13,
-        border: `1px solid ${G.border}`,
-        background: showNotifications ? G.greenLight : G.white,
-        color: G.greenDark,
-        cursor: 'pointer',
-        fontSize: 19,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: '0 1px 7px rgba(0,0,0,0.10)',
-        position: 'relative',
-      }}
-    >
-      🔔
-
-      {unreadStockNotifications > 0 && (
-        <span
-          style={{
-            position: 'absolute',
-            top: -6,
-            right: -6,
-            minWidth: 19,
-            height: 19,
-            padding: '0 5px',
-            borderRadius: 99,
-            background: G.red,
-            color: G.white,
-            fontSize: 10,
-            fontWeight: 900,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: `2px solid ${G.white}`,
-          }}
-        >
-          {unreadStockNotifications > 9 ? '9+' : unreadStockNotifications}
-        </span>
-      )}
-    </button>
-
-    {showNotifications && (
-      <div
-        style={{
-          position: 'absolute',
-          right: 0,
-          top: 46,
-          width: 380,
-          maxWidth: 'calc(100vw - 24px)',
-          background: G.white,
-          border: `1px solid ${G.border}`,
-          borderRadius: 16,
-          boxShadow: '0 18px 45px rgba(0,0,0,0.20)',
-          zIndex: 5000,
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            padding: '14px 16px',
-            borderBottom: `1px solid ${G.border}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <div>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: G.text }}>
-              Branch Stock Alerts
-            </p>
-            <p style={{ margin: '3px 0 0', fontSize: 11, color: G.muted }}>
-              Low and empty branch stock notifications
-            </p>
-          </div>
-
-          <button
-            onClick={loadStockNotifications}
-            style={{
-              border: 'none',
-              background: G.greenLight,
-              color: G.greenDark,
-              borderRadius: 9,
-              padding: '6px 9px',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            ↻
-          </button>
-        </div>
-
-        <div style={{ maxHeight: 360, overflowY: 'auto', padding: 10 }}>
-          {stockNotifications.length === 0 ? (
-            <div style={{ padding: '28px 12px', textAlign: 'center', color: G.muted }}>
-              <div style={{ fontSize: 30, marginBottom: 8 }}>✅</div>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: G.text }}>
-                No stock alerts
-              </p>
-              <p style={{ margin: '4px 0 0', fontSize: 12 }}>
-                All branch stock levels are safe.
-              </p>
-            </div>
-          ) : (
-            stockNotifications.map(n => (
-              <div
-                key={n.id}
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  padding: '10px 8px',
-                  borderRadius: 12,
-                  background: n.level === 'critical' ? G.redLight : G.amberLight,
-                  marginBottom: 8,
-                  border: `1px solid ${n.level === 'critical' ? '#FCA5A5' : '#FCD34D'}`,
-                }}
-              >
-                <div
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
-                    background: G.white,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 17,
-                    flexShrink: 0,
-                  }}
-                >
-                  {n.icon}
-                </div>
-
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <p
-                    style={{
-                      margin: '0 0 3px',
-                      fontSize: 13,
-                      fontWeight: 800,
-                      color: n.level === 'critical' ? G.red : G.amber,
-                    }}
-                  >
-                    {n.title}
-                  </p>
-
-                  <p style={{ margin: '0 0 6px', fontSize: 12, color: G.text, lineHeight: 1.35 }}>
-                    {n.message}
-                  </p>
-
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: G.white, color: G.muted }}>
-                      {n.branch}
-                    </span>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: G.white, color: G.muted }}>
-                      {n.product}
-                    </span>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: G.white, color: n.level === 'critical' ? G.red : G.amber }}>
-                      {n.stock} bags
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div
-          style={{
-            padding: 12,
-            borderTop: `1px solid ${G.border}`,
-            display: 'flex',
-            gap: 8,
-          }}
-        >
-          <button
-            onClick={() => {
-              setPage('branchstock')
-              setShowNotifications(false)
-            }}
-            style={{
-              flex: 1,
-              border: 'none',
-              background: G.green,
-              color: G.white,
-              borderRadius: 10,
-              padding: '9px 10px',
-              fontSize: 12,
-              fontWeight: 800,
-              cursor: 'pointer',
-            }}
-          >
-            Open Branch Stock
-          </button>
-
-          <button
-            onClick={() => setShowNotifications(false)}
-            style={{
-              border: `1px solid ${G.border}`,
-              background: G.white,
-              color: G.muted,
-              borderRadius: 10,
-              padding: '9px 12px',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    )}
-  </div>
-)}
             {['daily','monthly','yearly'].map(f=>(
               <button key={f} onClick={()=>setFilter(f)} style={{ padding:'5px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:filter===f?G.green:'#F3F4F6', color:filter===f?'#fff':G.muted }}>
                 {f.charAt(0).toUpperCase()+f.slice(1)}
@@ -1150,7 +520,6 @@ useEffect(() => {
         <main className="dash-main" style={{ flex:1, padding:'24px', overflowY:'auto', minWidth:0, maxWidth:'100%', height:'100vh' }}>
           {loading ? <div style={{ textAlign:'center', padding:80, color:G.muted }}>Loading...</div> : <>
 
-          {/* DASHBOARD */}
           {page==='dashboard' && <>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:24 }}>
               <StatCard label="Revenue" value={fmtRs(stats.revenue)} icon="💰" color={G.green} bg={G.greenLight} />
@@ -1205,7 +574,7 @@ useEffect(() => {
               </div>
               {orders.length===0 && <p style={{ textAlign:'center', padding:40, color:G.muted }}>No orders yet</p>}
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {orders.slice(0,8).map((o)=>(
+              {orders.slice(0,8).map((o,i)=>(
                 <div key={o.id} style={{ display:'flex', gap:0, border:`1px solid ${G.border}`, borderRadius:12, overflow:'hidden', background:G.white }}>
                   <div style={{ width:200, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'10px 12px' }}>
                     <p style={{ margin:'0 0 6px', fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase' }}>Items</p>
@@ -1239,200 +608,197 @@ useEffect(() => {
             </div>
           </>}
 
-          {/* ORDERS V2 — queue board for high order volume */}
           {page==='orders' && <>
-            <style>{`
-              .orders-v2-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-              .orders-v2-table th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 800; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; background: #F9FAF7; }
-              .orders-v2-table td { padding: 11px 12px; border-top: 1px solid #E5E7EB; vertical-align: middle; }
-              .orders-v2-row:hover { background: #F9FAF7; }
-              @media (max-width: 760px) {
-                .orders-v2-table { display: none; }
-                .orders-v2-mobile-list { display: flex !important; }
-              }
-            `}</style>
-
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:10 }}>
-              <div>
-                <h2 style={{ margin:'0 0 4px', fontSize:20, fontWeight:800, color:G.text }}>📋 Orders Queue</h2>
-                <p style={{ margin:0, fontSize:12, color:G.muted }}>Active orders first. Delivered and cancelled orders stay in History.</p>
-              </div>
-              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{ display:'flex', alignItems:'center', gap:6, background:G.white, border:`1px solid ${G.border}`, borderRadius:10, padding:'9px 16px', fontSize:13, fontWeight:700, cursor:'pointer', color:G.text, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-                  ↻ Refresh
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{
+                  display:'flex', alignItems:'center', gap:6,
+                  background:G.white, border:`1px solid ${G.border}`, borderRadius:10,
+                  padding:'9px 16px', fontSize:13, fontWeight:600, cursor:'pointer', color:G.text,
+                  boxShadow:'0 1px 4px rgba(0,0,0,0.06)'
+                }}>
+                  <span style={{ fontSize:15 }}>↻</span> Refresh
                 </button>
-                <button onClick={()=>setOrdersCompact(v=>!v)} style={{ background:G.white, border:`1px solid ${G.border}`, borderRadius:10, padding:'9px 14px', fontSize:13, fontWeight:700, cursor:'pointer', color:G.blue }}>
-                  {ordersCompact ? '▦ Compact' : '▤ Detailed'}
-                </button>
-                <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 18px', fontSize:14, fontWeight:800, cursor:'pointer' }}>+ New Order</button>
+                <div style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 14px', background:G.white, borderRadius:10, border:`1px solid ${G.border}`, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                  <div onClick={()=>setAutoRefresh(!autoRefresh)} style={{
+                    width:36, height:20, borderRadius:10, cursor:'pointer', transition:'background 0.2s', position:'relative',
+                    background: autoRefresh ? G.green : '#D1D5DB'
+                  }}>
+                    <div style={{ width:16, height:16, borderRadius:'50%', background:'white', position:'absolute', top:2, transition:'left 0.2s', left: autoRefresh ? 18 : 2 }} />
+                  </div>
+                  <span style={{ fontSize:12, color:G.muted, fontWeight:500 }}>
+                    {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
+                  </span>
+                </div>
+                <span style={{ fontSize:11, color:G.muted }}>
+                  Last updated: {lastRefresh.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
+                </span>
               </div>
+              <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 20px', fontSize:14, fontWeight:700, cursor:'pointer' }}>+ New Order</button>
             </div>
-
             {newOrderAlert > 0 && (
-              <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:12, padding:'10px 16px', marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
-                <span style={{ color:G.amber, fontWeight:700, fontSize:13 }}>🔔 {newOrderAlert} new order{newOrderAlert > 1 ? 's' : ''} received.</span>
+              <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:10, padding:'10px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ color:G.amber, fontWeight:600, fontSize:13 }}>
+                  🔔 {newOrderAlert} new order{newOrderAlert > 1 ? 's' : ''} received!
+                </span>
                 <button onClick={()=>setNewOrderAlert(0)} style={{ background:'none', border:'none', cursor:'pointer', color:G.amber, fontSize:16 }}>✕</button>
               </div>
             )}
 
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(135px,1fr))', gap:10, marginBottom:14 }}>
-              {ORDER_QUEUE_TABS.map(q => (
-                <button key={q.key} onClick={()=>{ setOrderView(q.key); setOrderStatusFilter('all') }} style={{ textAlign:'left', background:orderView===q.key?G.green:G.white, color:orderView===q.key?G.white:G.text, border:`1px solid ${orderView===q.key?G.green:G.border}`, borderRadius:14, padding:'12px 14px', cursor:'pointer', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
-                    <span style={{ fontSize:18 }}>{q.icon}</span>
-                    <span style={{ fontSize:20, fontWeight:900 }}>{orderQueueCounts[q.key] || 0}</span>
-                  </div>
-                  <p style={{ margin:0, fontSize:12, fontWeight:800 }}>{q.label}</p>
-                </button>
-              ))}
-            </div>
-
-            <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-              <div style={{ display:'grid', gridTemplateColumns:'minmax(220px,1fr) 180px', gap:10, marginBottom:12 }}>
-                <div style={{ position:'relative' }}>
+            <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ display:'flex', gap:10, marginBottom:12 }}>
+                <div style={{ position:'relative', flex:1 }}>
                   <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:15, color:G.muted }}>🔍</span>
-                  <input type="text" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="Search order number, customer, address..." style={{ width:'100%', padding:'10px 36px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }} />
+                  <input type="text" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)}
+                    placeholder="Search by order number or customer name..."
+                    style={{ width:'100%', padding:'10px 36px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
+                    onFocus={e=>e.target.style.borderColor=G.green}
+                    onBlur={e=>e.target.style.borderColor=G.border} />
                   {orderSearch && <button onClick={()=>setOrderSearch('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:16 }}>✕</button>}
                 </div>
-                <div style={{ position:'relative' }}>
+                <div style={{ position:'relative', width:200 }}>
                   <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:13, color:G.muted }}>🧾</span>
-                  <input type="text" value={invoiceSearch} onChange={e=>setInvoiceSearch(e.target.value)} placeholder="GVR-XXXX" style={{ width:'100%', padding:'10px 10px 10px 34px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }} />
+                  <input type="text" value={invoiceSearch} onChange={e=>setInvoiceSearch(e.target.value)}
+                    placeholder="Invoice / GVR-XXXX"
+                    style={{ width:'100%', padding:'10px 10px 10px 34px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
+                    onFocus={e=>e.target.style.borderColor=G.amber}
+                    onBlur={e=>e.target.style.borderColor=G.border} />
+                  {invoiceSearch && <button onClick={()=>setInvoiceSearch('')} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:G.muted, fontSize:14 }}>✕</button>}
                 </div>
               </div>
-
-              <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
-                <span style={{ fontSize:11, fontWeight:800, color:G.muted }}>Branch:</span>
+              <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:10, alignItems:'center' }}>
+                <span style={{ fontSize:11, fontWeight:600, color:G.muted, marginRight:4 }}>Branch:</span>
                 {['all','Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu'].map(b=>(
-                  <button key={b} onClick={()=>setOrderBranchFilter(b)} style={{ padding:'5px 11px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:700, background:orderBranchFilter===b?'#7C3AED':'#F3F4F6', color:orderBranchFilter===b?G.white:G.muted }}>
+                  <button key={b} onClick={()=>setStockBranchFilter(b)} style={{ padding:'4px 10px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:stockBranchFilter===b?'#7C3AED':'#F3F4F6', color:stockBranchFilter===b?G.white:G.muted }}>
                     {b==='all'?'All':b}
                   </button>
                 ))}
-                <div style={{ width:1, height:20, background:G.border, margin:'0 4px' }} />
-                {[['all','All Pay'],['cod','COD'],['upi','UPI'],['wallet','Wallet'],['bank','Bank'],['unpaid','Payment Pending']].map(([val,lbl])=>(
-                  <button key={val} onClick={()=>setOrderPayFilter(val)} style={{ padding:'5px 11px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:700, background:orderPayFilter===val?G.amber:'#F3F4F6', color:orderPayFilter===val?G.white:G.muted }}>{lbl}</button>
-                ))}
-                <div style={{ width:1, height:20, background:G.border, margin:'0 4px' }} />
-                {[['all','All Time'],['today','Today'],['week','This Week'],['month','This Month']].map(([val,lbl])=>(
-                  <button key={val} onClick={()=>setOrderDateFilter(val)} style={{ padding:'5px 11px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:700, background:orderDateFilter===val?G.blue:'#F3F4F6', color:orderDateFilter===val?G.white:G.muted }}>{lbl}</button>
-                ))}
-                <button onClick={handleExportOrders} style={{ marginLeft:'auto', padding:'5px 12px',borderRadius:20,border:`1px solid ${G.border}`,background:G.white,cursor:'pointer',fontSize:11,fontWeight:700,color:G.blue,display:'flex',alignItems:'center',gap:4 }}>
-                  ⬇ Export CSV
+              </div>
+              <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+                <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                  {[['all','All'],['pending','Pending'],['confirmed','Confirmed'],['packed','Packed'],['dispatched','Dispatched'],['delivered','Delivered'],['cancelled','Cancelled']].map(([val,lbl])=>(
+                    <button key={val} onClick={()=>setOrderStatusFilter(val)} style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderStatusFilter===val?G.green:'#F3F4F6', color:orderStatusFilter===val?G.white:G.muted }}>{lbl}</button>
+                  ))}
+                </div>
+                <div style={{ width:1, height:20, background:G.border }} />
+                <div style={{ display:'flex', gap:4 }}>
+                  {[['all','All Pay'],['cod','COD'],['upi','UPI'],['bank','Bank']].map(([val,lbl])=>(
+                    <button key={val} onClick={()=>setOrderPayFilter(val)} style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderPayFilter===val?G.amber:'#F3F4F6', color:orderPayFilter===val?G.white:G.muted }}>{lbl}</button>
+                  ))}
+                </div>
+                <div style={{ width:1, height:20, background:G.border }} />
+                <div style={{ display:'flex', gap:4 }}>
+                  {[['all','All Time'],['today','Today'],['week','This Week'],['month','This Month']].map(([val,lbl])=>(
+                    <button key={val} onClick={()=>setOrderDateFilter(val)} style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:orderDateFilter===val?G.blue:'#F3F4F6', color:orderDateFilter===val?G.white:G.muted }}>{lbl}</button>
+                  ))}
+                </div>
+                <span style={{ marginLeft:'auto', fontSize:12, color:G.muted, fontWeight:500 }}>
+                  {getFilteredOrders().length} of {orders.length} orders
+                </span>
+              </div>
+            </div>
+
+            {getFilteredOrders().length === 0 && (
+              <div style={{ textAlign:'center', padding:60, background:G.white, borderRadius:14, color:G.muted }}>
+                <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
+                <p style={{ fontWeight:600, color:G.text, margin:'0 0 4px' }}>No orders found</p>
+                <p style={{ fontSize:13 }}>Try a different search or filter</p>
+                <button onClick={()=>{ setOrderSearch(''); setOrderStatusFilter('all'); setOrderPayFilter('all'); setOrderDateFilter('all') }}
+                  style={{ marginTop:12, background:G.green, color:G.white, border:'none', borderRadius:8, padding:'8px 20px', fontWeight:600, cursor:'pointer', fontSize:13 }}>
+                  Clear Filters
                 </button>
               </div>
-            </div>
-
-            {selectedOrderIds.length > 0 && (
-              <div style={{ background:'#111827', color:G.white, borderRadius:14, padding:'12px 16px', marginBottom:14, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-                <strong style={{ fontSize:13 }}>{selectedOrderIds.length} selected</strong>
-                <button onClick={()=>bulkUpdateSelectedStatus('confirmed')} style={{ background:G.green, color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Confirm</button>
-                <button onClick={()=>bulkUpdateSelectedStatus('packed')} style={{ background:G.blue, color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Pack</button>
-                <button onClick={()=>bulkUpdateSelectedStatus('dispatched')} style={{ background:'#7C3AED', color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Dispatch</button>
-                <button onClick={()=>bulkUpdateSelectedStatus('delivered')} style={{ background:G.green2, color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Delivered</button>
-                <button onClick={bulkMarkSelectedPaid} style={{ background:G.amber, color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Mark Paid</button>
-                <button onClick={bulkPrintInvoices} style={{ background:G.blueLight, color:G.blue, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Print Invoices</button>
-                <button onClick={()=>bulkUpdateSelectedStatus('cancelled')} style={{ background:G.red, color:G.white, border:'none', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Cancel</button>
-                <button onClick={()=>setSelectedOrderIds([])} style={{ marginLeft:'auto', background:'transparent', color:G.white, border:'1px solid rgba(255,255,255,0.3)', borderRadius:8, padding:'7px 12px', fontSize:12, fontWeight:800, cursor:'pointer' }}>Clear</button>
-              </div>
             )}
-
-            <div style={{ background:G.white, borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
-              <div style={{ padding:'10px 14px', borderBottom:`1px solid ${G.border}`, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                <p style={{ margin:0, fontSize:13, fontWeight:800, color:G.text }}>{filteredOrders.length} order{filteredOrders.length===1?'':'s'} in {ORDER_QUEUE_TABS.find(q=>q.key===orderView)?.label || 'All'}</p>
-                <p style={{ margin:0, fontSize:11, color:G.muted }}>Last updated: {lastRefresh.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
-              </div>
-              {filteredOrders.length === 0 ? (
-                <div style={{ textAlign:'center', padding:60, color:G.muted }}>
-                  <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
-                  <p style={{ fontWeight:700, color:G.text, margin:'0 0 4px' }}>No orders found</p>
-                  <button onClick={()=>{ setOrderSearch(''); setInvoiceSearch(''); setOrderStatusFilter('all'); setOrderPayFilter('all'); setOrderDateFilter('all'); setOrderBranchFilter('all'); setOrderView('active') }} style={{ marginTop:12, background:G.green, color:G.white, border:'none', borderRadius:8, padding:'8px 20px', fontWeight:700, cursor:'pointer', fontSize:13 }}>Clear Filters</button>
-                </div>
-              ) : (
-                <>
-                  <div style={{ overflowX:'auto' }}>
-                    <table className="orders-v2-table">
-                      <thead>
-                        <tr>
-                          <th><input type="checkbox" checked={allCurrentPageSelected} onChange={toggleCurrentPageSelection} /></th>
-                          <th>Order</th>
-                          <th>Customer</th>
-                          <th>Branch</th>
-                          <th>Items</th>
-                          <th>Amount</th>
-                          <th>Payment</th>
-                          <th>Status</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {paginatedOrders.map(o => (
-                          <tr key={o.id} className="orders-v2-row">
-                            <td><input type="checkbox" checked={selectedOrderIds.includes(o.id)} onChange={()=>toggleOrderSelection(o.id)} /></td>
-                            <td style={{ whiteSpace:'nowrap' }}>
-                              <p style={{ margin:'0 0 3px', fontWeight:900, color:G.green }}>{o.order_number}</p>
-                              <p style={{ margin:0, fontSize:11, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
-                            </td>
-                            <td><p style={{ margin:0, fontWeight:700 }}>{o.customer_name || '—'}</p><p style={{ margin:0, fontSize:11, color:G.muted, maxWidth:170, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{o.delivery_address || '—'}</p></td>
-                            <td style={{ fontWeight:700, color:G.blue }}>{getOrderBranch(o)}</td>
-                            <td style={{ maxWidth:210 }}>{(o.order_items||[]).map(i => <span key={`${o.id}-${i.product_id}-${i.name}`} style={{ display:'inline-block', margin:'0 4px 4px 0', fontSize:11, padding:'3px 8px', borderRadius:20, background:G.greenLight, color:G.greenDark, fontWeight:700 }}>{i.name} × {i.quantity}</span>)}</td>
-                            <td style={{ fontWeight:900, color:G.green }}>{fmtRs(o.total_amount)}</td>
-                            <td>
-                              <p style={{ margin:'0 0 4px', fontSize:12, fontWeight:800, textTransform:'uppercase' }}>{o.payment_method || '—'}</p>
-                              <span style={{ fontSize:10, fontWeight:800, padding:'2px 8px', borderRadius:10, background:o.payment_status==='paid'?G.greenLight:isPaymentPending(o)?G.redLight:G.amberLight, color:o.payment_status==='paid'?G.green:isPaymentPending(o)?G.red:G.amber }}>
-                                {o.payment_status==='paid'?'Paid':isPaymentPending(o)?'Verify':'Pending'}
-                              </span>
-                            </td>
-                            <td><Badge status={o.status} /></td>
-                            <td><OrderActions o={o} /></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="orders-v2-mobile-list" style={{ display:'none', flexDirection:'column', gap:10, padding:12 }}>
-                    {paginatedOrders.map(o => (
-                      <div key={o.id} style={{ border:`1px solid ${G.border}`, borderRadius:14, padding:14 }}>
-                        <div style={{ display:'flex', justifyContent:'space-between', gap:10, marginBottom:8 }}>
-                          <div style={{ display:'flex', gap:8 }}>
-                            <input type="checkbox" checked={selectedOrderIds.includes(o.id)} onChange={()=>toggleOrderSelection(o.id)} />
-                            <div><p style={{ margin:'0 0 2px', fontWeight:900, color:G.green }}>{o.order_number}</p><p style={{ margin:0, fontSize:11, color:G.muted }}>{new Date(o.created_at).toLocaleString('en-IN')}</p></div>
-                          </div>
-                          <Badge status={o.status} />
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {getFilteredOrders().map((o,i)=>(
+              <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
+                <div style={{ display:'flex' }}>
+                  <div style={{ width:220, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'14px 16px' }}>
+                    <p style={{ margin:'0 0 10px', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px' }}>Items Ordered</p>
+                    {(o.order_items||[]).length===0 && <p style={{ margin:0, fontSize:12, color:G.muted }}>No items found</p>}
+                    {(o.order_items||[]).map((item,idx)=>(
+                      <div key={idx} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, padding:'8px 10px', background:G.white, borderRadius:8, border:`1px solid ${G.border}` }}>
+                        <div style={{ width:32, height:32, borderRadius:8, background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>🌾</div>
+                        <div style={{ minWidth:0 }}>
+                          <p style={{ margin:'0 0 1px', fontSize:12, fontWeight:700, color:G.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</p>
+                          <p style={{ margin:0, fontSize:11, color:G.muted }}>{item.weight_kg}kg × {item.quantity} = <strong style={{ color:G.green }}>₹{item.quantity*item.price_per_unit}</strong></p>
                         </div>
-                        <p style={{ margin:'0 0 4px', fontWeight:800 }}>{o.customer_name || '—'} · {fmtRs(o.total_amount)}</p>
-                        <p style={{ margin:'0 0 8px', fontSize:12, color:G.muted }}>{getOrderBranch(o)} · {(o.payment_method||'—').toUpperCase()} · {o.payment_status}</p>
-                        <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:10 }}>
-                          {(o.order_items||[]).map(i => <span key={`${o.id}-${i.product_id}-${i.name}`} style={{ fontSize:11, padding:'3px 8px', borderRadius:20, background:G.greenLight, color:G.greenDark, fontWeight:700 }}>{i.name} × {i.quantity}</span>)}
-                        </div>
-                        <OrderActions o={o} />
                       </div>
                     ))}
+                    <div style={{ marginTop:8, padding:'8px 10px', background:G.greenLight, borderRadius:8, display:'flex', justifyContent:'space-between' }}>
+                      <span style={{ fontSize:12, fontWeight:600, color:G.greenDark }}>Total</span>
+                      <span style={{ fontSize:14, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
+                    </div>
                   </div>
-                </>
-              )}
-            </div>
-
-            {totalOrderPages > 1 && (
-              <div style={{ display:'flex',justifyContent:'center',alignItems:'center',gap:8,padding:'20px 0',flexWrap:'wrap' }}>
-                <button onClick={()=>setOrdersPage(1)} disabled={ordersPage===1} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===1?'#F3F4F6':G.white,cursor:ordersPage===1?'not-allowed':'pointer',fontSize:12,color:ordersPage===1?G.muted:G.text }}>«</button>
-                <button onClick={()=>setOrdersPage(p=>Math.max(1,p-1))} disabled={ordersPage===1} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===1?'#F3F4F6':G.white,cursor:ordersPage===1?'not-allowed':'pointer',fontSize:12,color:ordersPage===1?G.muted:G.text }}>‹ Prev</button>
-                {Array.from({length:Math.min(5,totalOrderPages)},(_,i)=>{
-                  let p = i+1
-                  if(totalOrderPages>5){
-                    if(ordersPage<=3) p=i+1
-                    else if(ordersPage>=totalOrderPages-2) p=totalOrderPages-4+i
-                    else p=ordersPage-2+i
-                  }
-                  return <button key={p} onClick={()=>setOrdersPage(p)} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${ordersPage===p?G.green:G.border}`,background:ordersPage===p?G.green:G.white,cursor:'pointer',fontSize:12,fontWeight:ordersPage===p?800:500,color:ordersPage===p?G.white:G.text }}>{p}</button>
-                })}
-                <button onClick={()=>setOrdersPage(p=>Math.min(totalOrderPages,p+1))} disabled={ordersPage===totalOrderPages} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===totalOrderPages?'#F3F4F6':G.white,cursor:ordersPage===totalOrderPages?'not-allowed':'pointer',fontSize:12,color:ordersPage===totalOrderPages?G.muted:G.text }}>Next ›</button>
-                <button onClick={()=>setOrdersPage(totalOrderPages)} disabled={ordersPage===totalOrderPages} style={{ padding:'6px 12px',borderRadius:8,border:`1px solid ${G.border}`,background:ordersPage===totalOrderPages?'#F3F4F6':G.white,cursor:ordersPage===totalOrderPages?'not-allowed':'pointer',fontSize:12,color:ordersPage===totalOrderPages?G.muted:G.text }}>»</button>
-                <span style={{ fontSize:12,color:G.muted }}>Page {ordersPage} of {totalOrderPages} · showing {paginatedOrders.length} of {filteredOrders.length}</span>
+                  <div style={{ flex:1, padding:'14px 16px' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+                      <div>
+                        <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15, color:G.green }}>{o.order_number}</p>
+                        <p style={{ margin:0, fontSize:12, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
+                      </div>
+                      <Badge status={o.status} />
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+                      <div><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Customer</p><p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text }}>{o.customer_name||'—'}</p></div>
+                      <div>
+                        <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p>
+                        <p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
+                        <span style={{ fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:10,
+                          background: o.payment_status==='paid' ? G.greenLight : o.payment_method==='cod' ? G.amberLight : G.redLight,
+                          color: o.payment_status==='paid' ? G.green : o.payment_method==='cod' ? G.amber : G.red }}>
+                          {o.payment_status==='paid' ? '✅ Paid' : o.payment_method==='cod' ? '💵 COD Pending' : '⏳ Unpaid'}
+                        </span>
+                      </div>
+                      <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Address</p><p style={{ margin:0, fontSize:13, color:G.text }}>{o.delivery_address||'—'}</p></div>
+                      {o.notes && (
+                        <div style={{ gridColumn:'1/-1' }}>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment Reference</p>
+                          <p style={{ margin:0, fontSize:13, color:G.green, fontWeight:600 }}>🧾 {o.notes}</p>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                      {o.payment_status==='pending' && o.payment_method!=='cod' && (
+                        <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); load() }}
+                          style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
+                          💰 Mark Paid
+                        </button>
+                      )}
+                      {o.payment_method==='cod' && o.payment_status==='pending' && (
+                        <button onClick={async()=>{
+                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes?o.notes+' · ':'')+'Cash collected by admin' }).eq('id',o.id)
+                          load()
+                        }} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
+                          💵 Mark Cash Collected
+                        </button>
+                      )}
+                      {o.payment_method==='cod' && o.payment_status==='paid' && (
+                        <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.green }}>
+                          ✅ Cash Collected
+                        </span>
+                      )}
+                      {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
+                      {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
+                      {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
+                      {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
+                      {o.status==='dispatched' && o.payment_status!=='paid' && (
+                        <button onClick={async()=>{
+                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes||'')+' · UPI paid on delivery' }).eq('id',o.id)
+                          load()
+                        }} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>
+                          📱 UPI Paid
+                        </button>
+                      )}
+                      {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
+                      <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
+            ))}
+            </div>
           </>}
 
-          {/* INVENTORY */}
           {page==='inventory' && <>
             <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', marginBottom:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
               <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
@@ -1443,10 +809,6 @@ useEffect(() => {
                   </button>
                 ))}
               </div>
-              {/* FIX #9: export stock */}
-              <button onClick={handleExportStock} style={{ marginLeft:'auto',padding:'6px 14px',borderRadius:20,border:`1px solid ${G.border}`,background:G.white,cursor:'pointer',fontSize:11,fontWeight:600,color:G.blue }}>
-                ⬇ Export CSV
-              </button>
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:16, marginBottom:24 }}>
               {products.map(p=>{
@@ -1497,7 +859,6 @@ useEffect(() => {
             </div>
           </>}
 
-          {/* ANALYTICS */}
           {page==='analytics' && <>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14, marginBottom:24 }}>
               <StatCard label="Total Revenue" value={fmtRs(stats.revenue)} icon="💰" color={G.green} bg={G.greenLight} />
@@ -1551,18 +912,14 @@ useEffect(() => {
             </div>
           </>}
 
-          {page==='vendors'     && <VendorPage />}
-          {page==='batches'     && <BatchPage />}
-          {page==='pickup'      && <PickupQueue />}
-          {page==='bulk'        && <BulkOrderForm />}
-          {page==='home'        && <HomePage />}
-          {page==='finance'     && <FinancePage />}
-          {page==='suppliers'   && <SupplierPage />}
+          {page==='vendors' && <VendorPage />}
+          {page==='batches' && <BatchPage />}
+          {page==='pickup' && <PickupQueue />}
+          {page==='bulk' && <BulkOrderForm />}
+          {page==='home' && <HomePage />}
+          {page==='suppliers' && <SupplierPage />}
           {page==='branchstock' && <BranchStockPage />}
-          {/* FIX #6: WalkInBilling now receives branch prop from profile */}
-          {page==='walkin'      && <WalkInBilling branch={profile?.branch || 'Hyderabad'} />}
 
-          {/* BRANCHES */}
           {page==='branches' && <>
             <div style={{ marginBottom:20 }}>
               <h2 style={{ margin:'0 0 6px', fontSize:18, fontWeight:700, color:G.greenDark }}>🏪 Our Branches</h2>
@@ -1576,7 +933,7 @@ useEffect(() => {
                 { city:'Anantapur', state:'Andhra Pradesh', icon:'🌾', address:'Subash Road, Anantapur - 515001', phone:'+91 98765 43213', status:'Active', color:G.blue, timings:'Mon-Sat: 9AM - 7PM' },
                 { city:'Tadipatri', state:'Andhra Pradesh', icon:'🏘️', address:'Main Bazaar, Tadipatri - 515411', phone:'+91 98765 43214', status:'Active', color:G.green2, timings:'Mon-Sat: 9AM - 6PM' },
                 { city:'Jammalamadugu', state:'Andhra Pradesh', icon:'🌿', address:'Bus Stand Road, Jammalamadugu - 516434', phone:'+91 98765 43215', status:'Active', color:G.green2, timings:'Mon-Sat: 9AM - 6PM' },
-              ].map((b)=>(
+              ].map((b,i)=>(
                 <div key={b.city} style={{ background:G.white, borderRadius:16, padding:'20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderTop:`4px solid ${b.color}` }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -1589,23 +946,33 @@ useEffect(() => {
                     <span style={{ fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:b.color+'18', color:b.color }}>{b.status}</span>
                   </div>
                   <div style={{ display:'grid', gap:8, fontSize:13 }}>
-                    <div style={{ display:'flex', gap:8, alignItems:'flex-start' }}><span style={{ fontSize:14, flexShrink:0 }}>📍</span><span style={{ color:G.muted, lineHeight:1.5 }}>{b.address}</span></div>
-                    <div style={{ display:'flex', gap:8, alignItems:'center' }}><span style={{ fontSize:14 }}>📞</span><span style={{ color:G.text, fontWeight:500 }}>{b.phone}</span></div>
-                    <div style={{ display:'flex', gap:8, alignItems:'center' }}><span style={{ fontSize:14 }}>🕐</span><span style={{ color:G.muted }}>{b.timings}</span></div>
+                    <div style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
+                      <span style={{ fontSize:14, flexShrink:0 }}>📍</span>
+                      <span style={{ color:G.muted, lineHeight:1.5 }}>{b.address}</span>
+                    </div>
+                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                      <span style={{ fontSize:14 }}>📞</span>
+                      <span style={{ color:G.text, fontWeight:500 }}>{b.phone}</span>
+                    </div>
+                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                      <span style={{ fontSize:14 }}>🕐</span>
+                      <span style={{ color:G.muted }}>{b.timings}</span>
+                    </div>
                   </div>
                   <div style={{ marginTop:14, display:'flex', gap:8 }}>
                     <a href={`https://maps.google.com/?q=${b.city}+Green+Village+Rice`} target="_blank" rel="noreferrer"
-                      style={{ flex:1, padding:'8px', background:G.blueLight, border:'none', borderRadius:8, fontSize:12, fontWeight:600, color:G.blue, textAlign:'center', textDecoration:'none' }}>
+                      style={{ flex:1, padding:'8px', background:G.blueLight, border:'none', borderRadius:8, fontSize:12, fontWeight:600, color:G.blue, textAlign:'center', textDecoration:'none', cursor:'pointer' }}>
                       🗺 Navigate
                     </a>
                     <a href={`tel:${b.phone.replace(/ /g,'')}`}
-                      style={{ flex:1, padding:'8px', background:G.greenLight, border:'none', borderRadius:8, fontSize:12, fontWeight:600, color:G.green, textAlign:'center', textDecoration:'none' }}>
+                      style={{ flex:1, padding:'8px', background:G.greenLight, border:'none', borderRadius:8, fontSize:12, fontWeight:600, color:G.green, textAlign:'center', textDecoration:'none', cursor:'pointer' }}>
                       📞 Call
                     </a>
                   </div>
                 </div>
               ))}
             </div>
+
             <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
               <p style={{ margin:'0 0 16px', fontSize:13, fontWeight:700 }}>Branch Network Summary</p>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12 }}>
@@ -1625,7 +992,6 @@ useEffect(() => {
             </div>
           </>}
 
-          {/* USERS */}
           {page==='users' && <>
             <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
               <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>All Users</p>
