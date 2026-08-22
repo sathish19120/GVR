@@ -15,25 +15,8 @@ const inp = {
   boxSizing:'border-box',
 }
 
-// FIX #10: MAX-based batch number — no duplicates when batches are deleted
-async function getNextBatchNumber(sku, packDate) {
-  const datePart = packDate.replace(/-/g,'')
-  const prefix = `GVR-${(sku||'PROD').replace('GVR-','')}-${datePart}-`
-  const { data } = await supabase
-    .from('batches')
-    .select('batch_number')
-    .like('batch_number', `${prefix}%`)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const lastNum = data?.batch_number
-    ? parseInt(data.batch_number.slice(prefix.length), 10) || 0
-    : 0
-  return `${prefix}${String(lastNum + 1).padStart(3, '0')}`
-}
-
-// ── Barcode Label Generator ───────────────────────────────
 function QRLabel({ batch, onClose }) {
+  const printRef = useRef()
   const barcodeVal = batch.batch_number
   const barcodeUrl = `https://barcodeapi.org/api/128/${encodeURIComponent(barcodeVal)}`
 
@@ -64,10 +47,7 @@ function QRLabel({ batch, onClose }) {
         ${Array(12).fill(0).map(() => `
         <div class="label">
           <div class="header">
-            <div>
-              <div class="brand">🌾 Green Village Rice</div>
-              <div class="telugu">గ్రీన్ విలేజ్ రైస్</div>
-            </div>
+            <div><div class="brand">&#x1F33E; Green Village Rice</div><div class="telugu">&#x0C17;&#x0C4D;&#x0C30;&#x0C40;&#x0C28;&#x0C4D; &#x0C35;&#x0C3F;&#x0C32;&#x0C47;&#x0C1C;&#x0C4D; &#x0C30;&#x0C48;&#x0C38;&#x0C4D;</div></div>
             <div style="font-size:7pt;color:#27500A;font-weight:700;text-align:right;">${batch.weight_kg}kg<br/>Pack</div>
           </div>
           <div class="product">${batch.product_name}</div>
@@ -77,11 +57,9 @@ function QRLabel({ batch, onClose }) {
             <div class="row">Origin<span>${batch.origin_district || 'Telangana'}</span></div>
             <div class="row">Mill<span>${batch.mill_name || 'GVR Mill'}</span></div>
           </div>
-          <div class="barcode-wrap">
-            <img src="${barcodeUrl}" alt="${barcodeVal}" />
-          </div>
-          <div class="batch-num">${batch.batch_number}</div>
-          <div class="fssai">FSSAI Lic. No: ${batch.fssai_no} | Hyderabad, Telangana</div>
+          <div class="barcode-wrap"><img src="${barcodeUrl}" alt="${barcodeVal}" /></div>
+          <div class="batch-num">${barcodeVal}</div>
+          <div class="fssai">FSSAI Lic. No: ${batch.fssai_no} &nbsp;|&nbsp; Hyderabad, Telangana</div>
         </div>`).join('')}
       </div>
       </body></html>
@@ -97,8 +75,7 @@ function QRLabel({ batch, onClose }) {
           <h3 style={{ margin:0,fontSize:18,fontWeight:700 }}>Barcode Label — {batch.batch_number}</h3>
           <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:G.muted }}>✕</button>
         </div>
-
-        <div style={{ border:`2px solid ${G.green}`,borderRadius:12,padding:16,marginBottom:16,background:'#FAFFF7' }}>
+        <div ref={printRef} style={{ border:`2px solid ${G.green}`,borderRadius:12,padding:16,marginBottom:16,background:'#FAFFF7' }}>
           <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10,paddingBottom:10,borderBottom:`1px solid ${G.border}` }}>
             <div>
               <p style={{ margin:'0 0 2px',fontWeight:800,fontSize:15,color:G.greenDark }}>🌾 Green Village Rice</p>
@@ -114,10 +91,7 @@ function QRLabel({ batch, onClose }) {
               ['Origin', batch.origin_district || 'Telangana'],
               ['Mill', batch.mill_name || 'GVR Mill'],
             ].map(([k,v])=>(
-              <div key={k}>
-                <p style={{ margin:0,fontSize:10,color:G.muted }}>{k}</p>
-                <p style={{ margin:0,fontWeight:600,fontSize:12 }}>{v}</p>
-              </div>
+              <div key={k}><p style={{ margin:0,fontSize:10,color:G.muted }}>{k}</p><p style={{ margin:0,fontWeight:600,fontSize:12 }}>{v}</p></div>
             ))}
           </div>
           <div style={{ textAlign:'center',background:G.white,padding:'10px',borderRadius:8,border:`1px solid ${G.border}`,marginBottom:8 }}>
@@ -126,21 +100,15 @@ function QRLabel({ batch, onClose }) {
           </div>
           <p style={{ margin:0,fontSize:10,color:G.muted,textAlign:'center' }}>FSSAI: {batch.fssai_no}</p>
         </div>
-
         <div style={{ background:G.greenLight,borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12,color:G.greenDark,display:'flex',gap:8,alignItems:'center' }}>
-          <span>📋</span>
-          <span>Prints <strong>12 labels per sheet</strong> — A4 paper, 2 columns × 6 rows.</span>
+          <span>📋</span><span>Prints <strong>12 labels per sheet</strong> — A4 paper, 2 columns × 6 rows.</span>
         </div>
-
-        <button onClick={printLabel} style={{ width:'100%',padding:13,background:G.green,color:G.white,border:'none',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer' }}>
-          🖨 Print 12 Barcode Labels
-        </button>
+        <button onClick={printLabel} style={{ width:'100%',padding:13,background:G.green,color:G.white,border:'none',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer' }}>🖨 Print 12 Barcode Labels</button>
       </div>
     </div>
   )
 }
 
-// ── Create Batch Modal ────────────────────────────────────
 function CreateBatchModal({ products, vendors, onClose, onSaved }) {
   const [productId, setProductId]   = useState('')
   const [vendorId, setVendorId]     = useState('')
@@ -159,35 +127,24 @@ function CreateBatchModal({ products, vendors, onClose, onSaved }) {
     if (!productId || !qty) { setError('Select product and enter quantity'); return }
     setSaving(true); setError('')
     try {
-      // FIX #10: use MAX-based batch number
-      const batchNum = await getNextBatchNumber(product?.sku || 'PROD', packDate)
+      const { count } = await supabase.from('batches').select('*',{count:'exact',head:true})
+      const datePart = packDate.replace(/-/g,'')
+      const batchNum = `GVR-${(product?.sku||'PROD').replace('GVR-','')}-${datePart}-${String((count||0)+1).padStart(3,'0')}`
 
       const { error: err } = await supabase.from('batches').insert({
-        batch_number:    batchNum,
-        product_id:      productId,
-        product_name:    product?.name || '',
-        vendor_id:       vendorId || null,
-        vendor_name:     vendors.find(v=>v.id===vendorId)?.name || null,
-        origin_district: origin,
-        quantity_bags:   parseInt(qty),
-        remaining_bags:  parseInt(qty),
-        weight_kg:       product?.weight_kg || 1,
-        packing_date:    packDate,
-        best_before:     bestBefore,
-        fssai_no:        fssai,
-        mill_name:       millName,
-        status:          'active',
-        created_at:      new Date().toISOString()
+        batch_number: batchNum, product_id: productId, product_name: product?.name || '',
+        vendor_id: vendorId || null, vendor_name: vendors.find(v=>v.id===vendorId)?.name || null,
+        origin_district: origin, quantity_bags: parseInt(qty), remaining_bags: parseInt(qty),
+        weight_kg: product?.weight_kg || 1, packing_date: packDate, best_before: bestBefore,
+        fssai_no: fssai, mill_name: millName, status: 'active', created_at: new Date().toISOString()
       })
       if (err) throw err
 
-      // Update product stock
+      // New batch stock still goes straight to products.stock_bags —
+      // this is fresh incoming stock, not a sale, so it's a direct add
+      // rather than going through deplete_product_stock().
       if (product) {
-        await supabase.from('products').update({
-          stock_bags: (product.stock_bags||0) + parseInt(qty),
-          packing_date: packDate,
-          best_before_date: bestBefore
-        }).eq('id', productId)
+        await supabase.from('products').update({ stock_bags: (product.stock_bags||0) + parseInt(qty), packing_date: packDate, best_before_date: bestBefore }).eq('id', productId)
       }
 
       onSaved(); onClose()
@@ -257,7 +214,6 @@ function CreateBatchModal({ products, vendors, onClose, onSaved }) {
   )
 }
 
-// ── Main BatchPage ────────────────────────────────────────
 export default function BatchPage() {
   const [batches, setBatches]   = useState([])
   const [products, setProducts] = useState([])
@@ -267,6 +223,7 @@ export default function BatchPage() {
   const [showQR, setShowQR]     = useState(null)
   const [tab, setTab]           = useState('active')
   const [search, setSearch]     = useState('')
+  const [statusUpdating, setStatusUpdating] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -283,9 +240,24 @@ export default function BatchPage() {
     setLoading(false)
   }
 
+  // ✅ FIX: previously did `.update({ status })` directly on batches,
+  // which never touched products.stock_bags. Recalling or exhausting a
+  // batch with bags still remaining had zero effect on total product
+  // stock — the app kept selling stock that had just been pulled from
+  // circulation. Now calls set_batch_status(), an atomic Postgres
+  // function that reverses (or restores, if reactivated) the correct
+  // amount of stock in the same operation as the status change.
   async function updateStatus(id, status) {
-    await supabase.from('batches').update({ status }).eq('id', id)
-    setBatches(prev => prev.map(b => b.id === id ? { ...b, status } : b))
+    setStatusUpdating(id)
+    try {
+      const { error } = await supabase.rpc('set_batch_status', { p_batch_id: id, p_status: status })
+      if (error) throw error
+      await load()
+    } catch(e) {
+      alert('Failed to update batch status: ' + e.message)
+    } finally {
+      setStatusUpdating(null)
+    }
   }
 
   const filtered = batches.filter(b => {
@@ -294,9 +266,10 @@ export default function BatchPage() {
     return matchTab && matchSearch
   })
 
-  const totalActive    = batches.filter(b=>b.status==='active').length
-  const totalBags      = batches.filter(b=>b.status==='active').reduce((s,b)=>s+b.remaining_bags,0)
+  const totalActive   = batches.filter(b=>b.status==='active').length
+  const totalBags     = batches.filter(b=>b.status==='active').reduce((s,b)=>s+b.remaining_bags,0)
   const totalExhausted = batches.filter(b=>b.status==='exhausted').length
+
   const fmtDate = d => new Date(d).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})
 
   return (
@@ -314,12 +287,19 @@ export default function BatchPage() {
         </button>
       </div>
 
+      <div style={{ background:G.blueLight, borderRadius:12, padding:'12px 16px', marginBottom:16, display:'flex', gap:10, alignItems:'center' }}>
+        <span style={{ fontSize:16 }}>ℹ️</span>
+        <p style={{ margin:0, fontSize:12, color:G.blue, lineHeight:1.6 }}>
+          "Remaining" now updates automatically as orders are placed (oldest batch sold first). Marking a batch Exhausted or Recalled correctly removes its remaining bags from total stock.
+        </p>
+      </div>
+
       <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12,marginBottom:20 }}>
         {[
-          { label:'Active Batches',  value:totalActive,    color:G.green,  bg:G.greenLight,  icon:'📦' },
-          { label:'Bags Available',  value:totalBags,      color:G.blue,   bg:G.blueLight,   icon:'🌾' },
-          { label:'Total Batches',   value:batches.length, color:G.purple, bg:G.purpleLight, icon:'📊' },
-          { label:'Exhausted',       value:totalExhausted, color:G.muted,  bg:'#F3F4F6',     icon:'✓' },
+          { label:'Active Batches',   value:totalActive,    color:G.green,  bg:G.greenLight,  icon:'📦' },
+          { label:'Bags Available',   value:totalBags,      color:G.blue,   bg:G.blueLight,   icon:'🌾' },
+          { label:'Total Batches',    value:batches.length, color:G.purple, bg:G.purpleLight, icon:'📊' },
+          { label:'Exhausted',        value:totalExhausted, color:G.muted,  bg:'#F3F4F6',     icon:'✓' },
         ].map((s,i)=>(
           <div key={i} style={{ background:G.white,borderRadius:14,padding:'16px 18px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',borderLeft:`4px solid ${s.color}` }}>
             <div style={{ display:'flex',justifyContent:'space-between' }}>
@@ -368,9 +348,10 @@ export default function BatchPage() {
           const isExpiringSoon = daysLeft <= 30 && daysLeft > 0
           const isExpired = daysLeft <= 0
           const usedPct = Math.round((1 - b.remaining_bags/b.quantity_bags) * 100)
+          const isUpdating = statusUpdating === b.id
 
           return (
-            <div key={b.id} style={{ background:G.white,borderRadius:16,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${isExpired?G.red:isExpiringSoon?G.amber:G.border}` }}>
+            <div key={b.id} style={{ background:G.white,borderRadius:16,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${isExpired?G.red:isExpiringSoon?G.amber:G.border}`,opacity:isUpdating?0.6:1 }}>
               <div style={{ display:'flex' }}>
                 <div style={{ width:130,flexShrink:0,background:'#F9FAF7',borderRight:`1px solid ${G.border}`,padding:'12px 10px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6 }}>
                   <img
@@ -379,9 +360,7 @@ export default function BatchPage() {
                     style={{ width:'100%',height:40,objectFit:'contain',background:G.white,padding:'3px',borderRadius:4,border:`1px solid ${G.border}` }}
                   />
                   <p style={{ margin:0,fontSize:8,color:G.muted,textAlign:'center',fontFamily:'monospace',lineHeight:1.3,wordBreak:'break-all' }}>{b.batch_number}</p>
-                  <button onClick={()=>setShowQR(b)} style={{ background:G.green,color:G.white,border:'none',borderRadius:6,padding:'4px 8px',fontSize:10,fontWeight:700,cursor:'pointer',width:'100%' }}>
-                    🖨 Print
-                  </button>
+                  <button onClick={()=>setShowQR(b)} style={{ background:G.green,color:G.white,border:'none',borderRadius:6,padding:'4px 8px',fontSize:10,fontWeight:700,cursor:'pointer',width:'100%' }}>🖨 Print</button>
                 </div>
 
                 <div style={{ flex:1,padding:'14px 16px' }}>
@@ -403,10 +382,10 @@ export default function BatchPage() {
 
                   <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:10 }}>
                     {[
-                      ['Total Bags',  b.quantity_bags,  G.blue],
-                      ['Remaining',   b.remaining_bags, b.remaining_bags<b.quantity_bags*0.2?G.red:G.green],
-                      ['Packed',      fmtDate(b.packing_date), G.muted],
-                      ['Best Before', fmtDate(b.best_before),  isExpired?G.red:isExpiringSoon?G.amber:G.muted],
+                      ['Total Bags',    b.quantity_bags,  G.blue],
+                      ['Remaining',     b.remaining_bags, b.remaining_bags<b.quantity_bags*0.2?G.red:G.green],
+                      ['Packed',        fmtDate(b.packing_date), G.muted],
+                      ['Best Before',   fmtDate(b.best_before),  isExpired?G.red:isExpiringSoon?G.amber:G.muted],
                     ].map(([label,val,color])=>(
                       <div key={label} style={{ background:'#F9FAF7',borderRadius:8,padding:'7px 9px' }}>
                         <p style={{ margin:'0 0 2px',fontSize:9,color:G.muted,textTransform:'uppercase',letterSpacing:'0.3px' }}>{label}</p>
@@ -436,12 +415,18 @@ export default function BatchPage() {
                     {b.status==='active' && (
                       <>
                         <button onClick={()=>setShowQR(b)} style={{ background:G.blueLight,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.blue,cursor:'pointer' }}>🖨 Print Barcode Labels</button>
-                        <button onClick={()=>updateStatus(b.id,'exhausted')} style={{ background:'#F3F4F6',border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.muted,cursor:'pointer' }}>Mark Exhausted</button>
-                        <button onClick={()=>updateStatus(b.id,'recalled')} style={{ background:G.redLight,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.red,cursor:'pointer' }}>⚠ Recall</button>
+                        <button onClick={()=>updateStatus(b.id,'exhausted')} disabled={isUpdating} style={{ background:'#F3F4F6',border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.muted,cursor:isUpdating?'not-allowed':'pointer' }}>
+                          {isUpdating?'...':'Mark Exhausted'}
+                        </button>
+                        <button onClick={()=>updateStatus(b.id,'recalled')} disabled={isUpdating} style={{ background:G.redLight,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.red,cursor:isUpdating?'not-allowed':'pointer' }}>
+                          {isUpdating?'...':'⚠ Recall'}
+                        </button>
                       </>
                     )}
                     {b.status!=='active' && (
-                      <button onClick={()=>updateStatus(b.id,'active')} style={{ background:G.greenLight,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.green,cursor:'pointer' }}>Reactivate</button>
+                      <button onClick={()=>updateStatus(b.id,'active')} disabled={isUpdating} style={{ background:G.greenLight,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.green,cursor:isUpdating?'not-allowed':'pointer' }}>
+                        {isUpdating?'...':'Reactivate'}
+                      </button>
                     )}
                   </div>
                 </div>
