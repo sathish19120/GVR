@@ -22,6 +22,7 @@ const inp = {
   boxSizing:'border-box',
 }
 
+// ── Update Branch Stock Modal ─────────────────────────────
 function UpdateStockModal({ branch, product, onClose, onSaved }) {
   const [type, setType]   = useState('add')
   const [bags, setBags]   = useState('')
@@ -33,6 +34,19 @@ function UpdateStockModal({ branch, product, onClose, onSaved }) {
     if (!n || n <= 0) return
     setSaving(true)
     try {
+      // ✅ THE ACTUAL SYNC FIX: previously computed newStock from
+      // product.stock_bags (a value already loaded into this page's
+      // React state, possibly stale) and wrote that number directly
+      // with upsert(). If two people had this page open — or this page
+      // and BranchDashboard's "My Stock" tab open at the same time —
+      // whichever save() ran last would overwrite the other's change
+      // instead of adding to it, which is exactly the "shows same data,
+      // updates don't stick" symptom you were seeing.
+      //
+      // Now calls apply_branch_stock_delta(), the Postgres function
+      // already installed in your database (confirmed run this
+      // session), which increments the row's CURRENT value atomically
+      // inside the database itself — never from a value read into JS.
       const delta = type === 'add' || type === 'transfer_in' ? n : -n
       const { error } = await supabase.rpc('apply_branch_stock_delta', {
         p_branch_name: branch,
@@ -45,7 +59,10 @@ function UpdateStockModal({ branch, product, onClose, onSaved }) {
       if (error) throw error
 
       onSaved(); onClose()
-    } catch(e) { console.error(e) }
+    } catch(e) {
+      console.error(e)
+      alert('Failed to update stock: ' + e.message)
+    }
     finally { setSaving(false) }
   }
 
@@ -72,6 +89,7 @@ function UpdateStockModal({ branch, product, onClose, onSaved }) {
           Current stock: <strong style={{ color:G.green }}>{product.stock_bags} bags</strong>
         </p>
 
+        {/* Type selector */}
         <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16 }}>
           {Object.entries(typeConfig).map(([val, cfg]) => (
             <button key={val} onClick={() => setType(val)} style={{
@@ -121,14 +139,15 @@ function UpdateStockModal({ branch, product, onClose, onSaved }) {
   )
 }
 
+// ── Main BranchStockPage ──────────────────────────────────
 export default function BranchStockPage() {
   const [branchStock, setBranchStock]   = useState([])
   const [movements, setMovements]       = useState([])
   const [products, setProducts]         = useState([])
   const [loading, setLoading]           = useState(true)
   const [selectedBranch, setSelected]   = useState('all')
-  const [updateModal, setUpdateModal]   = useState(null)
-  const [tab, setTab]                   = useState('overview')
+  const [updateModal, setUpdateModal]   = useState(null) // {branch, product}
+  const [tab, setTab]                   = useState('overview') // overview | movements
 
   useEffect(() => { load() }, [])
 
@@ -145,6 +164,8 @@ export default function BranchStockPage() {
     setLoading(false)
   }
 
+  // ✅ Auto-refresh every 15s so this page doesn't sit on stale data for
+  // long stretches while other pages/tabs update the same rows.
   useEffect(() => {
     const interval = setInterval(load, 15000)
     return () => clearInterval(interval)
@@ -152,9 +173,11 @@ export default function BranchStockPage() {
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
 
+  // Get stock for a specific branch+product
   const getStock = (branch, productId) =>
     branchStock.find(b => b.branch_name === branch && b.product_id === productId)
 
+  // Total stock across all branches per product
   const getBranchTotal = (branch) =>
     branchStock.filter(b => b.branch_name === branch).reduce((s,b) => s + (b.stock_bags||0), 0)
 
@@ -171,6 +194,7 @@ export default function BranchStockPage() {
         />
       )}
 
+      {/* Header */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10 }}>
         <div>
           <h2 style={{ margin:'0 0 4px', fontSize:18, fontWeight:700, color:G.text }}>🏭 Branch-wise Stock</h2>
@@ -181,6 +205,7 @@ export default function BranchStockPage() {
         </button>
       </div>
 
+      {/* Tabs */}
       <div style={{ display:'flex', gap:6, marginBottom:20 }}>
         {[['overview','📊 Stock Overview'],['movements','📋 Stock Movements']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{
@@ -193,6 +218,7 @@ export default function BranchStockPage() {
         ))}
       </div>
 
+      {/* Branch filter pills */}
       <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:20 }}>
         {['all', ...BRANCHES].map(b => (
           <button key={b} onClick={() => setSelected(b)} style={{
@@ -208,8 +234,10 @@ export default function BranchStockPage() {
 
       {loading && <div style={{ textAlign:'center', padding:60, color:G.muted }}>Loading branch stock...</div>}
 
+      {/* ── OVERVIEW TAB ── */}
       {!loading && tab === 'overview' && (
         <div>
+          {/* Summary across all branches */}
           {selectedBranch === 'all' && (
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:24 }}>
               {products.map(p => {
@@ -227,11 +255,13 @@ export default function BranchStockPage() {
             </div>
           )}
 
+          {/* Branch cards */}
           <div style={{ display:'grid', gridTemplateColumns: selectedBranch==='all' ? 'repeat(auto-fit,minmax(320px,1fr))' : '1fr', gap:16 }}>
             {filteredBranches.map(branch => {
               const branchTotal = getBranchTotal(branch)
               return (
                 <div key={branch} style={{ background:G.white, borderRadius:16, overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border:`1px solid ${G.border}` }}>
+                  {/* Branch header */}
                   <div style={{ background:`linear-gradient(135deg, ${G.green}, ${G.greenDark})`, padding:'14px 18px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                       <span style={{ fontSize:22 }}>{BRANCH_ICONS[branch]}</span>
@@ -246,6 +276,7 @@ export default function BranchStockPage() {
                     </div>
                   </div>
 
+                  {/* Products */}
                   <div style={{ padding:'12px 16px' }}>
                     {products.map(p => {
                       const bs = getStock(branch, p.id)
@@ -291,6 +322,7 @@ export default function BranchStockPage() {
         </div>
       )}
 
+      {/* ── MOVEMENTS TAB ── */}
       {!loading && tab === 'movements' && (
         <div style={{ background:G.white, borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden' }}>
           <div style={{ overflowX:'auto' }}>
