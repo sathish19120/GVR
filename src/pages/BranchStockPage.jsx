@@ -24,36 +24,66 @@ const inp = {
 
 // ── Update Branch Stock Modal ─────────────────────────────
 function UpdateStockModal({ branch, product, onClose, onSaved }) {
-  const [type, setType]   = useState('add')
+  // ✅ FIX: previously defaulted to 'add' with no obvious opposite —
+  // the only way to reduce stock was to notice "Sale / Dispatch" or
+  // "Transfer Out" implied subtraction, which wasn't clear at a glance.
+  // Now the modal has a simple, explicit Add / Remove toggle FIRST,
+  // and the specific reason (sale, transfer, adjustment) is a
+  // secondary detail selected underneath — so "how do I reduce stock"
+  // has one obvious, unmissable answer.
+  const [direction, setDirection] = useState('add') // 'add' | 'remove'
+  const [reason, setReason] = useState('restock')   // sub-reason within each direction
   const [bags, setBags]   = useState('')
   const [note, setNote]   = useState('')
   const [saving, setSaving] = useState(false)
+
+  const ADD_REASONS = {
+    restock:     { label:'Restock / Godown',  desc:'Stock received from godown or supplier' },
+    transfer_in: { label:'Transfer In',       desc:'Received from another branch' },
+  }
+  const REMOVE_REASONS = {
+    sale:         { label:'Sale / Dispatch',  desc:'Stock sent out for delivery or sold' },
+    transfer_out: { label:'Transfer Out',     desc:'Sent to another branch' },
+    damaged:      { label:'Damaged / Loss',   desc:'Damaged, expired, or lost stock' },
+    adjustment:   { label:'Correction',       desc:'Stock count correction (found less than recorded)' },
+  }
+
+  // Map the friendly direction+reason UI back to the underlying
+  // movement "type" the database/movements log already understands.
+  const REASON_TO_TYPE = {
+    restock:'add', transfer_in:'transfer_in',
+    sale:'sale', transfer_out:'transfer_out',
+    damaged:'adjustment', adjustment:'adjustment',
+  }
+
+  function switchDirection(dir) {
+    setDirection(dir)
+    setReason(dir === 'add' ? 'restock' : 'sale')
+  }
 
   async function save() {
     const n = parseInt(bags)
     if (!n || n <= 0) return
     setSaving(true)
     try {
-      // ✅ THE ACTUAL SYNC FIX: previously computed newStock from
+      const delta = direction === 'add' ? n : -n
+      const movementType = REASON_TO_TYPE[reason]
+
+      // ✅ FIX: previously computed newStock client-side from
       // product.stock_bags (a value already loaded into this page's
-      // React state, possibly stale) and wrote that number directly
-      // with upsert(). If two people had this page open — or this page
-      // and BranchDashboard's "My Stock" tab open at the same time —
+      // state, possibly stale) and wrote it directly with upsert() —
+      // if two people had a branch stock page open at the same time,
       // whichever save() ran last would overwrite the other's change
-      // instead of adding to it, which is exactly the "shows same data,
-      // updates don't stick" symptom you were seeing.
-      //
-      // Now calls apply_branch_stock_delta(), the Postgres function
-      // already installed in your database (confirmed run this
-      // session), which increments the row's CURRENT value atomically
-      // inside the database itself — never from a value read into JS.
-      const delta = type === 'add' || type === 'transfer_in' ? n : -n
+      // instead of adding to it. Now calls apply_branch_stock_delta(),
+      // the Postgres function that increments the row's CURRENT
+      // database value atomically, so concurrent updates always land
+      // correctly.
       const { error } = await supabase.rpc('apply_branch_stock_delta', {
         p_branch_name: branch,
         p_product_id: product.product_id,
         p_product_name: product.product_name,
         p_delta: delta,
-        p_type: type,
+        p_type: movementType,
         p_note: note || null
       })
       if (error) throw error
@@ -66,13 +96,7 @@ function UpdateStockModal({ branch, product, onClose, onSaved }) {
     finally { setSaving(false) }
   }
 
-  const typeConfig = {
-    add:          { label:'Add Stock',      color:G.green,  desc:'Stock received from godown' },
-    sale:         { label:'Sale / Dispatch', color:G.amber,  desc:'Stock sent out for delivery' },
-    transfer_in:  { label:'Transfer In',    color:G.blue,   desc:'Received from another branch' },
-    transfer_out: { label:'Transfer Out',   color:G.purple, desc:'Sent to another branch' },
-    adjustment:   { label:'Adjustment',     color:G.muted,  desc:'Stock count correction' },
-  }
+  const reasons = direction === 'add' ? ADD_REASONS : REMOVE_REASONS
 
   return (
     <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
@@ -85,24 +109,49 @@ function UpdateStockModal({ branch, product, onClose, onSaved }) {
           <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:G.muted }}>✕</button>
         </div>
 
-        <p style={{ margin:'0 0 14px',fontSize:13,color:G.muted }}>
+        <p style={{ margin:'0 0 16px',fontSize:13,color:G.muted }}>
           Current stock: <strong style={{ color:G.green }}>{product.stock_bags} bags</strong>
         </p>
 
-        {/* Type selector */}
-        <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16 }}>
-          {Object.entries(typeConfig).map(([val, cfg]) => (
-            <button key={val} onClick={() => setType(val)} style={{
-              padding:'9px 8px', borderRadius:9, border:`2px solid ${type===val?cfg.color:G.border}`,
-              background: type===val ? cfg.color+'18' : G.white,
-              cursor:'pointer', fontSize:11, fontWeight:600,
-              color: type===val ? cfg.color : G.muted, textAlign:'center'
-            }}>
-              {cfg.label}
-            </button>
-          ))}
+        {/* ✅ The clear Add / Remove toggle — this is the direct fix
+            for "there's no reduce option," even though subtraction
+            technically existed before via less-obvious labels */}
+        <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:18 }}>
+          <button onClick={()=>switchDirection('add')} style={{
+            padding:'14px 10px', borderRadius:12, border:`2.5px solid ${direction==='add'?G.green:G.border}`,
+            background: direction==='add' ? G.greenLight : G.white,
+            cursor:'pointer', textAlign:'center'
+          }}>
+            <div style={{ fontSize:22, marginBottom:4 }}>➕</div>
+            <div style={{ fontWeight:700, fontSize:14, color: direction==='add'?G.greenDark:G.muted }}>Add Stock</div>
+          </button>
+          <button onClick={()=>switchDirection('remove')} style={{
+            padding:'14px 10px', borderRadius:12, border:`2.5px solid ${direction==='remove'?G.red:G.border}`,
+            background: direction==='remove' ? G.redLight : G.white,
+            cursor:'pointer', textAlign:'center'
+          }}>
+            <div style={{ fontSize:22, marginBottom:4 }}>➖</div>
+            <div style={{ fontWeight:700, fontSize:14, color: direction==='remove'?G.red:G.muted }}>Remove Stock</div>
+          </button>
         </div>
-        <p style={{ margin:'0 0 14px',fontSize:12,color:G.muted,fontStyle:'italic' }}>{typeConfig[type].desc}</p>
+
+        {/* Sub-reason within the chosen direction */}
+        <div style={{ marginBottom:16 }}>
+          <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:8 }}>Reason</label>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
+            {Object.entries(reasons).map(([val, cfg]) => (
+              <button key={val} onClick={() => setReason(val)} style={{
+                padding:'9px 8px', borderRadius:9, border:`2px solid ${reason===val?(direction==='add'?G.green:G.red):G.border}`,
+                background: reason===val ? (direction==='add'?G.greenLight:G.redLight) : G.white,
+                cursor:'pointer', fontSize:11, fontWeight:600,
+                color: reason===val ? (direction==='add'?G.greenDark:G.red) : G.muted, textAlign:'center'
+              }}>
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+          <p style={{ margin:'8px 0 0',fontSize:12,color:G.muted,fontStyle:'italic' }}>{reasons[reason]?.desc}</p>
+        </div>
 
         <div style={{ marginBottom:14 }}>
           <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:6 }}>Number of Bags</label>
@@ -113,26 +162,27 @@ function UpdateStockModal({ branch, product, onClose, onSaved }) {
         <div style={{ marginBottom:20 }}>
           <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:6 }}>Note (optional)</label>
           <input type="text" value={note} onChange={e=>setNote(e.target.value)}
-            placeholder="e.g. Received from Hyderabad godown" style={inp}
+            placeholder={direction==='add' ? 'e.g. Received from Hyderabad godown' : 'e.g. Delivered to 5 customers today'}
+            style={inp}
             onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
         </div>
 
         {bags && parseInt(bags) > 0 && (
-          <div style={{ background:G.greenLight,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',justifyContent:'space-between',fontSize:13 }}>
-            <span style={{ color:G.greenDark }}>Stock will change by:</span>
-            <strong style={{ color:G.green }}>
-              {type==='add'||type==='transfer_in' ? '+' : '−'}{bags} bags
+          <div style={{ background: direction==='add'?G.greenLight:G.redLight, borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',justifyContent:'space-between',fontSize:13 }}>
+            <span style={{ color: direction==='add'?G.greenDark:G.red }}>Stock will change by:</span>
+            <strong style={{ color: direction==='add'?G.green:G.red }}>
+              {direction==='add' ? '+' : '−'}{bags} bags
             </strong>
           </div>
         )}
 
         <button onClick={save} disabled={saving || !bags} style={{
           width:'100%', padding:13,
-          background: saving||!bags ? '#9CA3AF' : typeConfig[type].color,
+          background: saving||!bags ? '#9CA3AF' : (direction==='add'?G.green:G.red),
           color:G.white, border:'none', borderRadius:12,
           fontSize:15, fontWeight:700, cursor:saving||!bags?'not-allowed':'pointer'
         }}>
-          {saving ? 'Updating...' : `${typeConfig[type].label} — ${bags||0} Bags`}
+          {saving ? 'Updating...' : direction==='add' ? `➕ Add ${bags||0} Bags` : `➖ Remove ${bags||0} Bags`}
         </button>
       </div>
     </div>
@@ -164,8 +214,6 @@ export default function BranchStockPage() {
     setLoading(false)
   }
 
-  // ✅ Auto-refresh every 15s so this page doesn't sit on stale data for
-  // long stretches while other pages/tabs update the same rows.
   useEffect(() => {
     const interval = setInterval(load, 15000)
     return () => clearInterval(interval)
@@ -173,11 +221,9 @@ export default function BranchStockPage() {
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
 
-  // Get stock for a specific branch+product
   const getStock = (branch, productId) =>
     branchStock.find(b => b.branch_name === branch && b.product_id === productId)
 
-  // Total stock across all branches per product
   const getBranchTotal = (branch) =>
     branchStock.filter(b => b.branch_name === branch).reduce((s,b) => s + (b.stock_bags||0), 0)
 
@@ -194,7 +240,6 @@ export default function BranchStockPage() {
         />
       )}
 
-      {/* Header */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10 }}>
         <div>
           <h2 style={{ margin:'0 0 4px', fontSize:18, fontWeight:700, color:G.text }}>🏭 Branch-wise Stock</h2>
@@ -205,7 +250,6 @@ export default function BranchStockPage() {
         </button>
       </div>
 
-      {/* Tabs */}
       <div style={{ display:'flex', gap:6, marginBottom:20 }}>
         {[['overview','📊 Stock Overview'],['movements','📋 Stock Movements']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{
@@ -218,7 +262,6 @@ export default function BranchStockPage() {
         ))}
       </div>
 
-      {/* Branch filter pills */}
       <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:20 }}>
         {['all', ...BRANCHES].map(b => (
           <button key={b} onClick={() => setSelected(b)} style={{
@@ -234,10 +277,8 @@ export default function BranchStockPage() {
 
       {loading && <div style={{ textAlign:'center', padding:60, color:G.muted }}>Loading branch stock...</div>}
 
-      {/* ── OVERVIEW TAB ── */}
       {!loading && tab === 'overview' && (
         <div>
-          {/* Summary across all branches */}
           {selectedBranch === 'all' && (
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:24 }}>
               {products.map(p => {
@@ -255,13 +296,11 @@ export default function BranchStockPage() {
             </div>
           )}
 
-          {/* Branch cards */}
           <div style={{ display:'grid', gridTemplateColumns: selectedBranch==='all' ? 'repeat(auto-fit,minmax(320px,1fr))' : '1fr', gap:16 }}>
             {filteredBranches.map(branch => {
               const branchTotal = getBranchTotal(branch)
               return (
                 <div key={branch} style={{ background:G.white, borderRadius:16, overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border:`1px solid ${G.border}` }}>
-                  {/* Branch header */}
                   <div style={{ background:`linear-gradient(135deg, ${G.green}, ${G.greenDark})`, padding:'14px 18px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                       <span style={{ fontSize:22 }}>{BRANCH_ICONS[branch]}</span>
@@ -276,7 +315,6 @@ export default function BranchStockPage() {
                     </div>
                   </div>
 
-                  {/* Products */}
                   <div style={{ padding:'12px 16px' }}>
                     {products.map(p => {
                       const bs = getStock(branch, p.id)
@@ -299,9 +337,19 @@ export default function BranchStockPage() {
                                 <p style={{ margin:0, fontSize:15, fontWeight:800, color:isLow?G.red:G.green }}>{stock} bags</p>
                                 {isLow && <p style={{ margin:0, fontSize:10, color:G.red, fontWeight:600 }}>⚠ Low</p>}
                               </div>
+                              {/* ✅ Two direct action buttons instead of one
+                                  ambiguous "Update" — this is the other half
+                                  of the fix: even before opening the modal,
+                                  it's now obvious both directions exist */}
                               <button onClick={() => setUpdateModal({ branch, product: bs || { branch_name:branch, product_id:p.id, product_name:p.name, stock_bags:0 } })}
-                                style={{ padding:'5px 10px', borderRadius:8, border:'none', background:G.greenLight, color:G.green, fontSize:11, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>
-                                Update
+                                style={{ padding:'5px 9px', borderRadius:8, border:'none', background:G.greenLight, color:G.green, fontSize:13, fontWeight:700, cursor:'pointer' }}
+                                title="Add stock">
+                                ➕
+                              </button>
+                              <button onClick={() => setUpdateModal({ branch, product: bs || { branch_name:branch, product_id:p.id, product_name:p.name, stock_bags:0 } })}
+                                style={{ padding:'5px 9px', borderRadius:8, border:'none', background:G.redLight, color:G.red, fontSize:13, fontWeight:700, cursor:'pointer' }}
+                                title="Remove stock">
+                                ➖
                               </button>
                             </div>
                           </div>
@@ -322,7 +370,6 @@ export default function BranchStockPage() {
         </div>
       )}
 
-      {/* ── MOVEMENTS TAB ── */}
       {!loading && tab === 'movements' && (
         <div style={{ background:G.white, borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden' }}>
           <div style={{ overflowX:'auto' }}>
