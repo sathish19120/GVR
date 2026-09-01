@@ -6,6 +6,7 @@ import WalkInBilling from './WalkInBilling'
 import BulkOrderForm from './BulkOrderForm'
 import SupplierPage from './SupplierPage'
 import HomePage from './HomePage'
+import WalkInBilling from './WalkInBilling'
 import VendorPage from './VendorPage'
 import BranchStockPage from './BranchStockPage'
 import React, { useState, useEffect } from 'react'
@@ -25,6 +26,7 @@ const G = {
 }
 
 const PAGES = [
+  { key:'home',      icon:'🏠', label:'Home' },
   { key:'dashboard', icon:'⊞', label:'Dashboard' },
   { key:'orders',    icon:'📋', label:'Orders' },
   { key:'inventory', icon:'📦', label:'Inventory' },
@@ -39,6 +41,7 @@ const PAGES = [
   { key:'bulk',      icon:'🏢', label:'Bulk Orders' },
   { key:'suppliers', icon:'🏭', label:'Suppliers' },
   { key:'branchstock',icon:'🏭', label:'Branch Stock' },
+  { key:'walkin',     icon:'🧾', label:'Walk-in Billing' },
 ]
 
 function Badge({ status }) {
@@ -943,6 +946,7 @@ export default function Dashboard() {
           {page==='home' && <HomePage />}
           {page==='suppliers' && <SupplierPage />}
           {page==='branchstock' && <BranchStockPage />}
+          {page==='walkin' && <WalkInBilling branch="Hyderabad" />}
 
           {page==='branches' && <>
             <div style={{ marginBottom:20 }}>
