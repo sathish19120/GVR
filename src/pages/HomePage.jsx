@@ -117,7 +117,7 @@ export default function HomePage() {
             <div style={{ width:56,height:56,borderRadius:14,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:30,flexShrink:0 }}>🌾</div>
             <div>
               <h1 style={{ margin:0,fontSize:28,fontWeight:800,color:G.white }}>Green Village Rice</h1>
-              <p style={{ margin:0,fontSize:13,color:'rgba(255,255,255,0.65)' }}>గ్రీన్ విలేజ్ రైస్ · Hyderabad, Telangana · Est. 2026</p>
+              <p style={{ margin:0,fontSize:13,color:'rgba(255,255,255,0.65)' }}>గ్రీన్ విలేజ్ రైస్ · Hyderabad, Telangana · Est. 2014</p>
             </div>
           </div>
           <p style={{ margin:'0 0 20px',fontSize:14,color:'rgba(255,255,255,0.85)',lineHeight:1.8,maxWidth:580 }}>
@@ -130,7 +130,7 @@ export default function HomePage() {
           </div>
           {/* Stats grid — correctly inside the hero div */}
           <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10 }}>
-            {[{label:'Branches',value:'6',icon:'🏪'},{label:'Products',value:String(products.length||4),icon:'🌾'},{label:'Cities',value:'6',icon:'📍'},{label:'Founded',value:'2026',icon:'📅'}].map(s=>(
+            {[{label:'Branches',value:'6',icon:'🏪'},{label:'Products',value:String(products.length||4),icon:'🌾'},{label:'Cities',value:'6',icon:'📍'},{label:'Founded',value:'2014',icon:'📅'}].map(s=>(
               <div key={s.label} style={{ background:'rgba(255,255,255,0.1)',borderRadius:12,padding:'12px',textAlign:'center',border:'1px solid rgba(255,255,255,0.15)' }}>
                 <p style={{ margin:'0 0 4px',fontSize:16 }}>{s.icon}</p>
                 <p style={{ margin:'0 0 2px',fontSize:20,fontWeight:800,color:G.white }}>{s.value}</p>
@@ -293,7 +293,7 @@ export default function HomePage() {
       <div style={{ background:`linear-gradient(135deg,${G.green},${G.greenDark})`,borderRadius:14,padding:'20px 22px',color:G.white }}>
         <h2 style={{ margin:'0 0 14px',fontSize:15,fontWeight:700,color:G.white }}>📞 Contact & Info</h2>
         <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10 }}>
-          {[{icon:'📧',label:'Email',value:'admin@greenvillagerice.in'},{icon:'📍',label:'HQ',value:'Hyderabad, Telangana'},{icon:'🌐',label:'Website',value:'gvr-lemon.vercel.app'},{icon:'📅',label:'Est.',value:'2026 · FSSAI Licensed'}].map(c=>(
+          {[{icon:'📧',label:'Email',value:'admin@greenvillagerice.in'},{icon:'📍',label:'HQ',value:'Hyderabad, Telangana'},{icon:'🌐',label:'Website',value:'gvr-lemon.vercel.app'},{icon:'📅',label:'Est.',value:'2014 · FSSAI Licensed'}].map(c=>(
             <div key={c.label} style={{ background:'rgba(255,255,255,0.12)',borderRadius:10,padding:'10px 12px' }}>
               <p style={{ margin:'0 0 3px',fontSize:15 }}>{c.icon}</p>
               <p style={{ margin:'0 0 1px',fontSize:10,color:'rgba(255,255,255,0.6)' }}>{c.label}</p>
