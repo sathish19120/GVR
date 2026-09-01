@@ -254,7 +254,7 @@ function StockModal({ product, onClose, onSaved }) {
 
 export default function Dashboard() {
   const { user: profile, signOut } = useAuth()
-  const navigate = useNavigate()
+  const igate = useNavigate()
   const [page, setPage]     = useState('dashboard')
   const [filter, setFilter] = useState('monthly')
   const [collapsed, setCollapsed] = useState(false)
@@ -466,7 +466,7 @@ export default function Dashboard() {
           <div style={{ width:36, height:36, borderRadius:9, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌾</div>
           {!collapsed && <div><p style={{ margin:0, fontSize:13, fontWeight:700, color:G.greenDark }}>Green Village</p><p style={{ margin:0, fontSize:10, color:G.green2, fontWeight:600 }}>Rice Admin</p></div>}
         </div>
-        <nav style={{ flex:1, padding:'10px 6px' }}>
+        <nav style={{ flex:1, padding:'10px 6px', overflowY:'auto' }}>
           {PAGES.map(item => (
             <button key={item.key} onClick={()=>setPage(item.key)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:collapsed?'10px':'10px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:2, justifyContent:collapsed?'center':'flex-start', background:page===item.key?G.greenLight:'transparent', color:page===item.key?G.greenDark:G.muted, fontWeight:page===item.key?600:500, fontSize:13 }}>
               <span style={{ fontSize:17, flexShrink:0 }}>{item.icon}</span>
