@@ -760,11 +760,31 @@ export default function Dashboard() {
                       )}
                     </div>
                     <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                      {o.payment_status==='pending' && o.payment_method!=='cod' && (
-                        <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); load() }}
-                          style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
-                          💰 Mark Paid
-                        </button>
+                      {(o.payment_status==='pending' || o.payment_status==='verification_pending') && o.payment_method!=='cod' && (
+                        <>
+                          <button onClick={async()=>{
+                            if (!window.confirm(`Confirm you have checked your UPI/bank app and this UTR matches ₹${o.total_amount}?\n\nOrder notes: ${o.notes || '(no UTR recorded)'}`)) return
+                            await supabase.from('orders').update({
+                              payment_status:'paid',
+                              status: o.status === 'pending' ? 'confirmed' : o.status,
+                              notes: (o.notes||'') + ' · Verified by admin ' + new Date().toLocaleDateString('en-IN')
+                            }).eq('id',o.id)
+                            load()
+                          }} style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
+                            ✅ Verify UTR & Confirm
+                          </button>
+                          <button onClick={async()=>{
+                            if (!window.confirm('Reject this payment? Order will be cancelled and customer must reorder.')) return
+                            await supabase.from('orders').update({
+                              payment_status:'rejected',
+                              status:'cancelled',
+                              notes: (o.notes||'') + ' · Payment rejected by admin — UTR invalid or not received'
+                            }).eq('id',o.id)
+                            load()
+                          }} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>
+                            ✕ Reject
+                          </button>
+                        </>
                       )}
                       {o.payment_method==='cod' && o.payment_status==='pending' && (
                         <button onClick={async()=>{
