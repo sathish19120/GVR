@@ -278,6 +278,13 @@ export default function Dashboard() {
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('gvr_dark_mode') === 'true')
+ 
+  useEffect(() => {
+    localStorage.setItem('gvr_dark_mode', darkMode)
+    document.documentElement.classList.toggle('gvr-dark', darkMode)
+  }, [darkMode])
+ 
 
   useEffect(() => { load() }, [filter])
 
