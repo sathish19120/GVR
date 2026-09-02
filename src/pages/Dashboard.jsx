@@ -754,10 +754,16 @@ export default function Dashboard() {
                         </span>
                       </div>
                       <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Address</p><p style={{ margin:0, fontSize:13, color:G.text }}>{o.delivery_address||'—'}</p></div>
+                      {o.utr_number && (
+                        <div style={{ gridColumn:'1/-1' }}>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>UTR Number</p>
+                          <p style={{ margin:0, fontSize:14, color:G.green, fontWeight:700, fontFamily:'monospace' }}>🧾 {o.utr_number}</p>
+                        </div>
+                      )}
                       {o.notes && (
                         <div style={{ gridColumn:'1/-1' }}>
-                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment Reference</p>
-                          <p style={{ margin:0, fontSize:13, color:G.green, fontWeight:600 }}>🧾 {o.notes}</p>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Notes</p>
+                          <p style={{ margin:0, fontSize:12, color:G.muted }}>{o.notes}</p>
                         </div>
                       )}
                     </div>
