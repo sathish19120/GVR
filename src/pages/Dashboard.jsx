@@ -254,7 +254,7 @@ function StockModal({ product, onClose, onSaved }) {
 
 export default function Dashboard() {
   const { user: profile, signOut } = useAuth()
-  const igate = useNavigate()
+  const navigate = useNavigate()
   const [page, setPage]     = useState('dashboard')
   const [filter, setFilter] = useState('monthly')
   const [collapsed, setCollapsed] = useState(false)
@@ -279,12 +279,11 @@ export default function Dashboard() {
   const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('gvr_dark_mode') === 'true')
- 
+
   useEffect(() => {
     localStorage.setItem('gvr_dark_mode', darkMode)
     document.documentElement.classList.toggle('gvr-dark', darkMode)
   }, [darkMode])
- 
 
   useEffect(() => { load() }, [filter])
 
@@ -311,7 +310,7 @@ export default function Dashboard() {
   async function load() {
     setLoading(true)
     const [oRes, pRes, uRes, mRes] = await Promise.all([
-      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,notes,created_at,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(200),
+      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,notes,utr_number,created_at,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(200),
       supabase.from('products').select('*').order('weight_kg'),
       supabase.from('profiles').select('id,username,full_name,role,phone,branch,created_at,active').order('created_at',{ascending:false}),
       supabase.from('stock_movements').select('id,product_id,change_bags,type,note,created_at,products(name)').order('created_at',{ascending:false}).limit(30),
@@ -368,6 +367,24 @@ export default function Dashboard() {
 
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
+      <style>{`
+        .gvr-dark { background: #0F1B0A !important; }
+        .gvr-dark .dash-sidebar,
+        .gvr-dark .dash-topbar,
+        .gvr-dark main {
+          background-color: #1A2B14 !important;
+          color: #E5E7DB !important;
+          border-color: #2D4321 !important;
+        }
+        .gvr-dark p, .gvr-dark span, .gvr-dark td, .gvr-dark th {
+          color: #D4D9CC !important;
+        }
+        .gvr-dark input, .gvr-dark select, .gvr-dark textarea {
+          background: #24361C !important;
+          color: #E5E7DB !important;
+          border-color: #3A5230 !important;
+        }
+      `}</style>
       <div className="dash-overlay" style={{ display:'none', position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:199 }} onClick={() => setCollapsed(true)} />
 
       {topModal && (
@@ -519,12 +536,20 @@ export default function Dashboard() {
                 onMouseLeave={e=>e.currentTarget.style.background='none'}>{label}</button>
             ))}
           </div>
-          <div style={{ display:'flex', gap:6 }}>
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
             {['daily','monthly','yearly'].map(f=>(
               <button key={f} onClick={()=>setFilter(f)} style={{ padding:'5px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:filter===f?G.green:'#F3F4F6', color:filter===f?'#fff':G.muted }}>
                 {f.charAt(0).toUpperCase()+f.slice(1)}
               </button>
             ))}
+            <button onClick={()=>setDarkMode(!darkMode)} title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'} style={{
+              width:32, height:32, borderRadius:'50%', border:'none', cursor:'pointer',
+              background: darkMode ? '#1F2937' : '#FEF3C7',
+              display:'flex', alignItems:'center', justifyContent:'center', fontSize:16,
+              marginLeft:6, transition:'background 0.2s'
+            }}>
+              {darkMode ? '🌙' : '☀️'}
+            </button>
           </div>
         </header>
 
