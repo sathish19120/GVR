@@ -141,6 +141,7 @@ export default function VendorPortal() {
         order_type: 'b2b',
         payment_status: utrRef.trim() ? 'verification_pending' : 'pending',
         payment_method: payMethod,
+        utr_number: utrRef || null,
         notes: `B2B Vendor Order${utrRef ? ` · Payment Ref: ${utrRef}` : ' · Payment Pending'}`,
         created_at: new Date().toISOString()
       }).select().single()
