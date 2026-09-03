@@ -283,6 +283,11 @@ export default function Dashboard() {
   useEffect(() => {
     localStorage.setItem('gvr_dark_mode', darkMode)
     document.documentElement.classList.toggle('gvr-dark', darkMode)
+    document.body.classList.toggle('gvr-dark', darkMode)
+    return () => {
+      document.documentElement.classList.remove('gvr-dark')
+      document.body.classList.remove('gvr-dark')
+    }
   }, [darkMode])
 
   useEffect(() => { load() }, [filter])
@@ -346,6 +351,11 @@ export default function Dashboard() {
   }
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
+  const chartTick = darkMode ? '#E5E7DB' : G.muted
+  const chartGrid = darkMode ? '#3A5230' : '#F3F4F6'
+  const chartTooltip = darkMode
+    ? { borderRadius: 10, fontSize: 12, background: '#1E2E17', border: '1px solid #3A5230', color: '#E8EDE3' }
+    : { borderRadius: 10, fontSize: 12 }
 
   function getFilteredOrders() {
     return orders.filter(o => {
@@ -366,72 +376,87 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
+    <div className={darkMode ? 'gvr-dark' : undefined} style={{ display:'flex', height:'100vh', overflow:'hidden', background: darkMode ? '#0F1B0A' : G.surface, fontFamily:"'Inter', sans-serif" }}>
       <style>{`
-        /* ✅ FIX: previous dark mode CSS only darkened backgrounds but
-           left dozens of hardcoded light-grey/muted inline text colors
-           unreadable against the new dark background (numbers, card
-           labels, chart legends all showed near-invisible). This
-           version is far more aggressive: it forces every text-like
-           element inside .gvr-dark to a bright, readable color, and
-           explicitly whites-out chart SVG text (Recharts renders axis
-           labels/legends as inline SVG, which the old rule didn't
-           reach at all). */
-        .gvr-dark { background: #0F1B0A !important; }
+        /* Hotfix: React inlines G.white as rgb(255, 255, 255), not "G.white"
+           or even "#fff". White cards stayed white while text was forced
+           light — Admin users table became unreadable. Paint the actual
+           rgb() surfaces, do not flatten nested main > div > div. */
+        .gvr-dark { background: #0F1B0A !important; color: #E8EDE3; }
         .gvr-dark .dash-sidebar,
         .gvr-dark .dash-topbar,
-        .gvr-dark main,
-        .gvr-dark main > div,
-        .gvr-dark main > div > div {
+        .gvr-dark main.dash-main {
           background-color: #162410 !important;
           border-color: #2D4321 !important;
+          color: #E8EDE3 !important;
         }
-        /* Force every text element to bright, readable colors —
-           overrides inline style={{color:'#6B7280'}} etc. via the
-           universal selector + !important, which beats inline styles
-           only because these are class-scoped rules applied AFTER
-           React's own style attribute in the cascade for color only. */
+        .gvr-dark [style*="background: rgb(255, 255, 255)"],
+        .gvr-dark [style*="background:#fff"],
+        .gvr-dark [style*="background: #fff"],
+        .gvr-dark [style*="background:#FFF"],
+        .gvr-dark [style*="background: #FFF"],
+        .gvr-dark [style*="background:#ffffff"],
+        .gvr-dark [style*="background: #ffffff"],
+        .gvr-dark [style*="background: rgb(250, 250, 250)"],
+        .gvr-dark [style*="background:#FAFAFA"],
+        .gvr-dark [style*="background: #FAFAFA"],
+        .gvr-dark [style*="background: rgb(249, 250, 247)"],
+        .gvr-dark [style*="background:#F9FAF7"],
+        .gvr-dark [style*="background: #F9FAF7"],
+        .gvr-dark [style*="background: rgb(243, 244, 246)"],
+        .gvr-dark [style*="background:#F3F4F6"],
+        .gvr-dark [style*="background: #F3F4F6"],
+        .gvr-dark [style*="background: rgb(244, 246, 243)"] {
+          background-color: #1E2E17 !important;
+        }
         .gvr-dark h1, .gvr-dark h2, .gvr-dark h3,
-        .gvr-dark p, .gvr-dark span, .gvr-dark td, .gvr-dark th,
-        .gvr-dark label, .gvr-dark strong, .gvr-dark em {
+        .gvr-dark p, .gvr-dark td, .gvr-dark th,
+        .gvr-dark label, .gvr-dark strong, .gvr-dark li {
           color: #F0F2EA !important;
         }
-        /* Muted/secondary text (originally G.muted #6B7280) needs to
-           stay visually secondary but still readable — light grey
-           instead of dark grey */
         .gvr-dark [style*="color:#6B7280"],
-        .gvr-dark [style*="color: rgb(107, 114, 128)"] {
-          color: #A8B0A0 !important;
+        .gvr-dark [style*="color: #6B7280"],
+        .gvr-dark [style*="color: rgb(107, 114, 128)"],
+        .gvr-dark [style*="color:#111827"],
+        .gvr-dark [style*="color: rgb(17, 24, 39)"] {
+          color: #C5CBBB !important;
         }
         .gvr-dark input, .gvr-dark select, .gvr-dark textarea {
           background: #24361C !important;
           color: #F0F2EA !important;
           border-color: #3A5230 !important;
         }
-        .gvr-dark button {
-          color: inherit;
+        .gvr-dark button[style*="background: rgb(255, 255, 255)"],
+        .gvr-dark button[style*="background:#fff"],
+        .gvr-dark button[style*="background: #fff"] {
+          background-color: #24361C !important;
+          color: #E8EDE3 !important;
+          border-color: #3A5230 !important;
         }
-        /* Chart text — Recharts renders axis ticks, legend text, and
-           the "01 Sept"/"02 Sept" labels as SVG <text> elements, which
-           plain CSS color rules on p/span/td never reach. This targets
-           them directly. */
+        .gvr-dark table { color: #F0F2EA; }
         .gvr-dark .recharts-text,
         .gvr-dark .recharts-cartesian-axis-tick-value,
-        .gvr-dark .recharts-legend-item-text {
+        .gvr-dark .recharts-legend-item-text,
+        .gvr-dark .recharts-label {
           fill: #E5E7DB !important;
         }
         .gvr-dark .recharts-cartesian-grid-horizontal line,
         .gvr-dark .recharts-cartesian-grid-vertical line {
           stroke: #3A5230 !important;
         }
-        /* Stat cards and white content boxes — force a dark card
-           background instead of leaving them white-on-dark or
-           dark-on-dark depending on which inline style wins */
-        .gvr-dark [style*="background:#fff"],
-        .gvr-dark [style*="background: #fff"],
-        .gvr-dark [style*="background:G.white"] {
-          background-color: #1E2E17 !important;
+        .gvr-dark .recharts-default-tooltip {
+          background: #1E2E17 !important;
+          border: 1px solid #3A5230 !important;
+          color: #E8EDE3 !important;
         }
+        .gvr-dark .recharts-tooltip-label,
+        .gvr-dark .recharts-tooltip-item {
+          color: #E8EDE3 !important;
+        }
+        .gvr-dark .recharts-rectangle.recharts-tooltip-cursor {
+          fill: rgba(255,255,255,0.06) !important;
+        }
+        .gvr-dark .recharts-dot { stroke: #1E2E17; }
       `}</style>
       <div className="dash-overlay" style={{ display:'none', position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:199 }} onClick={() => setCollapsed(true)} />
 
@@ -618,10 +643,10 @@ export default function Dashboard() {
                 <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Revenue — {filter}</p>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={chart} barSize={32}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                    <XAxis dataKey="name" tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`₹${(v/1000).toFixed(0)}k`:`₹${v}`} />
-                    <Tooltip formatter={v=>[fmtRs(v),'Revenue']} contentStyle={{borderRadius:10,fontSize:12}} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
+                    <XAxis dataKey="name" tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`₹${(v/1000).toFixed(0)}k`:`₹${v}`} />
+                    <Tooltip formatter={v=>[fmtRs(v),'Revenue']} contentStyle={chartTooltip} />
                     <Bar dataKey="revenue" radius={[6,6,0,0]}>
                       {chart.map((_,i)=><Cell key={i} fill={i===chart.length-1?G.green:G.green2} />)}
                     </Bar>
@@ -632,10 +657,10 @@ export default function Dashboard() {
                 <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Orders — {filter}</p>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={chart}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                    <XAxis dataKey="name" tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{borderRadius:10,fontSize:12}} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
+                    <XAxis dataKey="name" tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={chartTooltip} />
                     <Line type="monotone" dataKey="orders" stroke={G.green} strokeWidth={2.5} dot={{fill:G.green,r:4}} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -980,10 +1005,10 @@ export default function Dashboard() {
                 <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Revenue ({filter})</p>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={chart} barSize={36}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                    <XAxis dataKey="name" tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`₹${(v/1000).toFixed(0)}k`:`₹${v}`} />
-                    <Tooltip formatter={v=>[fmtRs(v),'Revenue']} contentStyle={{borderRadius:10,fontSize:12}} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
+                    <XAxis dataKey="name" tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`₹${(v/1000).toFixed(0)}k`:`₹${v}`} />
+                    <Tooltip formatter={v=>[fmtRs(v),'Revenue']} contentStyle={chartTooltip} />
                     <Bar dataKey="revenue" fill={G.green} radius={[6,6,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -992,10 +1017,10 @@ export default function Dashboard() {
                 <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Orders Trend ({filter})</p>
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={chart}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                    <XAxis dataKey="name" tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{borderRadius:10,fontSize:12}} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
+                    <XAxis dataKey="name" tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={chartTooltip} />
                     <Line type="monotone" dataKey="orders" stroke={G.green} strokeWidth={2.5} dot={{fill:G.green,r:4}} />
                   </LineChart>
                 </ResponsiveContainer>
