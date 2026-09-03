@@ -48,7 +48,17 @@ export default function PublicHome() {
     const t = setInterval(() => setSlide(s => (s+1) % SLIDES.length), 4000)
     return () => clearInterval(t)
   }, [])
-
+  useEffect(() => {
+    const scrollHash = () => {
+      const id = window.location.hash.replace('#','')
+      if (!id) return
+      const el = document.getElementById(id)
+      if (el) el.scrollIntoView({ behavior:'smooth', block:'start' })
+    }
+    scrollHash()
+    window.addEventListener('hashchange', scrollHash)
+    return () => window.removeEventListener('hashchange', scrollHash)
+  }, [])
   return (
     <div style={{ fontFamily:"'Inter',sans-serif", background:G.surface, minHeight:'100vh' }}>
 
@@ -63,7 +73,9 @@ export default function PublicHome() {
             <p style={{ margin:0, fontSize:10, color:G.green2 }}>Farm to Home</p>
           </div>
         </div>
-        <div style={{ display:'flex', gap:8 }}>
+        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', justifyContent:'flex-end' }}>
+          <a href="#story" style={{ padding:'8px 12px', color:G.green, fontSize:13, fontWeight:700, textDecoration:'none' }}>Our Story</a>
+          <a href="#videos" style={{ padding:'8px 12px', color:G.green, fontSize:13, fontWeight:700, textDecoration:'none' }}>Videos</a>
           <button onClick={()=>navigate('/login')} style={{ padding:'8px 18px', borderRadius:10, border:`1.5px solid ${G.green}`, background:G.white, color:G.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
             Login
           </button>
@@ -131,7 +143,7 @@ export default function PublicHome() {
         </div>
 
         {/* Our Story */}
-        <div style={{ background:G.white,borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+        <div id="story" style={{ scrollMarginTop:80, background:G.white,borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <h2 style={{ margin:'0 0 12px',fontSize:16,fontWeight:700,color:G.text }}>🌱 Our Story</h2>
           <p style={{ margin:'0 0 10px',fontSize:13,color:G.muted,lineHeight:1.8 }}>
             Green Village Rice was started with one simple belief — every family deserves to know where their rice comes from. We work directly with farmers in Nalgonda, Khammam and Warangal, mill fresh in small batches and deliver to Hyderabad homes within days of packing.
@@ -171,7 +183,7 @@ export default function PublicHome() {
         </div>
 
         {/* Videos */}
-        <h2 style={{ margin:'0 0 6px',fontSize:16,fontWeight:700,color:G.text }}>🎥 Farm & Freshness Videos</h2>
+        <h2 id="videos" style={{ scrollMarginTop:80, margin:'0 0 6px',fontSize:16,fontWeight:700,color:G.text }}>🎥 Farm & Freshness Videos</h2>
         <p style={{ margin:'0 0 14px',fontSize:13,color:G.muted }}>Watch how GVR rice goes from farm to kitchen. Click any card to watch on YouTube.</p>
         <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:14,marginBottom:20 }}>
           {VIDEOS.map(v=>(
