@@ -98,16 +98,8 @@ export default function App() {
       <BrowserRouter>
         <Suspense fallback={<Loading />}>
           <Routes>
-            {/* ✅ "/" now shows a standalone public marketing page
-                (PublicHome.jsx) — same hero/story/products content
-                style as the internal HomePage.jsx that lives inside
-                Dashboard.jsx's sidebar navigation, but with no auth
-                dependency, no sidebar, and clear Login/Signup buttons.
-                This is reachable by anyone, no account needed, and is
-                what should actually attract new customers to sign up.
-                The staff-facing HomePage.jsx tab inside Dashboard.jsx
-                is untouched and still works exactly as before for
-                logged-in admins. */}
+             {/* Public marketing site: story, videos, products. Staff
+                land on /dashboard (Today work board), not this page. */}
             <Route path="/"           element={<PublicHome />} />
             <Route path="/app"       element={<RoleRouter />} />
             <Route path="/login"      element={<AuthGuard><AuthPage /></AuthGuard>} />
