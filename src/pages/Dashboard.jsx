@@ -23,10 +23,27 @@ const G = {
   red:'#DC2626',redLight:'#FEE2E2',text:'#111827',muted:'#6B7280',
   border:'#E5E7EB',surface:'#F4F6F3',white:'#fff'
 }
+function isUnpaidUpi(order) {
+  return ['upi','bank'].includes(order.payment_method) &&
+    ['pending','verification_pending'].includes(order.payment_status) &&
+    order.status !== 'cancelled'
+}
+function PeriodPills({ filter, setFilter }) {
+  return (
+    <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:16 }}>
+      {['daily','monthly','yearly'].map(f=>(
+        <button key={f} onClick={()=>setFilter(f)} style={{ padding:'5px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:filter===f?G.green:'#F3F4F6', color:filter===f?'#fff':G.muted }}>
+          {f.charAt(0).toUpperCase()+f.slice(1)}
+        </button>
+      ))}
+      <span style={{ fontSize:12, color:G.muted, alignSelf:'center', marginLeft:4 }}>Chart range</span>
+    </div>
+  )
+}
 
 const PAGES = [
   { key:'home',      icon:'🏠', label:'Home' },
-  { key:'dashboard', icon:'⊞', label:'Dashboard' },
+  { key:'dashboard', icon:'⊞', label:'Today' },
   { key:'orders',    icon:'📋', label:'Orders' },
   { key:'inventory', icon:'📦', label:'Inventory' },
   { key:'analytics', icon:'📊', label:'Analytics' },
@@ -263,9 +280,8 @@ export default function Dashboard() {
   const [users, setUsers]     = useState([])
   const [movements, setMovements] = useState([])
   const [chart, setChart]     = useState([])
-  const [stats, setStats]     = useState({ revenue:0, orders:0, bags:0, pending:0, lowStock:0, customers:0 })
+  const [stats, setStats]     = useState({ revenue:0, orders:0, bags:0, pending:0, lowStock:0, customers:0, unpaidUpi:0 })
   const [loading, setLoading] = useState(true)
-  const [topModal, setTopModal] = useState(null)
   const [showNewOrder, setShowNewOrder] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(new Date())
@@ -293,7 +309,7 @@ export default function Dashboard() {
   useEffect(() => { load() }, [filter])
 
   useEffect(() => {
-    if (!autoRefresh || page !== 'orders') return
+    if (!autoRefresh || (page !== 'orders' && page !== 'dashboard')) return
     const interval = setInterval(async () => {
       try {
         const { data } = await supabase
@@ -326,7 +342,9 @@ export default function Dashboard() {
     const m = mRes.data || []
     const revenue = o.filter(x=>x.payment_status==='paid').reduce((s,x)=>s+Number(x.total_amount||0),0)
     const bags = o.flatMap(x=>x.order_items||[]).reduce((s,x)=>s+(x.quantity||0),0)
-    setStats({ revenue, orders:o.length, bags, pending:o.filter(x=>x.status==='pending').length, lowStock:p.filter(x=>x.stock_bags<=x.low_stock_threshold).length, customers:u.filter(x=>x.role==='customer').length })
+    const pending = o.filter(x=>x.status==='pending').length
+    const unpaidUpi = o.filter(isUnpaidUpi).length
+    setStats({ revenue, orders:o.length, bags, pending, unpaidUpi, lowStock:p.filter(x=>x.stock_bags<=x.low_stock_threshold).length, customers:u.filter(x=>x.role==='customer').length })
     setOrders(o); setProducts(p); setUsers(u); setMovements(m)
     setChart(buildChart(o, filter))
     setLoading(false)
@@ -460,101 +478,7 @@ export default function Dashboard() {
       `}</style>
       <div className="dash-overlay" style={{ display:'none', position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:199 }} onClick={() => setCollapsed(true)} />
 
-      {topModal && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }} onClick={()=>setTopModal(null)}>
-          <div style={{ background:'#fff', borderRadius:20, width:'100%', maxWidth:600, maxHeight:'85vh', overflowY:'auto', padding:36 }} onClick={e=>e.stopPropagation()}>
-            {topModal==='where' && <>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
-                <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>📍 Where We Work</h2>
-                <button onClick={()=>setTopModal(null)} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:'#6B7280' }}>✕</button>
-              </div>
-              <p style={{ color:'#6B7280', fontSize:14, lineHeight:1.7, marginBottom:20 }}>
-                Green Village Rice proudly serves customers across <strong style={{color:'#3B6D11'}}>Hyderabad and Secunderabad</strong>, delivering farm-fresh Sona Masoori rice directly to homes, apartments, and businesses.
-              </p>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
-                {[
-                  { area:'Kukatpally', icon:'🏙️', desc:'KPHB, JNTU, Miyapur' },
-                  { area:'Hitech City', icon:'💻', desc:'Madhapur, Gachibowli, Kondapur' },
-                  { area:'Secunderabad', icon:'🏛️', desc:'Trimulgherry, Karkhana, SP Road' },
-                  { area:'Dilsukhnagar', icon:'🌆', desc:'LB Nagar, Malakpet, Kothapet' },
-                  { area:'Ameerpet', icon:'🏢', desc:'SR Nagar, Punjagutta, Begumpet' },
-                  { area:'Uppal', icon:'🏭', desc:'Nacharam, Habsiguda, Tarnaka' },
-                ].map(a => (
-                  <div key={a.area} style={{ background:'#F4F6F3', borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start' }}>
-                    <span style={{ fontSize:22 }}>{a.icon}</span>
-                    <div>
-                      <p style={{ margin:'0 0 3px', fontWeight:700, fontSize:14, color:'#111827' }}>{a.area}</p>
-                      <p style={{ margin:0, fontSize:12, color:'#6B7280' }}>{a.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ background:'#EAF3DE', borderRadius:12, padding:'14px 18px', display:'flex', gap:10, alignItems:'center' }}>
-                <span style={{ fontSize:20 }}>🚚</span>
-                <p style={{ margin:0, fontSize:13, color:'#27500A' }}>Same-day delivery available for orders placed before <strong>12:00 PM</strong>. Free delivery on orders above <strong>₹500</strong>.</p>
-              </div>
-            </>}
-            {topModal==='what' && <>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
-                <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>🌾 What We Do</h2>
-                <button onClick={()=>setTopModal(null)} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:'#6B7280' }}>✕</button>
-              </div>
-              <p style={{ color:'#6B7280', fontSize:14, lineHeight:1.7, marginBottom:24 }}>
-                We are a <strong style={{color:'#3B6D11'}}>direct-to-consumer rice brand</strong> that sources premium Sona Masoori paddy from trusted farms in Telangana, mills it fresh, and delivers it straight to your kitchen — eliminating middlemen and ensuring maximum freshness.
-              </p>
-              <div style={{ display:'grid', gap:14, marginBottom:24 }}>
-                {[
-                  { icon:'🌱', title:'Farm Sourcing', desc:'We source directly from certified paddy farmers in Nalgonda, Khammam, and Warangal districts of Telangana. Every batch is traceable to its farm.' },
-                  { icon:'⚙️', title:'Fresh Milling', desc:'Rice is milled in small batches to preserve freshness. Every pack carries the milling date — you always know how fresh your rice is.' },
-                  { icon:'📦', title:'Quality Packing', desc:'Available in 1 kg, 5 kg and 25 kg packs (25 kg coming soon). FSSAI-compliant packaging with best-before dates.' },
-                  { icon:'🚪', title:'Doorstep Delivery', desc:'Orders placed through our app are delivered to your home within hours. Track your delivery in real time.' },
-                  { icon:'💰', title:'Fair Pricing', desc:'By cutting out wholesalers and retailers, we offer premium rice at transparent prices.' },
-                ].map(item => (
-                  <div key={item.title} style={{ display:'flex', gap:14, padding:'14px 16px', background:'#F9FAF7', borderRadius:12, borderLeft:'3px solid #3B6D11' }}>
-                    <span style={{ fontSize:24, flexShrink:0 }}>{item.icon}</span>
-                    <div>
-                      <p style={{ margin:'0 0 4px', fontWeight:700, fontSize:14, color:'#111827' }}>{item.title}</p>
-                      <p style={{ margin:0, fontSize:13, color:'#6B7280', lineHeight:1.6 }}>{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>}
-            {topModal==='about' && <>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
-                <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>🌾 About Green Village Rice</h2>
-                <button onClick={()=>setTopModal(null)} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:'#6B7280' }}>✕</button>
-              </div>
-              <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:24, padding:'18px 20px', background:'linear-gradient(135deg,#3B6D11,#27500A)', borderRadius:14 }}>
-                <div style={{ width:60, height:60, borderRadius:14, background:'rgba(255,255,255,0.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, flexShrink:0 }}>🌾</div>
-                <div>
-                  <p style={{ margin:'0 0 4px', fontWeight:800, fontSize:18, color:'#fff' }}>Green Village Rice</p>
-                  <p style={{ margin:'0 0 2px', fontSize:13, color:'rgba(255,255,255,0.7)' }}>గ్రీన్ విలేజ్ రైస్ · Hyderabad, Telangana</p>
-                  <p style={{ margin:0, fontSize:12, color:'rgba(255,255,255,0.5)' }}>Est. 2026 · FSSAI Licensed</p>
-                </div>
-              </div>
-              <p style={{ color:'#6B7280', fontSize:14, lineHeight:1.8, marginBottom:20 }}>
-                Green Village Rice was founded with a simple belief — <em style={{color:'#3B6D11', fontStyle:'italic'}}>every family deserves fresh, clean rice at a fair price</em>.
-              </p>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:24 }}>
-                {[
-                  { icon:'🏆', label:'Our Mission', value:'Make fresh rice accessible to every household in Hyderabad' },
-                  { icon:'👁️', label:'Our Vision', value:"Become Telangana's most trusted farm-to-home rice brand" },
-                  { icon:'💚', label:'Our Values', value:'Freshness, Transparency, Fair Pricing, Community' },
-                  { icon:'📞', label:'Contact Us', value:'admin@greenvillagerice.in · Hyderabad' },
-                ].map(item => (
-                  <div key={item.label} style={{ background:'#F4F6F3', borderRadius:12, padding:'16px' }}>
-                    <p style={{ margin:'0 0 6px', fontSize:18 }}>{item.icon}</p>
-                    <p style={{ margin:'0 0 4px', fontSize:11, fontWeight:700, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'0.6px' }}>{item.label}</p>
-                    <p style={{ margin:0, fontSize:13, color:'#374151', lineHeight:1.5 }}>{item.value}</p>
-                  </div>
-                ))}
-              </div>
-            </>}
-          </div>
-        </div>
-      )}
-
+      
       {showNewOrder && <NewOrderModal products={products} onClose={()=>setShowNewOrder(false)} onSaved={load} />}
       {showStock && <StockModal product={showStock} onClose={()=>setShowStock(null)} onSaved={load} />}
 
@@ -572,6 +496,11 @@ export default function Dashboard() {
           ))}
         </nav>
         <div style={{ padding:'8px 6px', borderTop:`1px solid ${G.border}`, flexShrink:0 }}>
+          <button onClick={()=>navigate('/')}
+            style={{ width:'100%', padding:collapsed?'9px 0':'9px 12px', borderRadius:10, border:'none', background:'transparent', color:G.green, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:8, marginBottom:6 }}>
+            <span style={{ fontSize:16, flexShrink:0 }}>🌐</span>
+            {!collapsed && <span>Public site</span>}
+          </button>
           {!collapsed && (
             <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', marginBottom:6, background:'#F9FAF7', borderRadius:10 }}>
               <div style={{ width:30, height:30, borderRadius:'50%', background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:G.greenDark, flexShrink:0, overflow:'hidden' }}>
@@ -602,19 +531,9 @@ export default function Dashboard() {
             <button onClick={()=>setCollapsed(!collapsed)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:G.muted, padding:4 }}>☰</button>
             <span style={{ fontSize:15, fontWeight:700, color:G.text }}>{PAGES.find(p=>p.key===page)?.label}</span>
           </div>
-          <div className="dash-topbar-center" style={{ display:'flex', gap:2 }}>
-            {[['Where We Work','where'],['What We Do','what'],['About','about']].map(([label,key])=>(
-              <button key={key} onClick={()=>setTopModal(key)} style={{ background:'none', border:'none', cursor:'pointer', padding:'6px 14px', borderRadius:8, fontSize:13, fontWeight:600, color:G.green, transition:'background 0.15s' }}
-                onMouseEnter={e=>e.currentTarget.style.background=G.greenLight}
-                onMouseLeave={e=>e.currentTarget.style.background='none'}>{label}</button>
-            ))}
-          </div>
+          <div />
           <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-            {['daily','monthly','yearly'].map(f=>(
-              <button key={f} onClick={()=>setFilter(f)} style={{ padding:'5px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:filter===f?G.green:'#F3F4F6', color:filter===f?'#fff':G.muted }}>
-                {f.charAt(0).toUpperCase()+f.slice(1)}
-              </button>
-            ))}
+            
             <button onClick={()=>setDarkMode(!darkMode)} title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'} style={{
               width:32, height:32, borderRadius:'50%', border:'none', cursor:'pointer',
               background: darkMode ? '#1F2937' : '#FEF3C7',
@@ -630,14 +549,92 @@ export default function Dashboard() {
           {loading ? <div style={{ textAlign:'center', padding:80, color:G.muted }}>Loading...</div> : <>
 
           {page==='dashboard' && <>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:24 }}>
-              <StatCard label="Revenue" value={fmtRs(stats.revenue)} icon="💰" color={G.green} bg={G.greenLight} />
-              <StatCard label="Orders" value={stats.orders} icon="📋" color={G.blue} bg={G.blueLight} />
-              <StatCard label="Bags Sold" value={stats.bags} icon="🌾" color={G.green2} bg={G.greenLight} />
-              <StatCard label="Pending" value={stats.pending} icon="⏳" color={G.amber} bg={G.amberLight} />
-              <StatCard label="Low Stock" value={stats.lowStock} icon="⚠️" color={G.red} bg={G.redLight} />
+            {(() => {
+              const pendingOrders = orders.filter(o => o.status === 'pending')
+              const unpaidUpiOrders = orders.filter(isUnpaidUpi)
+              const lowStockProducts = products.filter(p => p.stock_bags <= p.low_stock_threshold)
+              const openOrder = (o) => {
+                setOrderSearch(o.order_number || '')
+                setOrderStatusFilter('all')
+                setPage('orders')
+              }
+              return (
+            <>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12, marginBottom:16 }}>
+              <div>
+                <h2 style={{ margin:'0 0 4px', fontSize:18, fontWeight:700, color:G.greenDark }}>Work board</h2>
+                <p style={{ margin:0, fontSize:13, color:G.muted }}>Pending orders, unpaid UPI/bank, and bags below threshold — not the public story page.</p>
+              </div>
+              <button onClick={()=>navigate('/#story')} style={{ background:'none', border:`1.5px solid ${G.green}`, color:G.green, borderRadius:10, padding:'8px 14px', fontSize:12, fontWeight:700, cursor:'pointer' }}>Our Story (public site)</button>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:18 }}>
+              <button onClick={()=>{ setOrderStatusFilter('pending'); setPage('orders') }} style={{ textAlign:'left', border:'none', padding:0, cursor:'pointer', background:'transparent' }}>
+                <StatCard label="Pending orders" value={stats.pending} icon="⏳" color={G.amber} bg={G.amberLight} />
+              </button>
+              <button onClick={()=>{ setOrderPayFilter('upi'); setOrderStatusFilter('all'); setPage('orders') }} style={{ textAlign:'left', border:'none', padding:0, cursor:'pointer', background:'transparent' }}>
+                <StatCard label="Unpaid UPI / bank" value={stats.unpaidUpi} icon="💳" color={G.red} bg={G.redLight} />
+              </button>
+              <button onClick={()=>setPage('inventory')} style={{ textAlign:'left', border:'none', padding:0, cursor:'pointer', background:'transparent' }}>
+                <StatCard label="Low stock SKUs" value={stats.lowStock} icon="⚠️" color={G.red} bg={G.redLight} />
+              </button>
+              <StatCard label="Revenue (paid)" value={fmtRs(stats.revenue)} icon="💰" color={G.green} bg={G.greenLight} />
               <StatCard label="Customers" value={stats.customers} icon="👥" color="#7C3AED" bg="#EDE9FE" />
             </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', gap:14, marginBottom:24 }}>
+              <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border: pendingOrders.length ? `1px solid ${G.amberLight}` : `1px solid ${G.border}` }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                  <p style={{ margin:0, fontSize:13, fontWeight:700 }}>Pending orders</p>
+                  <button onClick={()=>{ setOrderStatusFilter('pending'); setPage('orders') }} style={{ background:'none', border:'none', color:G.green, fontWeight:700, fontSize:12, cursor:'pointer' }}>All →</button>
+                </div>
+                {pendingOrders.length===0 && <p style={{ margin:0, fontSize:13, color:G.muted }}>No pending orders. New ones will show here first.</p>}
+                {pendingOrders.slice(0,8).map(o=>(
+                  <button key={o.id} onClick={()=>openOrder(o)} style={{ width:'100%', textAlign:'left', background:'#F9FAF7', border:`1px solid ${G.border}`, borderRadius:10, padding:'10px 12px', marginBottom:8, cursor:'pointer' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontWeight:700, fontSize:13, color:G.green }}>{o.order_number}</span>
+                      <span style={{ fontWeight:800, fontSize:13, color:G.text }}>{fmtRs(o.total_amount)}</span>
+                    </div>
+                    <p style={{ margin:'4px 0 0', fontSize:12, color:G.muted }}>{o.customer_name||'—'} · {(o.payment_method||'pay').toUpperCase()}</p>
+                  </button>
+                ))}
+              </div>
+              <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border: unpaidUpiOrders.length ? `1px solid ${G.redLight}` : `1px solid ${G.border}` }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                  <p style={{ margin:0, fontSize:13, fontWeight:700 }}>Unpaid UPI / bank</p>
+                  <button onClick={()=>{ setOrderPayFilter('upi'); setPage('orders') }} style={{ background:'none', border:'none', color:G.green, fontWeight:700, fontSize:12, cursor:'pointer' }}>All →</button>
+                </div>
+                {unpaidUpiOrders.length===0 && <p style={{ margin:0, fontSize:13, color:G.muted }}>No UPI or bank transfers waiting for verification.</p>}
+                {unpaidUpiOrders.slice(0,8).map(o=>(
+                  <button key={o.id} onClick={()=>openOrder(o)} style={{ width:'100%', textAlign:'left', background:'#F9FAF7', border:`1px solid ${G.border}`, borderRadius:10, padding:'10px 12px', marginBottom:8, cursor:'pointer' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontWeight:700, fontSize:13, color:G.green }}>{o.order_number}</span>
+                      <span style={{ fontWeight:800, fontSize:13, color:G.red }}>{fmtRs(o.total_amount)}</span>
+                    </div>
+                    <p style={{ margin:'4px 0 0', fontSize:12, color:G.muted }}>{(o.payment_method||'').toUpperCase()} · {o.payment_status}{o.utr_number ? ` · UTR ${o.utr_number}` : ' · no UTR yet'}</p>
+                  </button>
+                ))}
+              </div>
+              <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border: lowStockProducts.length ? `1px solid ${G.redLight}` : `1px solid ${G.border}` }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                  <p style={{ margin:0, fontSize:13, fontWeight:700 }}>Low stock</p>
+                  <button onClick={()=>setPage('inventory')} style={{ background:'none', border:'none', color:G.green, fontWeight:700, fontSize:12, cursor:'pointer' }}>Inventory →</button>
+                </div>
+                {lowStockProducts.length===0 && <p style={{ margin:0, fontSize:13, color:G.muted }}>All SKUs are above their low-stock threshold.</p>}
+                {lowStockProducts.slice(0,8).map(p=>(
+                  <button key={p.id} onClick={()=>{ setShowStock(p); setPage('inventory') }} style={{ width:'100%', textAlign:'left', background:'#F9FAF7', border:`1px solid ${G.border}`, borderRadius:10, padding:'10px 12px', marginBottom:8, cursor:'pointer' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontWeight:700, fontSize:13, color:G.text }}>{p.name}</span>
+                      <span style={{ fontWeight:800, fontSize:13, color:G.red }}>{p.stock_bags} bags</span>
+                    </div>
+                    <p style={{ margin:'4px 0 0', fontSize:12, color:G.muted }}>Threshold {p.low_stock_threshold} · {p.sku || `${p.weight_kg}kg`}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            </>
+              )
+            })()}
+            <PeriodPills filter={filter} setFilter={setFilter} />
+            
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:18, marginBottom:24 }}>
               <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
                 <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Revenue — {filter}</p>
@@ -995,6 +992,7 @@ export default function Dashboard() {
           </>}
 
           {page==='analytics' && <>
+            <PeriodPills filter={filter} setFilter={setFilter} />
             <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14, marginBottom:24 }}>
               <StatCard label="Total Revenue" value={fmtRs(stats.revenue)} icon="💰" color={G.green} bg={G.greenLight} />
               <StatCard label="Total Bags Sold" value={stats.bags} icon="🌾" color={G.green2} bg={G.greenLight} />
