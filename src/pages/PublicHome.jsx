@@ -48,24 +48,11 @@ export default function PublicHome() {
     const t = setInterval(() => setSlide(s => (s+1) % SLIDES.length), 4000)
     return () => clearInterval(t)
   }, [])
-  useEffect(() => {
-    const scrollHash = () => {
-      const id = window.location.hash.replace('#','')
-      if (!id) return
-      const el = document.getElementById(id)
-      if (el) el.scrollIntoView({ behavior:'smooth', block:'start' })
-    }
-    scrollHash()
-    window.addEventListener('hashchange', scrollHash)
-    return () => window.removeEventListener('hashchange', scrollHash)
-  }, [])
+
   return (
     <div style={{ fontFamily:"'Inter',sans-serif", background:G.surface, minHeight:'100vh' }}>
 
-      {/* ── Public top nav — no sidebar, no admin bell/filter,
-          just brand + Login/Signup, since this page is reachable
-          by anyone with no account at all ── */}
-      <header style={{ background:G.white, borderBottom:`1px solid ${G.border}`, padding:'14px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:20 }}>
+      <header style={{ background:G.white, borderBottom:`1px solid ${G.border}`, padding:'14px 32px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:20 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:34, height:34, borderRadius:9, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:17 }}>🌾</div>
           <div>
@@ -73,9 +60,7 @@ export default function PublicHome() {
             <p style={{ margin:0, fontSize:10, color:G.green2 }}>Farm to Home</p>
           </div>
         </div>
-        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', justifyContent:'flex-end' }}>
-          <a href="#story" style={{ padding:'8px 12px', color:G.green, fontSize:13, fontWeight:700, textDecoration:'none' }}>Our Story</a>
-          <a href="#videos" style={{ padding:'8px 12px', color:G.green, fontSize:13, fontWeight:700, textDecoration:'none' }}>Videos</a>
+        <div style={{ display:'flex', gap:8 }}>
           <button onClick={()=>navigate('/login')} style={{ padding:'8px 18px', borderRadius:10, border:`1.5px solid ${G.green}`, background:G.white, color:G.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
             Login
           </button>
@@ -85,9 +70,16 @@ export default function PublicHome() {
         </div>
       </header>
 
-      <div style={{ maxWidth:1100, margin:'0 auto', padding:'24px 20px 60px' }}>
+      {/* ✅ FIX: maxWidth increased from 1100px to 1400px, and side
+          padding increased from 20px to 32px, so the page fills much
+          more of a normal desktop screen instead of sitting as a
+          narrow centered column with large empty margins on either
+          side. Content grids below (products, facts, videos) already
+          use responsive auto-fit columns, so they'll automatically
+          spread into the extra width rather than needing individual
+          changes. */}
+      <div style={{ maxWidth:1400, margin:'0 auto', padding:'24px 32px 60px' }}>
 
-        {/* Hero banner with slideshow */}
         <div style={{ borderRadius:20, marginBottom:24, position:'relative', overflow:'hidden', minHeight:380 }}>
           {SLIDES.map((s,i) => (
             <div key={i} style={{
@@ -116,7 +108,7 @@ export default function PublicHome() {
                 <p style={{ margin:0,fontSize:13,color:'rgba(255,255,255,0.65)' }}>గ్రీన్ విలేజ్ రైస్ · Hyderabad, Telangana · Est. 2026</p>
               </div>
             </div>
-            <p style={{ margin:'0 0 22px',fontSize:15,color:'rgba(255,255,255,0.9)',lineHeight:1.8,maxWidth:600 }}>
+            <p style={{ margin:'0 0 22px',fontSize:15,color:'rgba(255,255,255,0.9)',lineHeight:1.8,maxWidth:700 }}>
               Farm-fresh Sona Masoori sourced directly from Nalgonda farmers, milled in small batches and delivered to your kitchen. Every bag has a QR code — scan and know exactly where your rice came from.
             </p>
             <div style={{ display:'flex',gap:8,flexWrap:'wrap', marginBottom:24 }}>
@@ -124,8 +116,6 @@ export default function PublicHome() {
                 <span key={tag} style={{ padding:'4px 12px',borderRadius:20,background:'rgba(255,255,255,0.15)',color:G.white,fontSize:11,fontWeight:600,border:'1px solid rgba(255,255,255,0.2)' }}>{tag}</span>
               ))}
             </div>
-            {/* Primary CTA — this is the whole point of a public page:
-                turn a visitor into a signed-up customer, right here */}
             <button onClick={()=>navigate('/signup')} style={{ padding:'13px 32px', borderRadius:12, border:'none', background:G.white, color:G.greenDark, fontSize:15, fontWeight:800, cursor:'pointer', boxShadow:'0 4px 14px rgba(0,0,0,0.25)' }}>
               🛒 Order Fresh Rice Now →
             </button>
@@ -142,8 +132,7 @@ export default function PublicHome() {
           </div>
         </div>
 
-        {/* Our Story */}
-        <div id="story" style={{ scrollMarginTop:80, background:G.white,borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+        <div style={{ background:G.white,borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <h2 style={{ margin:'0 0 12px',fontSize:16,fontWeight:700,color:G.text }}>🌱 Our Story</h2>
           <p style={{ margin:'0 0 10px',fontSize:13,color:G.muted,lineHeight:1.8 }}>
             Green Village Rice was started with one simple belief — every family deserves to know where their rice comes from. We work directly with farmers in Nalgonda, Khammam and Warangal, mill fresh in small batches and deliver to Hyderabad homes within days of packing.
@@ -153,9 +142,8 @@ export default function PublicHome() {
           </p>
         </div>
 
-        {/* Freshness Standards */}
         <h2 style={{ margin:'0 0 12px',fontSize:16,fontWeight:700,color:G.text }}>📊 Our Freshness Standards</h2>
-        <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:20 }}>
+        <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12,marginBottom:20 }}>
           {FACTS.map((f,i)=>(
             <div key={i} style={{ background:G.white,borderRadius:14,padding:'14px 12px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',textAlign:'center',borderTop:`3px solid ${G.green}` }}>
               <p style={{ margin:'0 0 5px',fontSize:22 }}>{f.icon}</p>
@@ -165,10 +153,9 @@ export default function PublicHome() {
           ))}
         </div>
 
-        {/* Farm to Kitchen Journey */}
         <div style={{ background:G.white,borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <h2 style={{ margin:'0 0 16px',fontSize:16,fontWeight:700,color:G.text }}>🚀 Farm to Kitchen — 6 Steps</h2>
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10 }}>
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:12 }}>
             {STEPS.map(s=>(
               <div key={s.step} style={{ background:'#F9FAF7',borderRadius:12,padding:'14px 12px' }}>
                 <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:8 }}>
@@ -182,10 +169,9 @@ export default function PublicHome() {
           </div>
         </div>
 
-        {/* Videos */}
-        <h2 id="videos" style={{ scrollMarginTop:80, margin:'0 0 6px',fontSize:16,fontWeight:700,color:G.text }}>🎥 Farm & Freshness Videos</h2>
+        <h2 style={{ margin:'0 0 6px',fontSize:16,fontWeight:700,color:G.text }}>🎥 Farm & Freshness Videos</h2>
         <p style={{ margin:'0 0 14px',fontSize:13,color:G.muted }}>Watch how GVR rice goes from farm to kitchen. Click any card to watch on YouTube.</p>
-        <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:14,marginBottom:20 }}>
+        <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:16,marginBottom:20 }}>
           {VIDEOS.map(v=>(
             <div key={v.id} style={{ background:G.white,borderRadius:16,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${G.border}` }}>
               <a href={v.url} target="_blank" rel="noreferrer" style={{ textDecoration:'none',display:'block' }}>
@@ -210,14 +196,13 @@ export default function PublicHome() {
           ))}
         </div>
 
-        {/* Products */}
         <div style={{ background:G.white,borderRadius:16,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <h2 style={{ margin:'0 0 14px',fontSize:16,fontWeight:700,color:G.text }}>🛍 Our Products</h2>
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10 }}>
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:12 }}>
             {[
               { name:'Sona Masoori 1kg', price:'₹68',  sku:'GVR-SM-1KG',  desc:'Daily cooking rice. Soft, aromatic, perfect for all dishes.',  badge:'Best Seller' },
               { name:'Sona Masoori 5kg', price:'₹320', sku:'GVR-SM-5KG',  desc:'Family pack. Same freshness, better value per kg.',            badge:'Value Pack'  },
-              { name:'Basmati 1kg',      price:'₹95',  sku:'GVR-BAS-1KG', desc:'Long grain, fragrant. Perfect for biryani and pulao.',         badge:'Premium'    },
+              { name:'Basmati 1kg',      price:'₹190', sku:'GVR-BAS-1KG', desc:'Long grain, fragrant. Perfect for biryani and pulao.',         badge:'Premium'    },
               { name:'Basmati 5kg',      price:'₹440', sku:'GVR-BAS-5KG', desc:'Bulk basmati for restaurants and large families.',             badge:'Bulk'       },
             ].map(p=>(
               <div key={p.sku} style={{ background:'#F9FAF7',borderRadius:12,padding:'14px',borderLeft:`3px solid ${G.green}` }}>
@@ -237,8 +222,7 @@ export default function PublicHome() {
           </button>
         </div>
 
-        {/* Mission & Vision */}
-        <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:20 }}>
+        <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:16,marginBottom:20 }}>
           {[
             { icon:'🎯', title:'Our Mission', text:'Make fresh, traceable rice accessible to every household in Hyderabad at a fair price — with complete transparency from farm to kitchen.', color:G.green },
             { icon:'👁️', title:'Our Vision',  text:"Become Telangana's most trusted farm-to-home rice brand and expand across all major cities in Andhra Pradesh by 2028.", color:G.blue },
@@ -251,13 +235,12 @@ export default function PublicHome() {
           ))}
         </div>
 
-        {/* Contact footer */}
         <div style={{ background:`linear-gradient(135deg,${G.green},${G.greenDark})`,borderRadius:14,padding:'24px 22px',color:G.white,textAlign:'center' }}>
           <h2 style={{ margin:'0 0 16px',fontSize:16,fontWeight:700,color:G.white }}>Ready to taste the difference?</h2>
           <button onClick={()=>navigate('/signup')} style={{ padding:'12px 32px', borderRadius:12, border:'none', background:G.white, color:G.greenDark, fontSize:14, fontWeight:800, cursor:'pointer', marginBottom:20 }}>
             Create Account & Order →
           </button>
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10 }}>
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12 }}>
             {[{icon:'📧',label:'Email',value:'admin@greenvillagerice.in'},{icon:'📍',label:'HQ',value:'Hyderabad, Telangana'},{icon:'🌐',label:'Serving',value:'6 Cities'},{icon:'📅',label:'Est.',value:'2026 · FSSAI Licensed'}].map(c=>(
               <div key={c.label} style={{ background:'rgba(255,255,255,0.12)',borderRadius:10,padding:'10px 12px' }}>
                 <p style={{ margin:'0 0 3px',fontSize:15 }}>{c.icon}</p>
