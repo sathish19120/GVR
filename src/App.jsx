@@ -1,19 +1,8 @@
 import { useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './store/auth'
-// ✅ FIX: ErrorBoundary.jsx already exists in src/pages/ — a fully
-// built component with a friendly "Something went wrong" screen,
-// a Refresh button, and a "Go to Login" reset button — but it was
-// never imported or used anywhere. Every crash found this session
-// (Dashboard's stray logout button, AdminPage's missing setBranch,
-// the earlier SubscribeSection D-is-not-defined bug) would have
-// taken down the ENTIRE app to a blank white screen with no way to
-// recover except manually navigating away or clearing storage.
-// Wrapping the router here means any future component crash — even
-// ones we haven't found yet — shows a real recovery UI instead.
 import ErrorBoundary from './pages/ErrorBoundary'
 
-// ── Lazy load all pages ───────────────────────────────────
 const AuthPage        = lazy(() => import('./pages/AuthPage'))
 const PublicHome      = lazy(() => import('./pages/PublicHome'))
 const Dashboard       = lazy(() => import('./pages/Dashboard'))
@@ -22,7 +11,6 @@ const DeliveryPage    = lazy(() => import('./pages/DeliveryPage'))
 const BranchDashboard = lazy(() => import('./pages/BranchDashboard'))
 const VendorPortal    = lazy(() => import('./pages/VendorPortal'))
 
-// ── Loading screen ────────────────────────────────────────
 function Loading() {
   return (
     <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'#F4F6F3' }}>
@@ -32,32 +20,29 @@ function Loading() {
         <p style={{ color:'#6B7280', fontSize:13, margin:'0 0 20px' }}>గ్రీన్ విలేజ్ రైస్</p>
         <div style={{ display:'flex', gap:6, justifyContent:'center' }}>
           {[0,1,2].map(i => (
-            <div key={i} style={{
-              width:8, height:8, borderRadius:'50%', background:'#3B6D11',
-              animation:`bounce 1.2s ease-in-out ${i*0.2}s infinite`,
-            }} />
+            <div key={i} style={{ width:8, height:8, borderRadius:'50%', background:'#3B6D11', animation:`bounce 1.2s ease-in-out ${i*0.2}s infinite` }} />
           ))}
         </div>
       </div>
-      <style>{`
-        @keyframes bounce {
-          0%,80%,100% { transform:scale(0.6); opacity:0.4 }
-          40% { transform:scale(1); opacity:1 }
-        }
-      `}</style>
+      <style>{`@keyframes bounce { 0%,80%,100% { transform:scale(0.6); opacity:0.4 } 40% { transform:scale(1); opacity:1 } }`}</style>
     </div>
   )
 }
 
-// ── Route guards ──────────────────────────────────────────
 function Protected({ children, roles }) {
   const { user, loading } = useAuth()
   if (loading) return <Loading />
   if (!user) return <Navigate to="/login" replace />
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />
+  if (roles && !roles.includes(user.role)) return <Navigate to="/app" replace />
   return children
 }
 
+// ✅ FIX for "login redirects back to website page": RoleRouter is what
+// decides where a LOGGED-IN user actually lands. It now sits at "/app"
+// (not "/"), so once AuthPage successfully logs someone in, it sends
+// them to "/app" -> RoleRouter -> their real dashboard immediately.
+// "/" is reserved for the public marketing page for logged-OUT
+// visitors only, and a logged-in user never gets bounced back there.
 function RoleRouter() {
   const { user, loading } = useAuth()
   if (loading) return <Loading />
@@ -69,6 +54,13 @@ function RoleRouter() {
   return <Navigate to="/dashboard" replace />
 }
 
+// ✅ FIX: AuthGuard now sends an ALREADY-logged-in user straight to
+// their role's real page — never to "/". This is the exact fix for
+// "clicked login button, went back to app" — previously if someone
+// was already authenticated and somehow landed on /login again, this
+// guard's fallback needs to be a real destination, not "/", which
+// would have shown the marketing page instead of continuing into the
+// app they were trying to reach.
 function AuthGuard({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <Loading />
@@ -82,26 +74,17 @@ function AuthGuard({ children }) {
   return children
 }
 
-// ── App ───────────────────────────────────────────────────
 export default function App() {
   const { init } = useAuth()
   useEffect(() => { init() }, [])
 
   return (
-    // ✅ FIX: ErrorBoundary now wraps the entire router. If any page
-    // throws an uncaught error, the user sees ErrorBoundary's built-in
-    // recovery screen (Refresh Page / Go to Login) instead of a silent
-    // blank white page — the same class of failure that made earlier
-    // bugs this session (before they were fixed) so hard to diagnose
-    // from the outside, since nothing on screen indicated what broke.
     <ErrorBoundary>
       <BrowserRouter>
         <Suspense fallback={<Loading />}>
           <Routes>
-             {/* Public marketing site: story, videos, products. Staff
-                land on /dashboard (Today work board), not this page. */}
             <Route path="/"           element={<PublicHome />} />
-            <Route path="/app"       element={<RoleRouter />} />
+            <Route path="/app"        element={<RoleRouter />} />
             <Route path="/login"      element={<AuthGuard><AuthPage /></AuthGuard>} />
             <Route path="/signup"     element={<AuthGuard><AuthPage defaultMode="signup" /></AuthGuard>} />
             <Route path="/dashboard/*" element={<Protected roles={['superadmin','admin']}><Dashboard /></Protected>} />
