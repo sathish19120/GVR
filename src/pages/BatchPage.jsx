@@ -140,9 +140,6 @@ function CreateBatchModal({ products, vendors, onClose, onSaved }) {
       })
       if (err) throw err
 
-      // New batch stock still goes straight to products.stock_bags —
-      // this is fresh incoming stock, not a sale, so it's a direct add
-      // rather than going through deplete_product_stock().
       if (product) {
         await supabase.from('products').update({ stock_bags: (product.stock_bags||0) + parseInt(qty), packing_date: packDate, best_before_date: bestBefore }).eq('id', productId)
       }
@@ -214,6 +211,130 @@ function CreateBatchModal({ products, vendors, onClose, onSaved }) {
   )
 }
 
+// ✅ NEW: EditBatchModal — corrects batch details after creation.
+// IMPORTANT SAFEGUARD: editing "Total Bags" doesn't just overwrite the
+// number — it adjusts remaining_bags by the SAME delta, preserving
+// already-sold history instead of silently resetting it, and keeps
+// the FIFO depletion system (deplete_product_stock) consistent.
+function EditBatchModal({ batch, vendors, onClose, onSaved }) {
+  const [vendorId, setVendorId]     = useState(batch.vendor_id || '')
+  const [origin, setOrigin]         = useState(batch.origin_district || '')
+  const [millName, setMillName]     = useState(batch.mill_name || '')
+  const [fssai, setFssai]           = useState(batch.fssai_no || '')
+  const [packDate, setPackDate]     = useState(batch.packing_date?.split('T')[0] || '')
+  const [bestBefore, setBestBefore] = useState(batch.best_before?.split('T')[0] || '')
+  const [quantity, setQuantity]     = useState(batch.quantity_bags)
+  const [saving, setSaving]         = useState(false)
+  const [error, setError]           = useState('')
+
+  const quantityDelta = parseInt(quantity) - batch.quantity_bags
+
+  async function save() {
+    const newQty = parseInt(quantity)
+    if (!newQty || newQty <= 0) { setError('Quantity must be a positive number'); return }
+    const alreadySold = batch.quantity_bags - batch.remaining_bags
+    if (newQty < alreadySold) {
+      setError(`Cannot set total below ${alreadySold} bags — that many have already been sold from this batch`)
+      return
+    }
+    setSaving(true); setError('')
+    try {
+      const newRemaining = batch.remaining_bags + quantityDelta
+      const { error: err } = await supabase.from('batches').update({
+        vendor_id: vendorId || null,
+        vendor_name: vendors.find(v=>v.id===vendorId)?.name || null,
+        origin_district: origin,
+        mill_name: millName,
+        fssai_no: fssai,
+        packing_date: packDate,
+        best_before: bestBefore,
+        quantity_bags: newQty,
+        remaining_bags: newRemaining,
+      }).eq('id', batch.id)
+      if (err) throw err
+
+      if (quantityDelta !== 0) {
+        const { data: product } = await supabase.from('products').select('stock_bags').eq('id', batch.product_id).single()
+        if (product) {
+          await supabase.from('products').update({
+            stock_bags: Math.max(0, product.stock_bags + quantityDelta)
+          }).eq('id', batch.product_id)
+          await supabase.from('stock_movements').insert({
+            product_id: batch.product_id,
+            change_bags: quantityDelta,
+            type: 'adjustment',
+            note: `Batch ${batch.batch_number} quantity corrected (${quantityDelta>0?'+':''}${quantityDelta})`,
+            created_at: new Date().toISOString()
+          })
+        }
+      }
+
+      onSaved(); onClose()
+    } catch(e) { setError(e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
+      <div style={{ background:G.white,borderRadius:20,width:'100%',maxWidth:500,padding:28,maxHeight:'90vh',overflowY:'auto' }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22 }}>
+          <div>
+            <h3 style={{ margin:'0 0 2px',fontSize:18,fontWeight:700 }}>Edit Batch</h3>
+            <p style={{ margin:0,fontSize:12,color:G.muted }}>{batch.batch_number} · {batch.product_name}</p>
+          </div>
+          <button onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:G.muted }}>✕</button>
+        </div>
+        {error && <div style={{ background:G.redLight,border:`1px solid #FECACA`,borderRadius:10,padding:'10px 14px',marginBottom:16,color:G.red,fontSize:13 }}>{error}</div>}
+        <div style={{ display:'grid',gap:14 }}>
+          <div>
+            <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Source Vendor / Farmer</label>
+            <select value={vendorId} onChange={e=>setVendorId(e.target.value)} style={{ ...inp,cursor:'pointer' }}>
+              <option value="">No vendor selected...</option>
+              {vendors.map(v=><option key={v.id} value={v.id}>{v.name} — {v.type}</option>)}
+            </select>
+          </div>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12 }}>
+            <div>
+              <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Total Bags (correction)</label>
+              <input type="number" min={1} value={quantity} onChange={e=>setQuantity(e.target.value)} style={inp} />
+              {quantityDelta !== 0 && (
+                <p style={{ margin:'6px 0 0', fontSize:11, color: quantityDelta>0?G.green:G.red }}>
+                  {quantityDelta>0?'+':''}{quantityDelta} bags — will also adjust product stock
+                </p>
+              )}
+            </div>
+            <div>
+              <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Packing Date</label>
+              <input type="date" value={packDate} onChange={e=>setPackDate(e.target.value)} style={inp} />
+            </div>
+          </div>
+          <div>
+            <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Best Before Date</label>
+            <input type="date" value={bestBefore} onChange={e=>setBestBefore(e.target.value)} style={inp} />
+          </div>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12 }}>
+            <div>
+              <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Origin District</label>
+              <input type="text" value={origin} onChange={e=>setOrigin(e.target.value)} style={inp} />
+            </div>
+            <div>
+              <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Mill Name</label>
+              <input type="text" value={millName} onChange={e=>setMillName(e.target.value)} style={inp} />
+            </div>
+          </div>
+          <div>
+            <label style={{ display:'block',fontSize:11,fontWeight:700,color:G.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>FSSAI License No.</label>
+            <input type="text" value={fssai} onChange={e=>setFssai(e.target.value)} style={inp} />
+          </div>
+        </div>
+        <button onClick={save} disabled={saving} style={{ width:'100%',marginTop:20,padding:13,background:saving?'#9CA3AF':G.blue,color:G.white,border:'none',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer' }}>
+          {saving ? 'Saving...' : '✓ Save Changes'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function BatchPage() {
   const [batches, setBatches]   = useState([])
   const [products, setProducts] = useState([])
@@ -221,6 +342,7 @@ export default function BatchPage() {
   const [loading, setLoading]   = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [showQR, setShowQR]     = useState(null)
+  const [editBatch, setEditBatch] = useState(null)
   const [tab, setTab]           = useState('active')
   const [search, setSearch]     = useState('')
   const [statusUpdating, setStatusUpdating] = useState(null)
@@ -240,13 +362,6 @@ export default function BatchPage() {
     setLoading(false)
   }
 
-  // ✅ FIX: previously did `.update({ status })` directly on batches,
-  // which never touched products.stock_bags. Recalling or exhausting a
-  // batch with bags still remaining had zero effect on total product
-  // stock — the app kept selling stock that had just been pulled from
-  // circulation. Now calls set_batch_status(), an atomic Postgres
-  // function that reverses (or restores, if reactivated) the correct
-  // amount of stock in the same operation as the status change.
   async function updateStatus(id, status) {
     setStatusUpdating(id)
     try {
@@ -276,6 +391,7 @@ export default function BatchPage() {
     <div style={{ fontFamily:"'Inter',sans-serif" }}>
       {showCreate && <CreateBatchModal products={products} vendors={vendors} onClose={()=>setShowCreate(false)} onSaved={load} />}
       {showQR && <QRLabel batch={showQR} onClose={()=>setShowQR(null)} />}
+      {editBatch && <EditBatchModal batch={editBatch} vendors={vendors} onClose={()=>setEditBatch(null)} onSaved={load} />}
 
       <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:12 }}>
         <div>
@@ -411,10 +527,11 @@ export default function BatchPage() {
                     {b.fssai_no && <span>✅ FSSAI: {b.fssai_no}</span>}
                   </div>
 
-                  <div style={{ display:'flex',gap:6 }}>
+                  <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
                     {b.status==='active' && (
                       <>
                         <button onClick={()=>setShowQR(b)} style={{ background:G.blueLight,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.blue,cursor:'pointer' }}>🖨 Print Barcode Labels</button>
+                        <button onClick={()=>setEditBatch(b)} style={{ background:'#EDE9FE',border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:'#7C3AED',cursor:'pointer' }}>✏️ Edit Details</button>
                         <button onClick={()=>updateStatus(b.id,'exhausted')} disabled={isUpdating} style={{ background:'#F3F4F6',border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,color:G.muted,cursor:isUpdating?'not-allowed':'pointer' }}>
                           {isUpdating?'...':'Mark Exhausted'}
                         </button>
