@@ -105,7 +105,7 @@ export default function PublicHome() {
               <div style={{ width:56,height:56,borderRadius:14,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:30 }}>🌾</div>
               <div>
                 <h1 style={{ margin:0,fontSize:30,fontWeight:800,color:G.white }}>Green Village Rice</h1>
-                <p style={{ margin:0,fontSize:13,color:'rgba(255,255,255,0.65)' }}>గ్రీన్ విలేజ్ రైస్ · Hyderabad, Telangana · Est. 2026</p>
+                <p style={{ margin:0,fontSize:13,color:'rgba(255,255,255,0.65)' }}>గ్రీన్ విలేజ్ రైస్ · Hyderabad, Telangana · Est. 2014</p>
               </div>
             </div>
             <p style={{ margin:'0 0 22px',fontSize:15,color:'rgba(255,255,255,0.9)',lineHeight:1.8,maxWidth:700 }}>
@@ -122,7 +122,7 @@ export default function PublicHome() {
           </div>
 
           <div style={{ position:'relative', zIndex:3, display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10, padding:'0 32px 24px' }}>
-            {[{label:'Branches',value:'6',icon:'🏪'},{label:'Products',value:'4',icon:'🌾'},{label:'Cities',value:'6',icon:'📍'},{label:'Founded',value:'2026',icon:'📅'}].map(s=>(
+            {[{label:'Branches',value:'6',icon:'🏪'},{label:'Products',value:'4',icon:'🌾'},{label:'Cities',value:'6',icon:'📍'},{label:'Founded',value:'2014',icon:'📅'}].map(s=>(
               <div key={s.label} style={{ background:'rgba(255,255,255,0.1)',borderRadius:12,padding:'12px',textAlign:'center',border:'1px solid rgba(255,255,255,0.15)' }}>
                 <p style={{ margin:'0 0 4px',fontSize:16 }}>{s.icon}</p>
                 <p style={{ margin:'0 0 2px',fontSize:20,fontWeight:800,color:G.white }}>{s.value}</p>
