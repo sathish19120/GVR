@@ -235,13 +235,13 @@ export default function PublicHome() {
           ))}
         </div>
 
-        <div style={{ background:`linear-gradient(135deg,${G.green},${G.greenDark})`,borderRadius:14,padding:'24px 22px',color:G.white,textAlign:'center' }}>
+        <div style={{ background:`linear-gradient(135deg,${G.green},${G.greenDark})`,borderRadius:14,padding:'24px 22px',color:G.white,textAlign:'center',marginBottom:20 }}>
           <h2 style={{ margin:'0 0 16px',fontSize:16,fontWeight:700,color:G.white }}>Ready to taste the difference?</h2>
           <button onClick={()=>navigate('/signup')} style={{ padding:'12px 32px', borderRadius:12, border:'none', background:G.white, color:G.greenDark, fontSize:14, fontWeight:800, cursor:'pointer', marginBottom:20 }}>
             Create Account & Order →
           </button>
           <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12 }}>
-            {[{icon:'📧',label:'Email',value:'admin@greenvillagerice.in'},{icon:'📍',label:'HQ',value:'Hyderabad, Telangana'},{icon:'🌐',label:'Serving',value:'6 Cities'},{icon:'📅',label:'Est.',value:'2026 · FSSAI Licensed'}].map(c=>(
+            {[{icon:'📧',label:'Email',value:'admin@greenvillagerice.in'},{icon:'📍',label:'HQ',value:'Hyderabad, Telangana'},{icon:'🌐',label:'Serving',value:'6 Cities'},{icon:'📅',label:'Est.',value:'2016 · FSSAI Licensed'}].map(c=>(
               <div key={c.label} style={{ background:'rgba(255,255,255,0.12)',borderRadius:10,padding:'10px 12px' }}>
                 <p style={{ margin:'0 0 3px',fontSize:15 }}>{c.icon}</p>
                 <p style={{ margin:'0 0 1px',fontSize:10,color:'rgba(255,255,255,0.6)' }}>{c.label}</p>
@@ -250,6 +250,79 @@ export default function PublicHome() {
             ))}
           </div>
         </div>
+
+        {/* ✅ NEW: Full site footer — quick links, contact details,
+            FSSAI number, physical address, social icons, and the
+            copyright line. Sits below the existing green CTA banner
+            as a separate, more detailed closing section, matching what
+            most customer-facing sites include below the main content. */}
+        <footer style={{ background:G.white, borderRadius:14, padding:'32px 28px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:28, marginBottom:24, paddingBottom:24, borderBottom:`1px solid ${G.border}` }}>
+
+            {/* Brand column */}
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                <div style={{ width:32, height:32, borderRadius:8, background:G.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>🌾</div>
+                <p style={{ margin:0, fontWeight:700, fontSize:14, color:G.greenDark }}>Green Village Rice</p>
+              </div>
+              <p style={{ margin:'0 0 10px', fontSize:12, color:G.muted, lineHeight:1.6 }}>
+                Farm-fresh Sona Masoori, delivered direct from Telangana farms to your kitchen.
+              </p>
+              <p style={{ margin:0, fontSize:11, color:G.muted }}>FSSAI Lic. No: 10020042014916</p>
+            </div>
+
+            {/* Quick links */}
+            <div>
+              <p style={{ margin:'0 0 12px', fontSize:12, fontWeight:700, color:G.text, textTransform:'uppercase', letterSpacing:'0.5px' }}>Quick Links</p>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {[
+                  ['About Us', () => navigate('/')],
+                  ['Contact', () => navigate('/')],
+                  ['Privacy Policy', () => navigate('/')],
+                  ['Terms & Conditions', () => navigate('/')],
+                ].map(([label, action]) => (
+                  <a key={label} onClick={action} style={{ fontSize:12, color:G.muted, cursor:'pointer', textDecoration:'none' }}
+                    onMouseEnter={e=>e.currentTarget.style.color=G.green}
+                    onMouseLeave={e=>e.currentTarget.style.color=G.muted}>{label}</a>
+                ))}
+              </div>
+            </div>
+
+            {/* Contact */}
+            <div>
+              <p style={{ margin:'0 0 12px', fontSize:12, fontWeight:700, color:G.text, textTransform:'uppercase', letterSpacing:'0.5px' }}>Contact Us</p>
+              <div style={{ display:'flex', flexDirection:'column', gap:8, fontSize:12, color:G.muted }}>
+                <span>📧 admin@greenvillagerice.in</span>
+                <span>📞 +91 98765 43210</span>
+                <span>📍 Kukatpally, Hyderabad, Telangana - 500072</span>
+                <span>🕐 Mon–Sat, 8 AM – 8 PM</span>
+              </div>
+            </div>
+
+            {/* Social */}
+            <div>
+              <p style={{ margin:'0 0 12px', fontSize:12, fontWeight:700, color:G.text, textTransform:'uppercase', letterSpacing:'0.5px' }}>Follow Us</p>
+              <div style={{ display:'flex', gap:8 }}>
+                {[
+                  ['LinkedIn', '💼', 'https://linkedin.com'],
+                  ['Instagram', '📷', 'https://instagram.com'],
+                  ['WhatsApp', '💬', 'https://wa.me/919876543210'],
+                ].map(([label, icon, url]) => (
+                  <a key={label} href={url} target="_blank" rel="noreferrer" title={label} style={{
+                    width:36, height:36, borderRadius:'50%', background:G.greenLight,
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:16,
+                    textDecoration:'none'
+                  }}>{icon}</a>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Copyright line */}
+          <p style={{ margin:0, fontSize:11, color:G.muted, textAlign:'center' }}>
+            © 2016–{new Date().getFullYear()} Green Village Rice. All rights reserved.
+          </p>
+        </footer>
 
       </div>
     </div>
