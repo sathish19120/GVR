@@ -144,9 +144,9 @@ function NewOrderModal({ products, onClose, onSaved }) {
     if (!customerName.trim() || Object.keys(cart).length === 0) return
     setSaving(true)
     try {
-      const { count } = await supabase.from('').select('*',{count:'exact',head:true})
+      const { count } = await supabase.from('orders').select('*',{count:'exact',head:true})
       const orderNumber = `GVR-${String((count||0)+1).padStart(4,'0')}`
-      const { data: order } = await supabase.from('').insert({
+      const { data: order } = await supabase.from('orders').insert({
         order_number: orderNumber, customer_name: customerName,
         delivery_address: address, total_amount: grand,
         status:'pending', payment_status:'pending', payment_method: payMethod,
@@ -275,7 +275,7 @@ export default function Dashboard() {
   const [page, setPage]     = useState('dashboard')
   const [filter, setFilter] = useState('monthly')
   const [collapsed, setCollapsed] = useState(false)
-  const [, set]   = useState([])
+  const [orders, setOrders]   = useState([])
   const [products, setProducts] = useState([])
   const [users, setUsers]     = useState([])
   const [movements, setMovements] = useState([])
@@ -286,9 +286,9 @@ export default function Dashboard() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [newOrderAlert, setNewOrderAlert] = useState(0)
-  const [earch, setearch] = useState('')
+  const [orderSearch, setOrderSearch] = useState('')
   const [selectedBranch, setSelectedBranch] = useState('all')
-  const [tatusFilter, settatusFilter] = useState('all')
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all')
   const [orderPayFilter, setOrderPayFilter] = useState('all')
   const [orderDateFilter, setOrderDateFilter] = useState('all')
   const [invoiceSearch, setInvoiceSearch] = useState('')
