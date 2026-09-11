@@ -1,4 +1,5 @@
 import AdminPage from './AdminPage'
+import FinancePage from './FinancePage'
 import BatchPage from './BatchPage'
 import PickupQueue from './PickupQueue'
 import WalkInBilling from './WalkInBilling'
@@ -22,12 +23,31 @@ const G = {
   red:'#DC2626',redLight:'#FEE2E2',text:'#111827',muted:'#6B7280',
   border:'#E5E7EB',surface:'#F4F6F3',white:'#fff'
 }
+function isUnpaidUpi(order) {
+  return ['upi','bank'].includes(order.payment_method) &&
+    ['pending','verification_pending'].includes(order.payment_status) &&
+    order.status !== 'cancelled'
+}
+function PeriodPills({ filter, setFilter }) {
+  return (
+    <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:16 }}>
+      {['daily','monthly','yearly'].map(f=>(
+        <button key={f} onClick={()=>setFilter(f)} style={{ padding:'5px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:filter===f?G.green:'#F3F4F6', color:filter===f?'#fff':G.muted }}>
+          {f.charAt(0).toUpperCase()+f.slice(1)}
+        </button>
+      ))}
+      <span style={{ fontSize:12, color:G.muted, alignSelf:'center', marginLeft:4 }}>Chart range</span>
+    </div>
+  )
+}
 
 const PAGES = [
-  { key:'dashboard', icon:'⊞', label:'Dashboard' },
+  { key:'home',      icon:'🏠', label:'Home' },
+  { key:'dashboard', icon:'⊞', label:'Today' },
   { key:'orders',    icon:'📋', label:'Orders' },
   { key:'inventory', icon:'📦', label:'Inventory' },
   { key:'analytics', icon:'📊', label:'Analytics' },
+  { key:'finance',   icon:'💹', label:'Finance' },
   { key:'users',     icon:'👥', label:'Users' },
   { key:'admin',     icon:'⚙️', label:'Admin' },
   { key:'branches',  icon:'🏪', label:'Branches' },
@@ -37,8 +57,8 @@ const PAGES = [
   { key:'bulk',      icon:'🏢', label:'Bulk Orders' },
   { key:'suppliers', icon:'🏭', label:'Suppliers' },
   { key:'branchstock',icon:'🏭', label:'Branch Stock' },
+  { key:'walkin',     icon:'🧾', label:'Walk-in Billing' },
 ]
-const TOP_LINKS = ['Where We Work','What We Do','About']
 
 function Badge({ status }) {
   const map = {
@@ -260,9 +280,8 @@ export default function Dashboard() {
   const [users, setUsers]     = useState([])
   const [movements, setMovements] = useState([])
   const [chart, setChart]     = useState([])
-  const [stats, setStats]     = useState({ revenue:0, orders:0, bags:0, pending:0, lowStock:0, customers:0 })
+  const [stats, setStats]     = useState({ revenue:0, orders:0, bags:0, pending:0, lowStock:0, customers:0, unpaidUpi:0 })
   const [loading, setLoading] = useState(true)
-  const [topModal, setTopModal] = useState(null)
   const [showNewOrder, setShowNewOrder] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(new Date())
@@ -275,11 +294,22 @@ export default function Dashboard() {
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('gvr_dark_mode') === 'true')
+
+  useEffect(() => {
+    localStorage.setItem('gvr_dark_mode', darkMode)
+    document.documentElement.classList.toggle('gvr-dark', darkMode)
+    document.body.classList.toggle('gvr-dark', darkMode)
+    return () => {
+      document.documentElement.classList.remove('gvr-dark')
+      document.body.classList.remove('gvr-dark')
+    }
+  }, [darkMode])
 
   useEffect(() => { load() }, [filter])
 
   useEffect(() => {
-    if (!autoRefresh || page !== 'orders') return
+    if (!autoRefresh || (page !== 'orders' && page !== 'dashboard')) return
     const interval = setInterval(async () => {
       try {
         const { data } = await supabase
@@ -300,30 +330,21 @@ export default function Dashboard() {
 
   async function load() {
     setLoading(true)
-    // ✅ FIX: stock_movements query was returning a 400 Bad Request
-    // (confirmed from browser console), likely because the embedded
-    // products(name) join has no configured foreign key relationship
-    // in this database. Rather than let that ONE failed query break
-    // the entire Promise.all (which was silently stalling "loading"
-    // for the whole dashboard), each query now runs independently and
-    // failures are caught individually so one bad query can't block
-    // everything else from displaying.
-    const [oRes, pRes, uRes, mRes] = await Promise.allSettled([
-      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,notes,created_at,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(200),
+    const [oRes, pRes, uRes, mRes] = await Promise.all([
+      supabase.from('orders').select('id,order_number,customer_name,customer_id,delivery_address,total_amount,status,payment_status,payment_method,notes,utr_number,created_at,order_items(quantity,price_per_unit,product_id,name,weight_kg)').order('created_at',{ascending:false}).limit(200),
       supabase.from('products').select('*').order('weight_kg'),
       supabase.from('profiles').select('id,username,full_name,role,phone,branch,created_at,active').order('created_at',{ascending:false}),
-      supabase.from('stock_movements').select('id,product_id,change_bags,type,note,created_at').order('created_at',{ascending:false}).limit(30),
+      supabase.from('stock_movements').select('id,product_id,change_bags,type,note,created_at,products(name)').order('created_at',{ascending:false}).limit(30),
     ])
-    const o = (oRes.status === 'fulfilled' ? oRes.value.data : null) || []
-    const p = (pRes.status === 'fulfilled' ? pRes.value.data : null) || []
-    const u = (uRes.status === 'fulfilled' ? uRes.value.data : null) || []
-    const m = (mRes.status === 'fulfilled' ? mRes.value.data : null) || []
-    if (mRes.status === 'rejected' || mRes.value?.error) {
-      console.error('Stock movements query failed (non-blocking):', mRes.status === 'rejected' ? mRes.reason : mRes.value.error)
-    }
+    const o = oRes.data || []
+    const p = pRes.data || []
+    const u = uRes.data || []
+    const m = mRes.data || []
     const revenue = o.filter(x=>x.payment_status==='paid').reduce((s,x)=>s+Number(x.total_amount||0),0)
     const bags = o.flatMap(x=>x.order_items||[]).reduce((s,x)=>s+(x.quantity||0),0)
-    setStats({ revenue, orders:o.length, bags, pending:o.filter(x=>x.status==='pending').length, lowStock:p.filter(x=>x.stock_bags<=x.low_stock_threshold).length, customers:u.filter(x=>x.role==='customer').length })
+    const pending = o.filter(x=>x.status==='pending').length
+    const unpaidUpi = o.filter(isUnpaidUpi).length
+    setStats({ revenue, orders:o.length, bags, pending, unpaidUpi, lowStock:p.filter(x=>x.stock_bags<=x.low_stock_threshold).length, customers:u.filter(x=>x.role==='customer').length })
     setOrders(o); setProducts(p); setUsers(u); setMovements(m)
     setChart(buildChart(o, filter))
     setLoading(false)
@@ -348,106 +369,116 @@ export default function Dashboard() {
   }
 
   const fmtRs = v => `₹${Number(v).toLocaleString('en-IN')}`
+  const chartTick = darkMode ? '#E5E7DB' : G.muted
+  const chartGrid = darkMode ? '#3A5230' : '#F3F4F6'
+  const chartTooltip = darkMode
+    ? { borderRadius: 10, fontSize: 12, background: '#1E2E17', border: '1px solid #3A5230', color: '#E8EDE3' }
+    : { borderRadius: 10, fontSize: 12 }
+
+  function getFilteredOrders() {
+    return orders.filter(o => {
+      const matchSearch = !orderSearch ||
+        o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+        o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+        o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
+      const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
+      const matchStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter
+      const matchPay = orderPayFilter === 'all' || o.payment_method === orderPayFilter
+      const now = new Date()
+      let matchDate = true
+      if (orderDateFilter === 'today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
+      else if (orderDateFilter === 'week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
+      else if (orderDateFilter === 'month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
+      return matchSearch && matchInvoice && matchStatus && matchPay && matchDate
+    })
+  }
 
   return (
-    <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:G.surface, fontFamily:"'Inter', sans-serif" }}>
+    <div className={darkMode ? 'gvr-dark' : undefined} style={{ display:'flex', height:'100vh', overflow:'hidden', background: darkMode ? '#0F1B0A' : G.surface, fontFamily:"'Inter', sans-serif" }}>
+      <style>{`
+        /* Hotfix: React inlines G.white as rgb(255, 255, 255), not "G.white"
+           or even "#fff". White cards stayed white while text was forced
+           light — Admin users table became unreadable. Paint the actual
+           rgb() surfaces, do not flatten nested main > div > div. */
+        .gvr-dark { background: #0F1B0A !important; color: #E8EDE3; }
+        .gvr-dark .dash-sidebar,
+        .gvr-dark .dash-topbar,
+        .gvr-dark main.dash-main {
+          background-color: #162410 !important;
+          border-color: #2D4321 !important;
+          color: #E8EDE3 !important;
+        }
+        .gvr-dark [style*="background: rgb(255, 255, 255)"],
+        .gvr-dark [style*="background:#fff"],
+        .gvr-dark [style*="background: #fff"],
+        .gvr-dark [style*="background:#FFF"],
+        .gvr-dark [style*="background: #FFF"],
+        .gvr-dark [style*="background:#ffffff"],
+        .gvr-dark [style*="background: #ffffff"],
+        .gvr-dark [style*="background: rgb(250, 250, 250)"],
+        .gvr-dark [style*="background:#FAFAFA"],
+        .gvr-dark [style*="background: #FAFAFA"],
+        .gvr-dark [style*="background: rgb(249, 250, 247)"],
+        .gvr-dark [style*="background:#F9FAF7"],
+        .gvr-dark [style*="background: #F9FAF7"],
+        .gvr-dark [style*="background: rgb(243, 244, 246)"],
+        .gvr-dark [style*="background:#F3F4F6"],
+        .gvr-dark [style*="background: #F3F4F6"],
+        .gvr-dark [style*="background: rgb(244, 246, 243)"] {
+          background-color: #1E2E17 !important;
+        }
+        .gvr-dark h1, .gvr-dark h2, .gvr-dark h3,
+        .gvr-dark p, .gvr-dark td, .gvr-dark th,
+        .gvr-dark label, .gvr-dark strong, .gvr-dark li {
+          color: #F0F2EA !important;
+        }
+        .gvr-dark [style*="color:#6B7280"],
+        .gvr-dark [style*="color: #6B7280"],
+        .gvr-dark [style*="color: rgb(107, 114, 128)"],
+        .gvr-dark [style*="color:#111827"],
+        .gvr-dark [style*="color: rgb(17, 24, 39)"] {
+          color: #C5CBBB !important;
+        }
+        .gvr-dark input, .gvr-dark select, .gvr-dark textarea {
+          background: #24361C !important;
+          color: #F0F2EA !important;
+          border-color: #3A5230 !important;
+        }
+        .gvr-dark button[style*="background: rgb(255, 255, 255)"],
+        .gvr-dark button[style*="background:#fff"],
+        .gvr-dark button[style*="background: #fff"] {
+          background-color: #24361C !important;
+          color: #E8EDE3 !important;
+          border-color: #3A5230 !important;
+        }
+        .gvr-dark table { color: #F0F2EA; }
+        .gvr-dark .recharts-text,
+        .gvr-dark .recharts-cartesian-axis-tick-value,
+        .gvr-dark .recharts-legend-item-text,
+        .gvr-dark .recharts-label {
+          fill: #E5E7DB !important;
+        }
+        .gvr-dark .recharts-cartesian-grid-horizontal line,
+        .gvr-dark .recharts-cartesian-grid-vertical line {
+          stroke: #3A5230 !important;
+        }
+        .gvr-dark .recharts-default-tooltip {
+          background: #1E2E17 !important;
+          border: 1px solid #3A5230 !important;
+          color: #E8EDE3 !important;
+        }
+        .gvr-dark .recharts-tooltip-label,
+        .gvr-dark .recharts-tooltip-item {
+          color: #E8EDE3 !important;
+        }
+        .gvr-dark .recharts-rectangle.recharts-tooltip-cursor {
+          fill: rgba(255,255,255,0.06) !important;
+        }
+        .gvr-dark .recharts-dot { stroke: #1E2E17; }
+      `}</style>
       <div className="dash-overlay" style={{ display:'none', position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:199 }} onClick={() => setCollapsed(true)} />
 
-      {topModal && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }} onClick={()=>setTopModal(null)}>
-          <div style={{ background:'#fff', borderRadius:20, width:'100%', maxWidth:600, maxHeight:'85vh', overflowY:'auto', padding:36 }} onClick={e=>e.stopPropagation()}>
-            {topModal==='where' && <>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
-                <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>📍 Where We Work</h2>
-                <button onClick={()=>setTopModal(null)} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:'#6B7280' }}>✕</button>
-              </div>
-              <p style={{ color:'#6B7280', fontSize:14, lineHeight:1.7, marginBottom:20 }}>
-                Green Village Rice proudly serves customers across <strong style={{color:'#3B6D11'}}>Hyderabad and Secunderabad</strong>, delivering farm-fresh Sona Masoori rice directly to homes, apartments, and businesses.
-              </p>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
-                {[
-                  { area:'Kukatpally', icon:'🏙️', desc:'KPHB, JNTU, Miyapur' },
-                  { area:'Hitech City', icon:'💻', desc:'Madhapur, Gachibowli, Kondapur' },
-                  { area:'Secunderabad', icon:'🏛️', desc:'Trimulgherry, Karkhana, SP Road' },
-                  { area:'Dilsukhnagar', icon:'🌆', desc:'LB Nagar, Malakpet, Kothapet' },
-                  { area:'Ameerpet', icon:'🏢', desc:'SR Nagar, Punjagutta, Begumpet' },
-                  { area:'Uppal', icon:'🏭', desc:'Nacharam, Habsiguda, Tarnaka' },
-                ].map(a => (
-                  <div key={a.area} style={{ background:'#F4F6F3', borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start' }}>
-                    <span style={{ fontSize:22 }}>{a.icon}</span>
-                    <div>
-                      <p style={{ margin:'0 0 3px', fontWeight:700, fontSize:14, color:'#111827' }}>{a.area}</p>
-                      <p style={{ margin:0, fontSize:12, color:'#6B7280' }}>{a.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ background:'#EAF3DE', borderRadius:12, padding:'14px 18px', display:'flex', gap:10, alignItems:'center' }}>
-                <span style={{ fontSize:20 }}>🚚</span>
-                <p style={{ margin:0, fontSize:13, color:'#27500A' }}>Same-day delivery available for orders placed before <strong>12:00 PM</strong>. Free delivery on orders above <strong>₹500</strong>.</p>
-              </div>
-            </>}
-            {topModal==='what' && <>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
-                <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>🌾 What We Do</h2>
-                <button onClick={()=>setTopModal(null)} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:'#6B7280' }}>✕</button>
-              </div>
-              <p style={{ color:'#6B7280', fontSize:14, lineHeight:1.7, marginBottom:24 }}>
-                We are a <strong style={{color:'#3B6D11'}}>direct-to-consumer rice brand</strong> that sources premium Sona Masoori paddy from trusted farms in Telangana, mills it fresh, and delivers it straight to your kitchen — eliminating middlemen and ensuring maximum freshness.
-              </p>
-              <div style={{ display:'grid', gap:14, marginBottom:24 }}>
-                {[
-                  { icon:'🌱', title:'Farm Sourcing', desc:'We source directly from certified paddy farmers in Nalgonda, Khammam, and Warangal districts of Telangana. Every batch is traceable to its farm.' },
-                  { icon:'⚙️', title:'Fresh Milling', desc:'Rice is milled in small batches to preserve freshness. Every pack carries the milling date — you always know how fresh your rice is.' },
-                  { icon:'📦', title:'Quality Packing', desc:'Available in 1 kg, 5 kg and 25 kg packs (25 kg coming soon). FSSAI-compliant packaging with best-before dates.' },
-                  { icon:'🚪', title:'Doorstep Delivery', desc:'Orders placed through our app are delivered to your home within hours. Track your delivery in real time.' },
-                  { icon:'💰', title:'Fair Pricing', desc:'By cutting out wholesalers and retailers, we offer premium rice at transparent prices.' },
-                ].map(item => (
-                  <div key={item.title} style={{ display:'flex', gap:14, padding:'14px 16px', background:'#F9FAF7', borderRadius:12, borderLeft:'3px solid #3B6D11' }}>
-                    <span style={{ fontSize:24, flexShrink:0 }}>{item.icon}</span>
-                    <div>
-                      <p style={{ margin:'0 0 4px', fontWeight:700, fontSize:14, color:'#111827' }}>{item.title}</p>
-                      <p style={{ margin:0, fontSize:13, color:'#6B7280', lineHeight:1.6 }}>{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>}
-            {topModal==='about' && <>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
-                <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#27500A' }}>🌾 About Green Village Rice</h2>
-                <button onClick={()=>setTopModal(null)} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:'#6B7280' }}>✕</button>
-              </div>
-              <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:24, padding:'18px 20px', background:'linear-gradient(135deg,#3B6D11,#27500A)', borderRadius:14 }}>
-                <div style={{ width:60, height:60, borderRadius:14, background:'rgba(255,255,255,0.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, flexShrink:0 }}>🌾</div>
-                <div>
-                  <p style={{ margin:'0 0 4px', fontWeight:800, fontSize:18, color:'#fff' }}>Green Village Rice</p>
-                  <p style={{ margin:'0 0 2px', fontSize:13, color:'rgba(255,255,255,0.7)' }}>గ్రీన్ విలేజ్ రైస్ · Hyderabad, Telangana</p>
-                  <p style={{ margin:0, fontSize:12, color:'rgba(255,255,255,0.5)' }}>Est. 2016 · FSSAI Licensed</p>
-                </div>
-              </div>
-              <p style={{ color:'#6B7280', fontSize:14, lineHeight:1.8, marginBottom:20 }}>
-                Green Village Rice was founded with a simple belief — <em style={{color:'#3B6D11', fontStyle:'italic'}}>every family deserves fresh, clean rice at a fair price</em>.
-              </p>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:24 }}>
-                {[
-                  { icon:'🏆', label:'Our Mission', value:'Make fresh rice accessible to every household in Hyderabad' },
-                  { icon:'👁️', label:'Our Vision', value:"Become Telangana's most trusted farm-to-home rice brand" },
-                  { icon:'💚', label:'Our Values', value:'Freshness, Transparency, Fair Pricing, Community' },
-                  { icon:'📞', label:'Contact Us', value:'admin@greenvillagerice.in · Hyderabad' },
-                ].map(item => (
-                  <div key={item.label} style={{ background:'#F4F6F3', borderRadius:12, padding:'16px' }}>
-                    <p style={{ margin:'0 0 6px', fontSize:18 }}>{item.icon}</p>
-                    <p style={{ margin:'0 0 4px', fontSize:11, fontWeight:700, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'0.6px' }}>{item.label}</p>
-                    <p style={{ margin:0, fontSize:13, color:'#374151', lineHeight:1.5 }}>{item.value}</p>
-                  </div>
-                ))}
-              </div>
-            </>}
-          </div>
-        </div>
-      )}
-
+      
       {showNewOrder && <NewOrderModal products={products} onClose={()=>setShowNewOrder(false)} onSaved={load} />}
       {showStock && <StockModal product={showStock} onClose={()=>setShowStock(null)} onSaved={load} />}
 
@@ -465,6 +496,11 @@ export default function Dashboard() {
           ))}
         </nav>
         <div style={{ padding:'8px 6px', borderTop:`1px solid ${G.border}`, flexShrink:0 }}>
+          <button onClick={()=>navigate('/')}
+            style={{ width:'100%', padding:collapsed?'9px 0':'9px 12px', borderRadius:10, border:'none', background:'transparent', color:G.green, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:collapsed?'center':'flex-start', gap:8, marginBottom:6 }}>
+            <span style={{ fontSize:16, flexShrink:0 }}>🌐</span>
+            {!collapsed && <span>Public site</span>}
+          </button>
           {!collapsed && (
             <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', marginBottom:6, background:'#F9FAF7', borderRadius:10 }}>
               <div style={{ width:30, height:30, borderRadius:'50%', background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:G.greenDark, flexShrink:0, overflow:'hidden' }}>
@@ -495,19 +531,17 @@ export default function Dashboard() {
             <button onClick={()=>setCollapsed(!collapsed)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:G.muted, padding:4 }}>☰</button>
             <span style={{ fontSize:15, fontWeight:700, color:G.text }}>{PAGES.find(p=>p.key===page)?.label}</span>
           </div>
-          <div className="dash-topbar-center" style={{ display:'flex', gap:2 }}>
-            {[['Where We Work','where'],['What We Do','what'],['About','about']].map(([label,key])=>(
-              <button key={key} onClick={()=>setTopModal(key)} style={{ background:'none', border:'none', cursor:'pointer', padding:'6px 14px', borderRadius:8, fontSize:13, fontWeight:600, color:G.green, transition:'background 0.15s' }}
-                onMouseEnter={e=>e.currentTarget.style.background=G.greenLight}
-                onMouseLeave={e=>e.currentTarget.style.background='none'}>{label}</button>
-            ))}
-          </div>
-          <div style={{ display:'flex', gap:6 }}>
-            {['daily','monthly','yearly'].map(f=>(
-              <button key={f} onClick={()=>setFilter(f)} style={{ padding:'5px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:filter===f?G.green:'#F3F4F6', color:filter===f?'#fff':G.muted }}>
-                {f.charAt(0).toUpperCase()+f.slice(1)}
-              </button>
-            ))}
+          <div />
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            
+            <button onClick={()=>setDarkMode(!darkMode)} title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'} style={{
+              width:32, height:32, borderRadius:'50%', border:'none', cursor:'pointer',
+              background: darkMode ? '#1F2937' : '#FEF3C7',
+              display:'flex', alignItems:'center', justifyContent:'center', fontSize:16,
+              marginLeft:6, transition:'background 0.2s'
+            }}>
+              {darkMode ? '🌙' : '☀️'}
+            </button>
           </div>
         </header>
 
@@ -515,23 +549,101 @@ export default function Dashboard() {
           {loading ? <div style={{ textAlign:'center', padding:80, color:G.muted }}>Loading...</div> : <>
 
           {page==='dashboard' && <>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:24 }}>
-              <StatCard label="Revenue" value={fmtRs(stats.revenue)} icon="💰" color={G.green} bg={G.greenLight} />
-              <StatCard label="Orders" value={stats.orders} icon="📋" color={G.blue} bg={G.blueLight} />
-              <StatCard label="Bags Sold" value={stats.bags} icon="🌾" color={G.green2} bg={G.greenLight} />
-              <StatCard label="Pending" value={stats.pending} icon="⏳" color={G.amber} bg={G.amberLight} />
-              <StatCard label="Low Stock" value={stats.lowStock} icon="⚠️" color={G.red} bg={G.redLight} />
+            {(() => {
+              const pendingOrders = orders.filter(o => o.status === 'pending')
+              const unpaidUpiOrders = orders.filter(isUnpaidUpi)
+              const lowStockProducts = products.filter(p => p.stock_bags <= p.low_stock_threshold)
+              const openOrder = (o) => {
+                setOrderSearch(o.order_number || '')
+                setOrderStatusFilter('all')
+                setPage('orders')
+              }
+              return (
+            <>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12, marginBottom:16 }}>
+              <div>
+                <h2 style={{ margin:'0 0 4px', fontSize:18, fontWeight:700, color:G.greenDark }}>Work board</h2>
+                <p style={{ margin:0, fontSize:13, color:G.muted }}>Pending orders, unpaid UPI/bank, and bags below threshold — not the public story page.</p>
+              </div>
+              <button onClick={()=>navigate('/#story')} style={{ background:'none', border:`1.5px solid ${G.green}`, color:G.green, borderRadius:10, padding:'8px 14px', fontSize:12, fontWeight:700, cursor:'pointer' }}>Our Story (public site)</button>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:18 }}>
+              <button onClick={()=>{ setOrderStatusFilter('pending'); setPage('orders') }} style={{ textAlign:'left', border:'none', padding:0, cursor:'pointer', background:'transparent' }}>
+                <StatCard label="Pending orders" value={stats.pending} icon="⏳" color={G.amber} bg={G.amberLight} />
+              </button>
+              <button onClick={()=>{ setOrderPayFilter('upi'); setOrderStatusFilter('all'); setPage('orders') }} style={{ textAlign:'left', border:'none', padding:0, cursor:'pointer', background:'transparent' }}>
+                <StatCard label="Unpaid UPI / bank" value={stats.unpaidUpi} icon="💳" color={G.red} bg={G.redLight} />
+              </button>
+              <button onClick={()=>setPage('inventory')} style={{ textAlign:'left', border:'none', padding:0, cursor:'pointer', background:'transparent' }}>
+                <StatCard label="Low stock SKUs" value={stats.lowStock} icon="⚠️" color={G.red} bg={G.redLight} />
+              </button>
+              <StatCard label="Revenue (paid)" value={fmtRs(stats.revenue)} icon="💰" color={G.green} bg={G.greenLight} />
               <StatCard label="Customers" value={stats.customers} icon="👥" color="#7C3AED" bg="#EDE9FE" />
             </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', gap:14, marginBottom:24 }}>
+              <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border: pendingOrders.length ? `1px solid ${G.amberLight}` : `1px solid ${G.border}` }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                  <p style={{ margin:0, fontSize:13, fontWeight:700 }}>Pending orders</p>
+                  <button onClick={()=>{ setOrderStatusFilter('pending'); setPage('orders') }} style={{ background:'none', border:'none', color:G.green, fontWeight:700, fontSize:12, cursor:'pointer' }}>All →</button>
+                </div>
+                {pendingOrders.length===0 && <p style={{ margin:0, fontSize:13, color:G.muted }}>No pending orders. New ones will show here first.</p>}
+                {pendingOrders.slice(0,8).map(o=>(
+                  <button key={o.id} onClick={()=>openOrder(o)} style={{ width:'100%', textAlign:'left', background:'#F9FAF7', border:`1px solid ${G.border}`, borderRadius:10, padding:'10px 12px', marginBottom:8, cursor:'pointer' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontWeight:700, fontSize:13, color:G.green }}>{o.order_number}</span>
+                      <span style={{ fontWeight:800, fontSize:13, color:G.text }}>{fmtRs(o.total_amount)}</span>
+                    </div>
+                    <p style={{ margin:'4px 0 0', fontSize:12, color:G.muted }}>{o.customer_name||'—'} · {(o.payment_method||'pay').toUpperCase()}</p>
+                  </button>
+                ))}
+              </div>
+              <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border: unpaidUpiOrders.length ? `1px solid ${G.redLight}` : `1px solid ${G.border}` }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                  <p style={{ margin:0, fontSize:13, fontWeight:700 }}>Unpaid UPI / bank</p>
+                  <button onClick={()=>{ setOrderPayFilter('upi'); setPage('orders') }} style={{ background:'none', border:'none', color:G.green, fontWeight:700, fontSize:12, cursor:'pointer' }}>All →</button>
+                </div>
+                {unpaidUpiOrders.length===0 && <p style={{ margin:0, fontSize:13, color:G.muted }}>No UPI or bank transfers waiting for verification.</p>}
+                {unpaidUpiOrders.slice(0,8).map(o=>(
+                  <button key={o.id} onClick={()=>openOrder(o)} style={{ width:'100%', textAlign:'left', background:'#F9FAF7', border:`1px solid ${G.border}`, borderRadius:10, padding:'10px 12px', marginBottom:8, cursor:'pointer' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontWeight:700, fontSize:13, color:G.green }}>{o.order_number}</span>
+                      <span style={{ fontWeight:800, fontSize:13, color:G.red }}>{fmtRs(o.total_amount)}</span>
+                    </div>
+                    <p style={{ margin:'4px 0 0', fontSize:12, color:G.muted }}>{(o.payment_method||'').toUpperCase()} · {o.payment_status}{o.utr_number ? ` · UTR ${o.utr_number}` : ' · no UTR yet'}</p>
+                  </button>
+                ))}
+              </div>
+              <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border: lowStockProducts.length ? `1px solid ${G.redLight}` : `1px solid ${G.border}` }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                  <p style={{ margin:0, fontSize:13, fontWeight:700 }}>Low stock</p>
+                  <button onClick={()=>setPage('inventory')} style={{ background:'none', border:'none', color:G.green, fontWeight:700, fontSize:12, cursor:'pointer' }}>Inventory →</button>
+                </div>
+                {lowStockProducts.length===0 && <p style={{ margin:0, fontSize:13, color:G.muted }}>All SKUs are above their low-stock threshold.</p>}
+                {lowStockProducts.slice(0,8).map(p=>(
+                  <button key={p.id} onClick={()=>{ setShowStock(p); setPage('inventory') }} style={{ width:'100%', textAlign:'left', background:'#F9FAF7', border:`1px solid ${G.border}`, borderRadius:10, padding:'10px 12px', marginBottom:8, cursor:'pointer' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontWeight:700, fontSize:13, color:G.text }}>{p.name}</span>
+                      <span style={{ fontWeight:800, fontSize:13, color:G.red }}>{p.stock_bags} bags</span>
+                    </div>
+                    <p style={{ margin:'4px 0 0', fontSize:12, color:G.muted }}>Threshold {p.low_stock_threshold} · {p.sku || `${p.weight_kg}kg`}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            </>
+              )
+            })()}
+            <PeriodPills filter={filter} setFilter={setFilter} />
+            
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:18, marginBottom:24 }}>
               <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
                 <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Revenue — {filter}</p>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={chart} barSize={32}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                    <XAxis dataKey="name" tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`₹${(v/1000).toFixed(0)}k`:`₹${v}`} />
-                    <Tooltip formatter={v=>[fmtRs(v),'Revenue']} contentStyle={{borderRadius:10,fontSize:12}} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
+                    <XAxis dataKey="name" tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`₹${(v/1000).toFixed(0)}k`:`₹${v}`} />
+                    <Tooltip formatter={v=>[fmtRs(v),'Revenue']} contentStyle={chartTooltip} />
                     <Bar dataKey="revenue" radius={[6,6,0,0]}>
                       {chart.map((_,i)=><Cell key={i} fill={i===chart.length-1?G.green:G.green2} />)}
                     </Bar>
@@ -542,10 +654,10 @@ export default function Dashboard() {
                 <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Orders — {filter}</p>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={chart}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                    <XAxis dataKey="name" tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{borderRadius:10,fontSize:12}} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
+                    <XAxis dataKey="name" tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={chartTooltip} />
                     <Line type="monotone" dataKey="orders" stroke={G.green} strokeWidth={2.5} dot={{fill:G.green,r:4}} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -593,7 +705,27 @@ export default function Dashboard() {
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <span style={{ fontSize:11, color:G.muted, textTransform:'uppercase' }}>{o.payment_method||'—'}</span>
                       <Badge status={o.status} />
-                      <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'4px 10px', fontSize:11, fontWeight:600, color:G.blue, cursor:'pointer' }}>🖨</button>
+                       <button onClick={async()=>{
+                        const confirmed = window.confirm(
+                          `⚠️ PERMANENTLY DELETE order ${o.order_number}?\n\nThis cannot be undone. The order and its items will be completely removed from the database — this is NOT the same as cancelling.\n\nType matches: this is for cleaning up test/dummy orders only.`
+                        )
+                        if (!confirmed) return
+                        // Extra safety: require typing the order number to
+                        // confirm, so an accidental double-click can't
+                        // delete a real customer's order by mistake.
+                        const typed = window.prompt(`To confirm deletion, type the order number exactly: ${o.order_number}`)
+                        if (typed !== o.order_number) {
+                          if (typed !== null) alert('Order number did not match. Deletion cancelled.')
+                          return
+                        }
+                        // Delete order_items first (foreign key dependency),
+                        // then the order itself.
+                        await supabase.from('order_items').delete().eq('order_id', o.id)
+                        await supabase.from('orders').delete().eq('id', o.id)
+                        load()
+                      }} style={{ background:'#7F1D1D', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.white, cursor:'pointer' }}>
+                        🗑️ Delete
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -602,7 +734,6 @@ export default function Dashboard() {
             </div>
           </>}
 
-          {/* ORDERS — single clean render, duplicate removed, Delete button added */}
           {page==='orders' && <>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -631,7 +762,6 @@ export default function Dashboard() {
               </div>
               <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 20px', fontSize:14, fontWeight:700, cursor:'pointer' }}>+ New Order</button>
             </div>
-
             {newOrderAlert > 0 && (
               <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:10, padding:'10px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <span style={{ color:G.amber, fontWeight:600, fontSize:13 }}>
@@ -689,150 +819,156 @@ export default function Dashboard() {
                   ))}
                 </div>
                 <span style={{ marginLeft:'auto', fontSize:12, color:G.muted, fontWeight:500 }}>
-                  {orders.filter(o=>{
-                    const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase())
-                    const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
-                    const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
-                    const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
-                    return matchSearch && matchInvoice && matchStatus && matchPay
-                  }).length} of {orders.length} orders
+                  {getFilteredOrders().length} of {orders.length} orders
                 </span>
               </div>
             </div>
 
-            {(() => {
-              const filteredOrders = orders.filter(o=>{
-                const matchSearch = !orderSearch || o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name?.toLowerCase().includes(orderSearch.toLowerCase()) || o.delivery_address?.toLowerCase().includes(orderSearch.toLowerCase())
-                const matchInvoice = !invoiceSearch || o.order_number?.toLowerCase().includes(invoiceSearch.toLowerCase())
-                const matchStatus = orderStatusFilter==='all' || o.status===orderStatusFilter
-                const matchPay = orderPayFilter==='all' || o.payment_method===orderPayFilter
-                const now = new Date()
-                let matchDate = true
-                if (orderDateFilter==='today') matchDate = o.created_at?.startsWith(now.toISOString().split('T')[0])
-                else if (orderDateFilter==='week') matchDate = new Date(o.created_at) >= new Date(now - 7*86400000)
-                else if (orderDateFilter==='month') matchDate = o.created_at?.startsWith(now.toISOString().slice(0,7))
-                return matchSearch && matchInvoice && matchStatus && matchPay && matchDate
-              })
-
-              if (filteredOrders.length === 0) {
-                return (
-                  <div style={{ textAlign:'center', padding:60, background:G.white, borderRadius:14, color:G.muted }}>
-                    <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
-                    <p style={{ fontWeight:600, color:G.text, margin:'0 0 4px' }}>No orders found</p>
-                    <p style={{ fontSize:13 }}>Try a different search or filter</p>
-                    <button onClick={()=>{ setOrderSearch(''); setOrderStatusFilter('all'); setOrderPayFilter('all'); setOrderDateFilter('all') }}
-                      style={{ marginTop:12, background:G.green, color:G.white, border:'none', borderRadius:8, padding:'8px 20px', fontWeight:600, cursor:'pointer', fontSize:13 }}>
-                      Clear Filters
-                    </button>
-                  </div>
-                )
-              }
-
-              return (
-                <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                  {filteredOrders.map((o,i)=>(
-                    <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
-                      <div style={{ display:'flex' }}>
-                        <div style={{ width:220, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'14px 16px' }}>
-                          <p style={{ margin:'0 0 10px', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px' }}>Items Ordered</p>
-                          {(o.order_items||[]).length===0 && <p style={{ margin:0, fontSize:12, color:G.muted }}>No items found</p>}
-                          {(o.order_items||[]).map((item,idx)=>(
-                            <div key={idx} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, padding:'8px 10px', background:G.white, borderRadius:8, border:`1px solid ${G.border}` }}>
-                              <div style={{ width:32, height:32, borderRadius:8, background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>🌾</div>
-                              <div style={{ minWidth:0 }}>
-                                <p style={{ margin:'0 0 1px', fontSize:12, fontWeight:700, color:G.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</p>
-                                <p style={{ margin:0, fontSize:11, color:G.muted }}>{item.weight_kg}kg × {item.quantity} = <strong style={{ color:G.green }}>₹{item.quantity*item.price_per_unit}</strong></p>
-                              </div>
-                            </div>
-                          ))}
-                          <div style={{ marginTop:8, padding:'8px 10px', background:G.greenLight, borderRadius:8, display:'flex', justifyContent:'space-between' }}>
-                            <span style={{ fontSize:12, fontWeight:600, color:G.greenDark }}>Total</span>
-                            <span style={{ fontSize:14, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
-                          </div>
-                        </div>
-                        <div style={{ flex:1, padding:'14px 16px' }}>
-                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-                            <div>
-                              <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15, color:G.green }}>{o.order_number}</p>
-                              <p style={{ margin:0, fontSize:12, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
-                            </div>
-                            <Badge status={o.status} />
-                          </div>
-                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
-                            <div><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Customer</p><p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text }}>{o.customer_name||'—'}</p></div>
-                            <div>
-                              <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p>
-                              <p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
-                              <span style={{ fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:10,
-                                background: o.payment_status==='paid' ? G.greenLight : o.payment_method==='cod' ? G.amberLight : G.redLight,
-                                color: o.payment_status==='paid' ? G.green : o.payment_method==='cod' ? G.amber : G.red }}>
-                                {o.payment_status==='paid' ? '✅ Paid' : o.payment_method==='cod' ? '💵 COD Pending' : '⏳ Unpaid'}
-                              </span>
-                            </div>
-                            <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Address</p><p style={{ margin:0, fontSize:13, color:G.text }}>{o.delivery_address||'—'}</p></div>
-                            {o.notes && (
-                              <div style={{ gridColumn:'1/-1' }}>
-                                <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment Reference</p>
-                                <p style={{ margin:0, fontSize:13, color:G.green, fontWeight:600 }}>🧾 {o.notes}</p>
-                              </div>
-                            )}
-                          </div>
-                          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                            {o.payment_status==='pending' && o.payment_method!=='cod' && (
-                              <button onClick={async()=>{ await supabase.from('orders').update({payment_status:'paid'}).eq('id',o.id); load() }}
-                                style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
-                                💰 Mark Paid
-                              </button>
-                            )}
-                            {o.payment_method==='cod' && o.payment_status==='pending' && (
-                              <button onClick={async()=>{
-                                await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes?o.notes+' · ':'')+'Cash collected by admin' }).eq('id',o.id)
-                                load()
-                              }} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
-                                💵 Mark Cash Collected
-                              </button>
-                            )}
-                            {o.payment_method==='cod' && o.payment_status==='paid' && (
-                              <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.green }}>
-                                ✅ Cash Collected
-                              </span>
-                            )}
-                            {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
-                            {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
-                            {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
-                            {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
-                            {o.status==='dispatched' && o.payment_status!=='paid' && (
-                              <button onClick={async()=>{
-                                await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes||'')+' · UPI paid on delivery' }).eq('id',o.id)
-                                load()
-                              }} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>
-                                📱 UPI Paid
-                              </button>
-                            )}
-                            {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
-                            <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
-                            <button onClick={async()=>{
-                              const confirmed = window.confirm(`⚠️ PERMANENTLY DELETE order ${o.order_number}?\n\nThis cannot be undone. The order and its items will be completely removed from the database.`)
-                              if (!confirmed) return
-                              const typed = window.prompt(`To confirm deletion, type the order number exactly: ${o.order_number}`)
-                              if (typed !== o.order_number) {
-                                if (typed !== null) alert('Order number did not match. Deletion cancelled.')
-                                return
-                              }
-                              await supabase.from('order_items').delete().eq('order_id', o.id)
-                              await supabase.from('orders').delete().eq('id', o.id)
-                              load()
-                            }} style={{ background:'#7F1D1D', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.white, cursor:'pointer' }}>
-                              🗑️ Delete
-                            </button>
-                          </div>
+            {getFilteredOrders().length === 0 && (
+              <div style={{ textAlign:'center', padding:60, background:G.white, borderRadius:14, color:G.muted }}>
+                <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
+                <p style={{ fontWeight:600, color:G.text, margin:'0 0 4px' }}>No orders found</p>
+                <p style={{ fontSize:13 }}>Try a different search or filter</p>
+                <button onClick={()=>{ setOrderSearch(''); setOrderStatusFilter('all'); setOrderPayFilter('all'); setOrderDateFilter('all') }}
+                  style={{ marginTop:12, background:G.green, color:G.white, border:'none', borderRadius:8, padding:'8px 20px', fontWeight:600, cursor:'pointer', fontSize:13 }}>
+                  Clear Filters
+                </button>
+              </div>
+            )}
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {getFilteredOrders().map((o,i)=>(
+              <div key={o.id} style={{ background:G.white, borderRadius:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', overflow:'hidden', border:`1px solid ${G.border}` }}>
+                <div style={{ display:'flex' }}>
+                  <div style={{ width:220, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'14px 16px' }}>
+                    <p style={{ margin:'0 0 10px', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'0.6px' }}>Items Ordered</p>
+                    {(o.order_items||[]).length===0 && <p style={{ margin:0, fontSize:12, color:G.muted }}>No items found</p>}
+                    {(o.order_items||[]).map((item,idx)=>(
+                      <div key={idx} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, padding:'8px 10px', background:G.white, borderRadius:8, border:`1px solid ${G.border}` }}>
+                        <div style={{ width:32, height:32, borderRadius:8, background:G.greenLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>🌾</div>
+                        <div style={{ minWidth:0 }}>
+                          <p style={{ margin:'0 0 1px', fontSize:12, fontWeight:700, color:G.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</p>
+                          <p style={{ margin:0, fontSize:11, color:G.muted }}>{item.weight_kg}kg × {item.quantity} = <strong style={{ color:G.green }}>₹{item.quantity*item.price_per_unit}</strong></p>
                         </div>
                       </div>
+                    ))}
+                    <div style={{ marginTop:8, padding:'8px 10px', background:G.greenLight, borderRadius:8, display:'flex', justifyContent:'space-between' }}>
+                      <span style={{ fontSize:12, fontWeight:600, color:G.greenDark }}>Total</span>
+                      <span style={{ fontSize:14, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
                     </div>
-                  ))}
+                  </div>
+                  <div style={{ flex:1, padding:'14px 16px' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+                      <div>
+                        <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15, color:G.green }}>{o.order_number}</p>
+                        <p style={{ margin:0, fontSize:12, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
+                      </div>
+                      <Badge status={o.status} />
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+                      <div><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Customer</p><p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text }}>{o.customer_name||'—'}</p></div>
+                      <div>
+                        <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Payment</p>
+                        <p style={{ margin:0, fontWeight:600, fontSize:13, color:G.text, textTransform:'uppercase' }}>{o.payment_method||'—'}</p>
+                        <span style={{ fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:10,
+                          background: o.payment_status==='paid' ? G.greenLight : o.payment_method==='cod' ? G.amberLight : G.redLight,
+                          color: o.payment_status==='paid' ? G.green : o.payment_method==='cod' ? G.amber : G.red }}>
+                          {o.payment_status==='paid' ? '✅ Paid' : o.payment_method==='cod' ? '💵 COD Pending' : '⏳ Unpaid'}
+                        </span>
+                      </div>
+                      <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Address</p><p style={{ margin:0, fontSize:13, color:G.text }}>{o.delivery_address||'—'}</p></div>
+                      {o.status==='cancelled' && o.cancellation_reason && (
+                        <div style={{ gridColumn:'1/-1' }}>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Cancellation Reason</p>
+                          <p style={{ margin:0, fontSize:13, color:G.red }}>❌ {o.cancellation_reason} <span style={{color:G.muted,fontSize:11}}>(by {o.cancelled_by})</span></p>
+                        </div>
+                      )}
+                      {o.utr_number && (
+                        <div style={{ gridColumn:'1/-1' }}>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>UTR Number</p>
+                          <p style={{ margin:0, fontSize:14, color:G.green, fontWeight:700, fontFamily:'monospace' }}>🧾 {o.utr_number}</p>
+                        </div>
+                      )}
+                      {o.notes && (
+                        <div style={{ gridColumn:'1/-1' }}>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Notes</p>
+                          <p style={{ margin:0, fontSize:12, color:G.muted }}>{o.notes}</p>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                      {(o.payment_status==='pending' || o.payment_status==='verification_pending') && o.payment_method!=='cod' && (
+                        <>
+                          <button onClick={async()=>{
+                            if (!window.confirm(`Confirm you have checked your UPI/bank app and this UTR matches ₹${o.total_amount}?\n\nOrder notes: ${o.notes || '(no UTR recorded)'}`)) return
+                            await supabase.from('orders').update({
+                              payment_status:'paid',
+                              status: o.status === 'pending' ? 'confirmed' : o.status,
+                              notes: (o.notes||'') + ' · Verified by admin ' + new Date().toLocaleDateString('en-IN')
+                            }).eq('id',o.id)
+                            load()
+                          }} style={{ background:'#EAF3DE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>
+                            ✅ Verify UTR & Confirm
+                          </button>
+                          <button onClick={async()=>{
+                            if (!window.confirm('Reject this payment? Order will be cancelled and customer must reorder.')) return
+                            await supabase.from('orders').update({
+                              payment_status:'rejected',
+                              status:'cancelled',
+                              notes: (o.notes||'') + ' · Payment rejected by admin — UTR invalid or not received'
+                            }).eq('id',o.id)
+                            load()
+                          }} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>
+                            ✕ Reject
+                          </button>
+                        </>
+                      )}
+                      {o.payment_method==='cod' && o.payment_status==='pending' && (
+                        <button onClick={async()=>{
+                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes?o.notes+' · ':'')+'Cash collected by admin' }).eq('id',o.id)
+                          load()
+                        }} style={{ background:G.amberLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.amber, cursor:'pointer' }}>
+                          💵 Mark Cash Collected
+                        </button>
+                      )}
+                      {o.payment_method==='cod' && o.payment_status==='paid' && (
+                        <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.greenLight, color:G.green }}>
+                          ✅ Cash Collected
+                        </span>
+                      )}
+                      {o.status==='pending' && <button onClick={()=>updateOrderStatus(o.id,'confirmed')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✓ Confirm</button>}
+                      {o.status==='confirmed' && <button onClick={()=>updateOrderStatus(o.id,'packed')} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>📦 Pack</button>}
+                      {o.status==='packed' && <button onClick={()=>updateOrderStatus(o.id,'dispatched')} style={{ background:'#EDE9FE', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:'#7C3AED', cursor:'pointer' }}>🚚 Dispatch</button>}
+                      {o.status==='dispatched' && <button onClick={()=>updateOrderStatus(o.id,'delivered')} style={{ background:G.greenLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.green, cursor:'pointer' }}>✅ Delivered</button>}
+                      {o.status==='dispatched' && o.payment_status!=='paid' && (
+                        <button onClick={async()=>{
+                          await supabase.from('orders').update({ payment_status:'paid', notes:(o.notes||'')+' · UPI paid on delivery' }).eq('id',o.id)
+                          load()
+                        }} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>
+                          📱 UPI Paid
+                        </button>
+                      )}
+                      {['pending','confirmed'].includes(o.status) && (
+                        <button onClick={async()=>{
+                          const reason = window.prompt('Why are you cancelling this order? (This will be visible to the customer)')
+                          if (reason === null) return  // user clicked Cancel on the prompt itself
+                          if (!reason.trim()) { alert('Please enter a reason for cancellation'); return }
+                          await supabase.from('orders').update({
+                            status: 'cancelled',
+                            cancellation_reason: reason.trim(),
+                            cancelled_by: 'admin'
+                          }).eq('id', o.id)
+                          load()
+                        }} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>
+                          ✕ Cancel
+                        </button>
+                      )}
+                      <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
+                    </div>
+                  </div>
                 </div>
-              )
-            })()}
+              </div>
+            ))}
+            </div>
           </>}
 
           {page==='inventory' && <>
@@ -883,7 +1019,7 @@ export default function Dashboard() {
               <Table headers={['Product','Change','Type','Note','Date']}>
                 {movements.map((m,i)=>(
                   <tr key={m.id} style={{ borderTop:`1px solid ${G.border}`, background:i%2?'#FAFAFA':G.white }}>
-                    <td style={{ padding:'11px 14px', fontWeight:600 }}>{m.products?.name || '—'}</td>
+                    <td style={{ padding:'11px 14px', fontWeight:600 }}>{m.products?.name||'—'}</td>
                     <td style={{ padding:'11px 14px', fontWeight:700, color:m.change_bags>0?G.green:G.red }}>{m.change_bags>0?'+':''}{m.change_bags} bags</td>
                     <td style={{ padding:'11px 14px' }}><span style={{ fontSize:11, padding:'2px 8px', borderRadius:20, background:m.type==='add'?G.greenLight:G.redLight, color:m.type==='add'?G.green:G.red, fontWeight:600 }}>{m.type}</span></td>
                     <td style={{ padding:'11px 14px', color:G.muted, fontSize:12 }}>{m.note||'—'}</td>
@@ -896,6 +1032,7 @@ export default function Dashboard() {
           </>}
 
           {page==='analytics' && <>
+            <PeriodPills filter={filter} setFilter={setFilter} />
             <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14, marginBottom:24 }}>
               <StatCard label="Total Revenue" value={fmtRs(stats.revenue)} icon="💰" color={G.green} bg={G.greenLight} />
               <StatCard label="Total Bags Sold" value={stats.bags} icon="🌾" color={G.green2} bg={G.greenLight} />
@@ -906,10 +1043,10 @@ export default function Dashboard() {
                 <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Revenue ({filter})</p>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={chart} barSize={36}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                    <XAxis dataKey="name" tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`₹${(v/1000).toFixed(0)}k`:`₹${v}`} />
-                    <Tooltip formatter={v=>[fmtRs(v),'Revenue']} contentStyle={{borderRadius:10,fontSize:12}} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
+                    <XAxis dataKey="name" tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`₹${(v/1000).toFixed(0)}k`:`₹${v}`} />
+                    <Tooltip formatter={v=>[fmtRs(v),'Revenue']} contentStyle={chartTooltip} />
                     <Bar dataKey="revenue" fill={G.green} radius={[6,6,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -918,10 +1055,10 @@ export default function Dashboard() {
                 <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Orders Trend ({filter})</p>
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={chart}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                    <XAxis dataKey="name" tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{borderRadius:10,fontSize:12}} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
+                    <XAxis dataKey="name" tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize:11,fill:chartTick}} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={chartTooltip} />
                     <Line type="monotone" dataKey="orders" stroke={G.green} strokeWidth={2.5} dot={{fill:G.green,r:4}} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -948,6 +1085,8 @@ export default function Dashboard() {
             </div>
           </>}
 
+          {page==='finance' && <FinancePage />}
+
           {page==='vendors' && <VendorPage />}
           {page==='batches' && <BatchPage />}
           {page==='pickup' && <PickupQueue />}
@@ -955,6 +1094,7 @@ export default function Dashboard() {
           {page==='home' && <HomePage />}
           {page==='suppliers' && <SupplierPage />}
           {page==='branchstock' && <BranchStockPage />}
+          {page==='walkin' && <WalkInBilling branch="Hyderabad" />}
 
           {page==='branches' && <>
             <div style={{ marginBottom:20 }}>
