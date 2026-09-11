@@ -326,7 +326,24 @@ export default function Dashboard() {
   function buildChart(o, f) {
     const now = new Date()
     const keys=[], labels=[]
-    if (f==='daily') {
+    if (f==='today') {
+      // Hour-by-hour breakdown for the current day (00:00 to now, in 3-hour blocks)
+      const todayStr = now.toISOString().split('T')[0]
+      for (let h=0; h<24; h+=3) {
+        keys.push(`${todayStr}T${String(h).padStart(2,'0')}`)
+        labels.push(`${h}:00`)
+      }
+      return keys.map((k,i)=>{
+        const hourStart = parseInt(k.split('T')[1])
+        const hourEnd = hourStart + 3
+        const matching = o.filter(x=>{
+          if (!x.created_at?.startsWith(todayStr)) return false
+          const xHour = new Date(x.created_at).getHours()
+          return xHour >= hourStart && xHour < hourEnd
+        })
+        return { name:labels[i], revenue:matching.reduce((s,x)=>s+Number(x.total_amount||0),0), orders:matching.length }
+      })
+    } else if (f==='daily') {
       for (let i=6;i>=0;i--) { const d=new Date(now); d.setDate(d.getDate()-i); keys.push(d.toISOString().split('T')[0]); labels.push(d.toLocaleDateString('en-IN',{weekday:'short'})) }
     } else if (f==='monthly') {
       for (let i=5;i>=0;i--) { const d=new Date(now.getFullYear(),now.getMonth()-i,1); keys.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); labels.push(d.toLocaleDateString('en-IN',{month:'short'})) }
@@ -537,7 +554,7 @@ export default function Dashboard() {
             ))}
           </div>
           <div style={{ display:'flex', gap:6 }}>
-            {['daily','monthly','yearly'].map(f=>(
+            {['today','daily','monthly','yearly'].map(f=>(
               <button key={f} onClick={()=>setFilter(f)} style={{ padding:'5px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:filter===f?G.green:'#F3F4F6', color:filter===f?'#fff':G.muted }}>
                 {f.charAt(0).toUpperCase()+f.slice(1)}
               </button>
