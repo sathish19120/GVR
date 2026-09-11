@@ -25,7 +25,7 @@ const UPI_ID = import.meta.env.VITE_UPI_ID || ''
 // once for a few seconds when rendered, then fades out on its own.
 function Confetti() {
   const colors = ['#3B6D11', '#BA7517', '#1E5FA5', '#7C3AED', '#DC2626', '#639922', '#F59E0B', '#EC4899']
-  const pieces = Array.from({ length: 300 }, (_, i) => ({
+  const pieces = Array.from({ length: 400 }, (_, i) => ({
     id: i,
     left: Math.random() * 100,
     delay: Math.random() * 0.8,        // shorter delay window = pieces bunch up more at the start
