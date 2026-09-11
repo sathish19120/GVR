@@ -821,7 +821,6 @@ export default function Dashboard() {
                 </button>
                 <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 20px', fontSize:14, fontWeight:700, cursor:'pointer' }}>+ New Order</button>
               </div>
-            </div>
             {newOrderAlert > 0 && (
               <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:10, padding:'10px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <span style={{ color:G.amber, fontWeight:600, fontSize:13 }}>
