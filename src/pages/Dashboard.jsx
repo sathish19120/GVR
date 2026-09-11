@@ -144,9 +144,9 @@ function NewOrderModal({ products, onClose, onSaved }) {
     if (!customerName.trim() || Object.keys(cart).length === 0) return
     setSaving(true)
     try {
-      const { count } = await supabase.from('orders').select('*',{count:'exact',head:true})
+      const { count } = await supabase.from('').select('*',{count:'exact',head:true})
       const orderNumber = `GVR-${String((count||0)+1).padStart(4,'0')}`
-      const { data: order } = await supabase.from('orders').insert({
+      const { data: order } = await supabase.from('').insert({
         order_number: orderNumber, customer_name: customerName,
         delivery_address: address, total_amount: grand,
         status:'pending', payment_status:'pending', payment_method: payMethod,
@@ -275,20 +275,20 @@ export default function Dashboard() {
   const [page, setPage]     = useState('dashboard')
   const [filter, setFilter] = useState('monthly')
   const [collapsed, setCollapsed] = useState(false)
-  const [orders, setOrders]   = useState([])
+  const [, set]   = useState([])
   const [products, setProducts] = useState([])
   const [users, setUsers]     = useState([])
   const [movements, setMovements] = useState([])
   const [chart, setChart]     = useState([])
-  const [stats, setStats]     = useState({ revenue:0, orders:0, bags:0, pending:0, lowStock:0, customers:0, unpaidUpi:0 })
+  const [stats, setStats]     = useState({ revenue:0, :0, bags:0, pending:0, lowStock:0, customers:0, unpaidUpi:0 })
   const [loading, setLoading] = useState(true)
   const [showNewOrder, setShowNewOrder] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [newOrderAlert, setNewOrderAlert] = useState(0)
-  const [orderSearch, setOrderSearch] = useState('')
+  const [earch, setearch] = useState('')
   const [selectedBranch, setSelectedBranch] = useState('all')
-  const [orderStatusFilter, setOrderStatusFilter] = useState('all')
+  const [tatusFilter, settatusFilter] = useState('all')
   const [orderPayFilter, setOrderPayFilter] = useState('all')
   const [orderDateFilter, setOrderDateFilter] = useState('all')
   const [invoiceSearch, setInvoiceSearch] = useState('')
@@ -856,6 +856,12 @@ export default function Dashboard() {
                         </span>
                       </div>
                       <div style={{ gridColumn:'1/-1' }}><p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Address</p><p style={{ margin:0, fontSize:13, color:G.text }}>{o.delivery_address||'—'}</p></div>
+                      {o.status==='cancelled' && o.cancellation_reason && (
+                        <div style={{ gridColumn:'1/-1' }}>
+                          <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>Cancellation Reason</p>
+                          <p style={{ margin:0, fontSize:13, color:G.red }}>❌ {o.cancellation_reason} <span style={{color:G.muted,fontSize:11}}>(by {o.cancelled_by})</span></p>
+                        </div>
+                      )}
                       {o.utr_number && (
                         <div style={{ gridColumn:'1/-1' }}>
                           <p style={{ margin:'0 0 2px', color:G.muted, fontSize:10, fontWeight:600, textTransform:'uppercase' }}>UTR Number</p>
@@ -921,7 +927,21 @@ export default function Dashboard() {
                           📱 UPI Paid
                         </button>
                       )}
-                      {['pending','confirmed'].includes(o.status) && <button onClick={()=>updateOrderStatus(o.id,'cancelled')} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>✕ Cancel</button>}
+                      {['pending','confirmed'].includes(o.status) && (
+                        <button onClick={async()=>{
+                          const reason = window.prompt('Why are you cancelling this order? (This will be visible to the customer)')
+                          if (reason === null) return  // user clicked Cancel on the prompt itself
+                          if (!reason.trim()) { alert('Please enter a reason for cancellation'); return }
+                          await supabase.from('orders').update({
+                            status: 'cancelled',
+                            cancellation_reason: reason.trim(),
+                            cancelled_by: 'admin'
+                          }).eq('id', o.id)
+                          load()
+                        }} style={{ background:G.redLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.red, cursor:'pointer' }}>
+                          ✕ Cancel
+                        </button>
+                      )}
                       <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.blue, cursor:'pointer' }}>🖨 Invoice</button>
                     </div>
                   </div>
