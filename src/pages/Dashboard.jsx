@@ -1,6 +1,5 @@
 import AdminPage from './AdminPage'
 import FinancePage from './FinancePage'
-import AdminSubscriptionsPage from './AdminSubscriptionsPage'
 import BatchPage from './BatchPage'
 import PickupQueue from './PickupQueue'
 import WalkInBilling from './WalkInBilling'
@@ -32,7 +31,6 @@ const PAGES = [
   { key:'inventory', icon:'📦', label:'Inventory' },
   { key:'analytics', icon:'📊', label:'Analytics' },
   { key:'finance',   icon:'💹', label:'Finance' },
-  { key:'subscriptions', icon:'🔄', label:'Subscriptions' },
   { key:'users',     icon:'👥', label:'Users' },
   { key:'admin',     icon:'⚙️', label:'Admin' },
   { key:'branches',  icon:'🏪', label:'Branches' },
@@ -999,7 +997,6 @@ export default function Dashboard() {
 
           {page==='home' && <HomePage />}
           {page==='finance' && <FinancePage />}
-          {page==='subscriptions' && <AdminSubscriptionsPage />}
           {page==='vendors' && <VendorPage />}
           {page==='batches' && <BatchPage />}
           {page==='pickup' && <PickupQueue />}
