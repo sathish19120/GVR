@@ -26,6 +26,7 @@ const G = {
 
 const PAGES = [
   { key:'home',      icon:'🏠', label:'Home' },
+  { key:'today',     icon:'📅', label:'Today' },
   { key:'dashboard', icon:'⊞', label:'Dashboard' },
   { key:'orders',    icon:'📋', label:'Orders' },
   { key:'inventory', icon:'📦', label:'Inventory' },
@@ -652,6 +653,83 @@ export default function Dashboard() {
               </div>
             </div>
           </>}
+
+          {page==='today' && (()=>{
+            const todayStr = new Date().toISOString().split('T')[0]
+            const todaysOrders = orders.filter(o => o.created_at?.startsWith(todayStr))
+            const todaysRevenue = todaysOrders.filter(o=>o.payment_status==='paid').reduce((s,o)=>s+Number(o.total_amount||0),0)
+            const todaysBags = todaysOrders.flatMap(o=>o.order_items||[]).reduce((s,i)=>s+(i.quantity||0),0)
+            const pendingToday = todaysOrders.filter(o=>o.status==='pending')
+            const lowStockProducts = products.filter(p=>p.stock_bags<=p.low_stock_threshold)
+            const unpaidCod = todaysOrders.filter(o=>o.payment_method==='cod' && o.payment_status!=='paid')
+
+            return (
+              <>
+                <div style={{ marginBottom:20 }}>
+                  <h2 style={{ margin:'0 0 4px', fontSize:18, fontWeight:700, color:G.greenDark }}>📅 Today — {new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</h2>
+                  <p style={{ margin:0, fontSize:13, color:G.muted }}>Snapshot of today's activity and what needs your attention</p>
+                </div>
+
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:24 }}>
+                  <StatCard label="Today's Revenue" value={fmtRs(todaysRevenue)} icon="💰" color={G.green} bg={G.greenLight} />
+                  <StatCard label="Today's Orders" value={todaysOrders.length} icon="📋" color={G.blue} bg={G.blueLight} />
+                  <StatCard label="Bags Sold Today" value={todaysBags} icon="🌾" color={G.green2} bg={G.greenLight} />
+                  <StatCard label="Pending Today" value={pendingToday.length} icon="⏳" color={G.amber} bg={G.amberLight} />
+                </div>
+
+                {(pendingToday.length > 0 || lowStockProducts.length > 0 || unpaidCod.length > 0) && (
+                  <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', marginBottom:20 }}>
+                    <p style={{ margin:'0 0 14px', fontSize:14, fontWeight:700, color:G.text }}>⚡ Needs Your Attention</p>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {pendingToday.length > 0 && (
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', background:G.amberLight, borderRadius:10 }}>
+                          <span style={{ fontSize:13, color:G.amber, fontWeight:600 }}>⏳ {pendingToday.length} order{pendingToday.length>1?'s':''} still pending confirmation today</span>
+                          <button onClick={()=>setPage('orders')} style={{ background:G.amber, color:G.white, border:'none', borderRadius:8, padding:'5px 12px', fontSize:11, fontWeight:700, cursor:'pointer' }}>View →</button>
+                        </div>
+                      )}
+                      {unpaidCod.length > 0 && (
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', background:G.blueLight, borderRadius:10 }}>
+                          <span style={{ fontSize:13, color:G.blue, fontWeight:600 }}>💵 {unpaidCod.length} COD order{unpaidCod.length>1?'s':''} today awaiting cash collection</span>
+                          <button onClick={()=>setPage('orders')} style={{ background:G.blue, color:G.white, border:'none', borderRadius:8, padding:'5px 12px', fontSize:11, fontWeight:700, cursor:'pointer' }}>View →</button>
+                        </div>
+                      )}
+                      {lowStockProducts.length > 0 && (
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', background:G.redLight, borderRadius:10 }}>
+                          <span style={{ fontSize:13, color:G.red, fontWeight:600 }}>⚠️ {lowStockProducts.length} product{lowStockProducts.length>1?'s':''} running low on stock</span>
+                          <button onClick={()=>setPage('inventory')} style={{ background:G.red, color:G.white, border:'none', borderRadius:8, padding:'5px 12px', fontSize:11, fontWeight:700, cursor:'pointer' }}>View →</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {pendingToday.length === 0 && lowStockProducts.length === 0 && unpaidCod.length === 0 && (
+                  <div style={{ background:G.greenLight, borderRadius:16, padding:'20px 22px', marginBottom:20, textAlign:'center' }}>
+                    <p style={{ margin:0, fontSize:14, fontWeight:600, color:G.greenDark }}>✅ All caught up — nothing needs attention right now</p>
+                  </div>
+                )}
+
+                <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                  <p style={{ margin:'0 0 14px', fontSize:14, fontWeight:700 }}>Today's Orders</p>
+                  {todaysOrders.length === 0 && <p style={{ textAlign:'center', padding:30, color:G.muted }}>No orders placed yet today</p>}
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {todaysOrders.map(o=>(
+                      <div key={o.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', border:`1px solid ${G.border}`, borderRadius:10 }}>
+                        <div>
+                          <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:13, color:G.green }}>{o.order_number}</p>
+                          <p style={{ margin:0, fontSize:12, color:G.muted }}>{o.customer_name} · {new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</p>
+                        </div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <Badge status={o.status} />
+                          <span style={{ fontWeight:700, fontSize:14, color:G.green }}>{fmtRs(o.total_amount)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )
+          })()}
 
           {page==='orders' && <>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
