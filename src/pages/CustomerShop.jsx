@@ -57,7 +57,7 @@ function SafeTab({ children }) {
 // once for a few seconds when rendered, then fades out on its own.
 function Confetti() {
   const colors = ['#3B6D11', '#BA7517', '#1E5FA5', '#7C3AED', '#DC2626', '#639922']
-  const pieces = Array.from({ length: 650 }, (_, i) => ({
+  const pieces = Array.from({ length: 850 }, (_, i) => ({
     id: i,
     left: Math.random() * 100,
     delay: Math.random() * 0.5,
@@ -794,10 +794,13 @@ export default function CustomerShop() {
       </div>
     )
   }
+
+  // ── Cancel Order Modal ───────────────────────────────────
   function CancelModal({ order, onClose }) {
     const [reason, setReason] = useState('')
+    const [customReason, setCustomReason] = useState('')
     const [saving, setSaving] = useState(false)
- 
+
     const REASONS = [
       'Ordered by mistake',
       'Found a better price elsewhere',
@@ -806,14 +809,15 @@ export default function CustomerShop() {
       'Wrong address entered',
       'Other',
     ]
- 
+
     async function submit() {
-      if (!reason.trim()) return
+      const finalReason = reason === 'Other' ? customReason.trim() : reason
+      if (!finalReason) return
       setSaving(true)
       try {
         await supabase.from('orders').update({
           status: 'cancelled',
-          cancellation_reason: reason.trim(),
+          cancellation_reason: finalReason,
           cancelled_by: 'customer'
         }).eq('id', order.id)
         loadMyOrders()
@@ -821,7 +825,9 @@ export default function CustomerShop() {
       } catch(e) { console.error(e) }
       finally { setSaving(false) }
     }
- 
+
+    const canSubmit = reason === 'Other' ? customReason.trim().length > 0 : reason.length > 0
+
     return (
       <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16 }}>
         <div style={{ background:D.card,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:480,padding:28 }}>
@@ -830,7 +836,7 @@ export default function CustomerShop() {
             <button type="button" onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:D.muted }}>✕</button>
           </div>
           <p style={{ margin:'0 0 14px',fontSize:13,color:D.muted }}>{order.order_number} · Please tell us why you're cancelling</p>
-          <div style={{ display:'flex',flexDirection:'column',gap:8,marginBottom:16 }}>
+          <div style={{ display:'flex',flexDirection:'column',gap:8,marginBottom:14 }}>
             {REASONS.map(r=>(
               <button key={r} type="button" onClick={()=>setReason(r)} style={{ padding:'10px 12px',borderRadius:10,border:`1.5px solid ${reason===r?G.red:D.border}`,background:reason===r?G.redLight:'transparent',color:reason===r?G.red:D.text,fontSize:13,fontWeight:reason===r?700:400,cursor:'pointer',textAlign:'left' }}>
                 {r}
@@ -838,13 +844,13 @@ export default function CustomerShop() {
             ))}
           </div>
           {reason==='Other' && (
-            <textarea value={reason==='Other'?'':reason} onChange={e=>setReason(e.target.value)} rows={2}
+            <textarea value={customReason} onChange={e=>setCustomReason(e.target.value)} rows={2}
               placeholder="Please describe your reason..."
               style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${D.border}`,fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',background:D.bg,color:D.text,boxSizing:'border-box',marginBottom:14 }} />
           )}
           <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
             <button type="button" onClick={onClose} style={{ padding:12,background:'transparent',border:`1px solid ${D.border}`,borderRadius:10,fontSize:13,fontWeight:600,color:D.muted,cursor:'pointer' }}>Keep Order</button>
-            <button type="button" onClick={submit} disabled={saving||!reason.trim()} style={{ padding:12,background:saving||!reason.trim()?'#9CA3AF':G.red,color:G.white,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
+            <button type="button" onClick={submit} disabled={saving||!canSubmit} style={{ padding:12,background:saving||!canSubmit?'#9CA3AF':G.red,color:G.white,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
               {saving?'Cancelling...':'Confirm Cancel'}
             </button>
           </div>
@@ -852,7 +858,6 @@ export default function CustomerShop() {
       </div>
     )
   }
- 
 
   const totalItems  = Object.values(cart).reduce((s,q) => s+q, 0)
   const totalAmount = products.reduce((s,p) => s+(cart[p.id]||0)*p.price_per_bag, 0)
@@ -1206,7 +1211,7 @@ export default function CustomerShop() {
               </div>
               {order.status==='cancelled' && order.cancellation_reason && (
                 <div style={{ background:G.redLight,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:12,color:G.red }}>
-                  ❌ Cancelled: {order.cancellation_reason}
+                  ❌ Cancelled: {order.cancellation_reason}{order.cancelled_by ? ` (by ${order.cancelled_by})` : ''}
                 </div>
               )}
               <div style={{ display:'flex',flexWrap:'wrap',gap:6,marginBottom:10 }}>
