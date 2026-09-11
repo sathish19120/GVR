@@ -21,6 +21,37 @@ const STATUS_BG = {
 
 const UPI_ID = import.meta.env.VITE_UPI_ID || ''
 
+// ✅ NEW: reusable confetti burst, pure CSS/JS (no library) — plays
+// once for a few seconds when rendered, then fades out on its own.
+function Confetti() {
+  const colors = ['#3B6D11', '#BA7517', '#1E5FA5', '#7C3AED', '#DC2626', '#639922']
+  const pieces = Array.from({ length: 60 }, (_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 0.5,
+    duration: 2.5 + Math.random() * 1.5,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    size: 6 + Math.random() * 6,
+  }))
+  return (
+    <div style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:999, overflow:'hidden' }}>
+      <style>{`
+        @keyframes confetti-fall {
+          0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(110vh) rotate(720deg); opacity: 0.3; }
+        }
+      `}</style>
+      {pieces.map(p => (
+        <div key={p.id} style={{
+          position:'absolute', left:`${p.left}%`, top:0,
+          width:p.size, height:p.size * 0.6, background:p.color,
+          borderRadius:2, animation:`confetti-fall ${p.duration}s ease-in ${p.delay}s forwards`,
+        }} />
+      ))}
+    </div>
+  )
+}
+
 function TopNavModal({ modal, onClose }) {
   if (!modal) return null
   return (
@@ -147,12 +178,6 @@ export default function VendorPortal() {
       }).select().single()
       if (oErr || !order) throw new Error(oErr?.message || 'Failed to create order')
 
-      // ✅ FIX: B2B orders previously only inserted order_items and never
-      // touched stock at all. Now deducts via deplete_product_stock()
-      // (the FIFO batch-aware RPC introduced this session), which both
-      // updates products.stock_bags AND keeps batches.remaining_bags
-      // accurate — in one call, no separate stock_movements insert
-      // needed since the RPC logs that internally.
       for (const p of products.filter(p => cart[p.id])) {
         await supabase.from('order_items').insert({
           order_id: order.id, product_id: p.id,
@@ -175,22 +200,28 @@ export default function VendorPortal() {
   const upiUrl = `upi://pay?pa=${UPI_ID}&pn=Green+Village+Rice&am=${grand}&cu=INR&tn=GVR+B2B+Order`
   const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiUrl)}`
 
+  // ✅ NEW: <Confetti /> added as the first element, wrapped together
+  // with the existing success card in a fragment (<>...</>) so both
+  // render side by side instead of nested.
   if (step === 'success') return (
-    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:G.surface, padding:20 }}>
-      <div style={{ textAlign:'center', background:G.white, borderRadius:20, padding:'48px 36px', maxWidth:420, width:'100%', boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
-        <div style={{ fontSize:60, marginBottom:16 }}>✅</div>
-        <h2 style={{ fontSize:22, fontWeight:800, color:G.greenDark, margin:'0 0 8px' }}>Order Placed!</h2>
-        <p style={{ color:G.muted, fontSize:14, margin:'0 0 4px' }}>Order: <strong style={{color:G.green}}>{orderNum}</strong></p>
-        <p style={{ color:G.muted, fontSize:13, margin:'0 0 8px' }}>Our team will review and confirm your order shortly.</p>
-        <div style={{ background:G.amberLight, borderRadius:10, padding:'10px 14px', marginBottom:24, fontSize:12, color:G.amber }}>
-          ⚠ Order will be dispatched only after payment confirmation
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          <button onClick={()=>{setStep('shop');setTab('orders')}} style={{ background:G.green, color:G.white, border:'none', borderRadius:12, padding:'12px', fontSize:14, fontWeight:700, cursor:'pointer' }}>Track My Order →</button>
-          <button onClick={()=>{setStep('shop');setTab('order')}} style={{ background:G.greenLight, color:G.green, border:'none', borderRadius:12, padding:'12px', fontSize:14, fontWeight:600, cursor:'pointer' }}>Place Another Order</button>
+    <>
+      <Confetti />
+      <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:G.surface, padding:20 }}>
+        <div style={{ textAlign:'center', background:G.white, borderRadius:20, padding:'48px 36px', maxWidth:420, width:'100%', boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
+          <div style={{ fontSize:60, marginBottom:16 }}>✅</div>
+          <h2 style={{ fontSize:22, fontWeight:800, color:G.greenDark, margin:'0 0 8px' }}>Order Placed!</h2>
+          <p style={{ color:G.muted, fontSize:14, margin:'0 0 4px' }}>Order: <strong style={{color:G.green}}>{orderNum}</strong></p>
+          <p style={{ color:G.muted, fontSize:13, margin:'0 0 8px' }}>Our team will review and confirm your order shortly.</p>
+          <div style={{ background:G.amberLight, borderRadius:10, padding:'10px 14px', marginBottom:24, fontSize:12, color:G.amber }}>
+            ⚠ Order will be dispatched only after payment confirmation
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            <button onClick={()=>{setStep('shop');setTab('orders')}} style={{ background:G.green, color:G.white, border:'none', borderRadius:12, padding:'12px', fontSize:14, fontWeight:700, cursor:'pointer' }}>Track My Order →</button>
+            <button onClick={()=>{setStep('shop');setTab('order')}} style={{ background:G.greenLight, color:G.green, border:'none', borderRadius:12, padding:'12px', fontSize:14, fontWeight:600, cursor:'pointer' }}>Place Another Order</button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 
   if (step === 'checkout') return (
