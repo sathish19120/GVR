@@ -29,9 +29,9 @@ function Confetti() {
     id: i,
     left: Math.random() * 100,
     delay: Math.random() * 1.5,
-    duration: 4.5 + Math.random() * 2.5,
+    duration: 2.5 + Math.random() * 0.5,
     color: colors[Math.floor(Math.random() * colors.length)],
-    size: 7 + Math.random() * 6,
+    size: 6 + Math.random() * 6,
   }))
   return (
     <div style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:999, overflow:'hidden' }}>
