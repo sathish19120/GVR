@@ -566,18 +566,115 @@ export default function Dashboard() {
         <main className="dash-main" style={{ flex:1, padding:'24px', overflowY:'auto', minWidth:0, maxWidth:'100%', height:'100vh' }}>
           {loading ? <div style={{ textAlign:'center', padding:80, color:G.muted }}>Loading...</div> : <>
 
-          {page==='dashboard' && <>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:24 }}>
-              <StatCard label="Revenue" value={fmtRs(stats.revenue)} icon="💰" color={G.green} bg={G.greenLight} />
-              <StatCard label="Orders" value={stats.orders} icon="📋" color={G.blue} bg={G.blueLight} />
+          {page==='dashboard' && (()=>{
+            const todayStr = new Date().toISOString().split('T')[0]
+            const cancelledToday = orders.filter(o => o.created_at?.startsWith(todayStr) && o.status==='cancelled')
+            const lowStockList = products.filter(p=>p.stock_bags<=p.low_stock_threshold)
+
+            // 7-day sparkline data + % change vs previous 7 days, per metric
+            const now = new Date()
+            const last7 = []
+            for (let i=6;i>=0;i--) { const d=new Date(now); d.setDate(d.getDate()-i); last7.push(d.toISOString().split('T')[0]) }
+            const prev7 = []
+            for (let i=13;i>=7;i--) { const d=new Date(now); d.setDate(d.getDate()-i); prev7.push(d.toISOString().split('T')[0]) }
+
+            const sumFor = (days, field) => orders.filter(o=>days.includes(o.created_at?.split('T')[0]))
+              .reduce((s,o)=> field==='count' ? s+1 : s+Number(o.total_amount||0), 0)
+            const sparkline = (days, field) => days.map(d => {
+              const dayOrders = orders.filter(o=>o.created_at?.startsWith(d))
+              return field==='count' ? dayOrders.length : dayOrders.reduce((s,o)=>s+Number(o.total_amount||0),0)
+            })
+            const pctChange = (curr, prev) => prev===0 ? (curr>0?100:0) : Math.round(((curr-prev)/prev)*100)
+
+            const revCurr = sumFor(last7,'revenue'), revPrev = sumFor(prev7,'revenue')
+            const ordCurr = sumFor(last7,'count'), ordPrev = sumFor(prev7,'count')
+            const revSpark = sparkline(last7,'revenue')
+            const ordSpark = sparkline(last7,'count')
+
+            function Sparkline({ data, color }) {
+              const max = Math.max(...data, 1)
+              return (
+                <div style={{ display:'flex', alignItems:'flex-end', gap:2, height:24, marginTop:6 }}>
+                  {data.map((v,i)=>(
+                    <div key={i} style={{ flex:1, height:`${Math.max(8,(v/max)*100)}%`, background:color, borderRadius:2, opacity:0.3+((i/(data.length-1))*0.7) }} />
+                  ))}
+                </div>
+              )
+            }
+
+            function TrendBadge({ pct }) {
+              if (pct === 0) return null
+              const up = pct > 0
+              return <span style={{ fontSize:11, fontWeight:700, color: up?G.green:G.red, marginLeft:6 }}>{up?'↑':'↓'} {Math.abs(pct)}%</span>
+            }
+
+            // Which months in the chart actually have data — used to
+            // dim/collapse empty months rather than showing a flat
+            // blank axis across the whole year.
+            const monthsWithData = new Set(orders.map(o=>o.created_at?.slice(0,7)))
+            const chartHasRealData = chart.some(c => c.revenue > 0)
+            const firstTradingMonth = orders.length > 0
+              ? [...orders].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at))[0]?.created_at
+              : null
+
+            return (
+            <>
+            {/* Quick actions row */}
+            <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+              <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{ background:G.white, border:`1px solid ${G.border}`, borderRadius:10, padding:'9px 16px', fontSize:13, fontWeight:600, cursor:'pointer', color:G.text, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>↻ Refresh</button>
+              <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'9px 18px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ New Order</button>
+              <button onClick={()=>setPage('inventory')} style={{ background:G.blueLight, color:G.blue, border:'none', borderRadius:10, padding:'9px 16px', fontSize:13, fontWeight:700, cursor:'pointer' }}>📦 Receive Stock</button>
+              <button onClick={()=>{ const last = orders[0]; if (last) generateInvoice(last, last.order_items||[]); else alert('No orders yet to print') }} style={{ background:'#EDE9FE', color:'#7C3AED', border:'none', borderRadius:10, padding:'9px 16px', fontSize:13, fontWeight:700, cursor:'pointer' }}>🖨 Print Last Bill</button>
+              <button onClick={()=>setPage('orders')} style={{ background:G.amberLight, color:G.amber, border:'none', borderRadius:10, padding:'9px 16px', fontSize:13, fontWeight:700, cursor:'pointer' }}>💰 Record Payment</button>
+            </div>
+
+            {/* Attention strip — clickable chips, first thing under quick actions */}
+            {(stats.pending > 0 || lowStockList.length > 0 || cancelledToday.length > 0) && (
+              <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+                {stats.pending > 0 && (
+                  <button onClick={()=>{ setPage('orders'); setOrderStatusFilter('pending') }} style={{ display:'flex', alignItems:'center', gap:6, background:G.amberLight, border:`1px solid ${G.amber}40`, borderRadius:20, padding:'8px 16px', fontSize:13, fontWeight:700, color:G.amber, cursor:'pointer' }}>
+                    ⏳ {stats.pending} pending →
+                  </button>
+                )}
+                {lowStockList.length > 0 && (
+                  <button onClick={()=>setPage('inventory')} style={{ display:'flex', alignItems:'center', gap:6, background:G.redLight, border:`1px solid ${G.red}40`, borderRadius:20, padding:'8px 16px', fontSize:13, fontWeight:700, color:G.red, cursor:'pointer' }}>
+                    ⚠️ {lowStockList.length} low stock →
+                  </button>
+                )}
+                {cancelledToday.length > 0 && (
+                  <button onClick={()=>{ setPage('orders'); setOrderStatusFilter('cancelled') }} style={{ display:'flex', alignItems:'center', gap:6, background:'#F3F4F6', border:`1px solid ${G.border}`, borderRadius:20, padding:'8px 16px', fontSize:13, fontWeight:700, color:G.muted, cursor:'pointer' }}>
+                    ✕ {cancelledToday.length} cancelled today →
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* KPI cards with sparkline + trend vs previous 7 days */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:14, marginBottom:24 }}>
+              <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${G.green}` }}>
+                <p style={{ margin:'0 0 8px', fontSize:12, color:G.muted }}>Revenue</p>
+                <p style={{ margin:0, fontSize:22, fontWeight:800, color:G.green }}>{fmtRs(stats.revenue)}<TrendBadge pct={pctChange(revCurr,revPrev)} /></p>
+                <p style={{ margin:'2px 0 0', fontSize:10, color:G.muted }}>vs previous 7 days</p>
+                <Sparkline data={revSpark} color={G.green} />
+              </div>
+              <div style={{ background:G.white, borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${G.blue}` }}>
+                <p style={{ margin:'0 0 8px', fontSize:12, color:G.muted }}>Orders</p>
+                <p style={{ margin:0, fontSize:22, fontWeight:800, color:G.blue }}>{stats.orders}<TrendBadge pct={pctChange(ordCurr,ordPrev)} /></p>
+                <p style={{ margin:'2px 0 0', fontSize:10, color:G.muted }}>vs previous 7 days</p>
+                <Sparkline data={ordSpark} color={G.blue} />
+              </div>
               <StatCard label="Bags Sold" value={stats.bags} icon="🌾" color={G.green2} bg={G.greenLight} />
-              <StatCard label="Pending" value={stats.pending} icon="⏳" color={G.amber} bg={G.amberLight} />
-              <StatCard label="Low Stock" value={stats.lowStock} icon="⚠️" color={G.red} bg={G.redLight} />
               <StatCard label="Customers" value={stats.customers} icon="👥" color="#7C3AED" bg="#EDE9FE" />
             </div>
+
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:18, marginBottom:24 }}>
               <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-                <p style={{ margin:'0 0 14px', fontSize:13, fontWeight:700 }}>Revenue — {filter}</p>
+                <p style={{ margin:'0 0 4px', fontSize:13, fontWeight:700 }}>Revenue — {filter}</p>
+                {!chartHasRealData && (
+                  <p style={{ margin:'0 0 10px', fontSize:11, color:G.muted, fontStyle:'italic' }}>
+                    {firstTradingMonth ? `Trading started in ${new Date(firstTradingMonth).toLocaleDateString('en-IN',{month:'long',year:'numeric'})}.` : 'No orders yet — chart will populate once trading begins.'}
+                  </p>
+                )}
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={chart} barSize={32}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
@@ -585,7 +682,7 @@ export default function Dashboard() {
                     <YAxis tick={{fontSize:11,fill:G.muted}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`₹${(v/1000).toFixed(0)}k`:`₹${v}`} />
                     <Tooltip formatter={v=>[fmtRs(v),'Revenue']} contentStyle={{borderRadius:10,fontSize:12}} />
                     <Bar dataKey="revenue" radius={[6,6,0,0]}>
-                      {chart.map((_,i)=><Cell key={i} fill={i===chart.length-1?G.green:G.green2} />)}
+                      {chart.map((c,i)=><Cell key={i} fill={c.revenue===0 ? '#F3F4F6' : (i===chart.length-1?G.green:G.green2)} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -603,6 +700,7 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               </div>
             </div>
+
             <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -613,47 +711,48 @@ export default function Dashboard() {
                     </span>
                   )}
                 </div>
-                <div style={{ display:'flex', gap:8 }}>
-                  <button onClick={()=>{ load(); setLastRefresh(new Date()); setNewOrderAlert(0) }} style={{ background:'#F3F4F6', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:600, cursor:'pointer', color:G.muted }}>↻ Refresh</button>
-                  <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:8, padding:'7px 16px', fontSize:13, fontWeight:600, cursor:'pointer' }}>+ New Order</button>
-                </div>
               </div>
               {orders.length===0 && <p style={{ textAlign:'center', padding:40, color:G.muted }}>No orders yet</p>}
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {orders.slice(0,8).map((o,i)=>(
-                <div key={o.id} style={{ display:'flex', gap:0, border:`1px solid ${G.border}`, borderRadius:12, overflow:'hidden', background:G.white }}>
-                  <div style={{ width:200, flexShrink:0, background:'#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'10px 12px' }}>
+              {orders.slice(0,8).map((o,i)=>{
+                const isCancelled = o.status === 'cancelled'
+                return (
+                <div key={o.id} style={{ display:'flex', gap:0, border:`1px solid ${G.border}`, borderRadius:12, overflow:'hidden', background: isCancelled ? '#FAFAFA' : G.white, opacity: isCancelled ? 0.65 : 1 }}>
+                  <div style={{ width:200, flexShrink:0, background: isCancelled ? '#F3F4F6' : '#F9FAF7', borderRight:`1px solid ${G.border}`, padding:'10px 12px' }}>
                     <p style={{ margin:'0 0 6px', fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase' }}>Items</p>
                     {(o.order_items||[]).map((item,idx)=>(
                       <div key={idx} style={{ fontSize:11, display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-                        <span style={{ color:G.text, fontWeight:600 }}>🌾 {item.name}</span>
-                        <span style={{ color:G.green, fontWeight:700 }}>×{item.quantity}</span>
+                        <span style={{ color: isCancelled ? G.muted : G.text, fontWeight:600 }}>🌾 {item.name}</span>
+                        <span style={{ color: isCancelled ? G.muted : G.green, fontWeight:700 }}>×{item.quantity}</span>
                       </div>
                     ))}
                     {(o.order_items||[]).length===0 && <p style={{ margin:0, fontSize:11, color:G.muted }}>—</p>}
                     <div style={{ marginTop:6, paddingTop:6, borderTop:`1px solid ${G.border}`, display:'flex', justifyContent:'space-between' }}>
                       <span style={{ fontSize:11, color:G.muted }}>Total</span>
-                      <span style={{ fontSize:12, fontWeight:800, color:G.green }}>{fmtRs(o.total_amount)}</span>
+                      <span style={{ fontSize:12, fontWeight:800, color: isCancelled ? G.muted : G.green }}>{fmtRs(o.total_amount)}</span>
                     </div>
                   </div>
-                  <div style={{ flex:1, padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
-                    <div>
-                      <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:13, color:G.green }}>{o.order_number}</p>
-                      <p style={{ margin:0, fontSize:12, color:G.text }}>{o.customer_name||'—'}</p>
-                      <p style={{ margin:0, fontSize:11, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</p>
+                  <div style={{ flex:1, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                      <div>
+                        <p style={{ margin:'0 0 3px', fontWeight:800, fontSize:16, color: isCancelled ? G.muted : G.green }}>{o.order_number}</p>
+                        <p style={{ margin:0, fontSize:13, fontWeight:600, color: isCancelled ? G.muted : G.text }}>{o.customer_name||'—'}</p>
+                        <p style={{ margin:0, fontSize:11, color:G.muted }}>{new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} · {o.payment_method?.toUpperCase()||'—'}</p>
+                      </div>
                     </div>
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <span style={{ fontSize:11, color:G.muted, textTransform:'uppercase' }}>{o.payment_method||'—'}</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                       <Badge status={o.status} />
+                      <span style={{ fontSize:16, fontWeight:800, color: isCancelled ? G.muted : G.green }}>{fmtRs(o.total_amount)}</span>
                       <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'4px 10px', fontSize:11, fontWeight:600, color:G.blue, cursor:'pointer' }}>🖨</button>
                     </div>
                   </div>
                 </div>
-              ))}
+              )})}
               </div>
             </div>
-          </>}
-
+            </>
+            )
+          })()}
           {page==='today' && (()=>{
             const todayStr = new Date().toISOString().split('T')[0]
             const todaysOrders = orders.filter(o => o.created_at?.startsWith(todayStr))
