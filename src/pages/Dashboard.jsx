@@ -781,7 +781,7 @@ export default function Dashboard() {
                 </div>
               ))}
               </div>
-            </div>
+           
           </>}
 
           {page==='orders' && <>
