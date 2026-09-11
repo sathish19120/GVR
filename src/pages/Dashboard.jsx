@@ -1025,7 +1025,7 @@ export default function Dashboard() {
               <Table headers={['Product','Change','Type','Note','Date']}>
                 {movements.map((m,i)=>(
                   <tr key={m.id} style={{ borderTop:`1px solid ${G.border}`, background:i%2?'#FAFAFA':G.white }}>
-                    <td style={{ padding:'11px 14px', fontWeight:600 }}>{m.products?.name || '—'}</td>
+                    <td style={{ padding:'11px 14px', fontWeight:600 }}>{products.find(p=>p.id===m.product_id)?.name || '—'}</td>
                     <td style={{ padding:'11px 14px', fontWeight:700, color:m.change_bags>0?G.green:G.red }}>{m.change_bags>0?'+':''}{m.change_bags} bags</td>
                     <td style={{ padding:'11px 14px' }}><span style={{ fontSize:11, padding:'2px 8px', borderRadius:20, background:m.type==='add'?G.greenLight:G.redLight, color:m.type==='add'?G.green:G.red, fontWeight:600 }}>{m.type}</span></td>
                     <td style={{ padding:'11px 14px', color:G.muted, fontSize:12 }}>{m.note||'—'}</td>
