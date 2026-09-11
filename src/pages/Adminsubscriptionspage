@@ -1,0 +1,176 @@
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+
+const G = {
+  green:'#3B6D11',greenDark:'#27500A',greenLight:'#EAF3DE',green2:'#639922',
+  amber:'#BA7517',amberLight:'#FAEEDA',blue:'#1E5FA5',blueLight:'#E6F1FB',
+  red:'#DC2626',redLight:'#FEE2E2',purple:'#7C3AED',purpleLight:'#EDE9FE',
+  border:'#E5E7EB',text:'#111827',muted:'#6B7280',white:'#fff',surface:'#F4F6F3'
+}
+
+const FREQ_LABEL = { weekly:'Every Week', biweekly:'Every 2 Weeks', monthly:'Every Month' }
+
+function StatCard({ label, value, icon, color, bg }) {
+  return (
+    <div style={{ background:G.white, borderRadius:14, padding:'14px 16px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${color}` }}>
+      <div style={{ display:'flex', justifyContent:'space-between' }}>
+        <div>
+          <p style={{ margin:'0 0 5px', fontSize:11, color:G.muted }}>{label}</p>
+          <p style={{ margin:0, fontSize:22, fontWeight:800, color }}>{value}</p>
+        </div>
+        <span style={{ fontSize:20 }}>{icon}</span>
+      </div>
+    </div>
+  )
+}
+
+export default function AdminSubscriptionsPage() {
+  const [subs, setSubs]         = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [tab, setTab]           = useState('active')
+  const [search, setSearch]     = useState('')
+  const [freqFilter, setFreqFilter] = useState('all')
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const { data } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .order('created_at', { ascending: false })
+    setSubs(data || [])
+    setLoading(false)
+  }
+
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) : '—'
+  const today = new Date().toISOString().split('T')[0]
+
+  const active    = subs.filter(s => s.status === 'active')
+  const paused    = subs.filter(s => s.status === 'paused')
+  const cancelled = subs.filter(s => s.status === 'cancelled')
+  const dueSoon   = active.filter(s => s.next_order_date && s.next_order_date <= today)
+
+  const totalMonthlyBags = active.reduce((s, sub) => {
+    const mult = sub.frequency === 'weekly' ? 4.33 : sub.frequency === 'biweekly' ? 2.17 : 1
+    return s + (sub.quantity_bags || 0) * mult
+  }, 0)
+
+  const shown = (tab === 'active' ? active : tab === 'paused' ? paused : tab === 'cancelled' ? cancelled : subs)
+    .filter(s => freqFilter === 'all' || s.frequency === freqFilter)
+    .filter(s => !search ||
+      s.customer_name?.toLowerCase().includes(search.toLowerCase()) ||
+      s.product_name?.toLowerCase().includes(search.toLowerCase()) ||
+      s.phone?.includes(search)
+    )
+
+  return (
+    <div style={{ fontFamily:"'Inter',sans-serif" }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, flexWrap:'wrap', gap:12 }}>
+        <div>
+          <h2 style={{ margin:'0 0 4px', fontSize:18, fontWeight:700, color:G.text }}>🔄 Subscriptions</h2>
+          <p style={{ margin:0, fontSize:13, color:G.muted }}>Recurring customer orders — status, schedule, and upcoming deliveries</p>
+        </div>
+        <button onClick={load} style={{ background:G.white, border:`1px solid ${G.border}`, borderRadius:10, padding:'8px 16px', fontSize:13, fontWeight:600, color:G.text, cursor:'pointer', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+          ↻ Refresh
+        </button>
+      </div>
+
+      {dueSoon.length > 0 && (
+        <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:12, padding:'12px 16px', marginBottom:16, display:'flex', gap:10, alignItems:'center' }}>
+          <span style={{ fontSize:18 }}>⏰</span>
+          <p style={{ margin:0, fontSize:13, color:G.amber, fontWeight:600 }}>
+            {dueSoon.length} subscription{dueSoon.length>1?'s':''} due today or overdue — confirm the auto-fulfil job ran, or use "Trigger Delivery Now" below.
+          </p>
+        </div>
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:20 }}>
+        <StatCard label="Active" value={active.length} icon="✅" color={G.green} bg={G.greenLight} />
+        <StatCard label="Paused" value={paused.length} icon="⏸" color={G.amber} bg={G.amberLight} />
+        <StatCard label="Cancelled" value={cancelled.length} icon="✕" color={G.red} bg={G.redLight} />
+        <StatCard label="Due Today/Overdue" value={dueSoon.length} icon="⏰" color={dueSoon.length>0?G.red:G.muted} bg="#F3F4F6" />
+        <StatCard label="Est. Bags / Month" value={Math.round(totalMonthlyBags)} icon="📦" color={G.blue} bg={G.blueLight} />
+      </div>
+
+      <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ display:'flex', gap:4 }}>
+          {[['active',`Active (${active.length})`],['paused',`Paused (${paused.length})`],['cancelled',`Cancelled (${cancelled.length})`],['all',`All (${subs.length})`]].map(([key,label])=>(
+            <button key={key} onClick={()=>setTab(key)} style={{ padding:'6px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:tab===key?G.green:'#F3F4F6', color:tab===key?G.white:G.muted }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:4 }}>
+          {['all','weekly','biweekly','monthly'].map(f=>(
+            <button key={f} onClick={()=>setFreqFilter(f)} style={{ padding:'6px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:600, background:freqFilter===f?G.blue:'#F3F4F6', color:freqFilter===f?G.white:G.muted }}>
+              {f==='all'?'All Frequencies':FREQ_LABEL[f]}
+            </button>
+          ))}
+        </div>
+        <div style={{ position:'relative', flex:1, minWidth:200 }}>
+          <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:13, color:G.muted }}>🔍</span>
+          <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="Search customer, product, or phone..."
+            style={{ width:'100%', padding:'8px 8px 8px 30px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:13, outline:'none', boxSizing:'border-box', background:'#FAFAFA' }}
+            onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
+        </div>
+        <span style={{ fontSize:12, color:G.muted }}>{shown.length} shown</span>
+      </div>
+
+      {loading && <div style={{ textAlign:'center', padding:60, color:G.muted }}>Loading subscriptions...</div>}
+
+      {!loading && shown.length === 0 && (
+        <div style={{ textAlign:'center', padding:'60px 20px', background:G.white, borderRadius:14, color:G.muted }}>
+          <div style={{ fontSize:40, marginBottom:10 }}>🔄</div>
+          <p style={{ fontWeight:600, color:G.text, margin:'0 0 4px' }}>No subscriptions found</p>
+          <p style={{ fontSize:13 }}>Try a different filter or search</p>
+        </div>
+      )}
+
+      <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        {shown.map(s => {
+          const isOverdue = s.status === 'active' && s.next_order_date && s.next_order_date < today
+          const isDueToday = s.status === 'active' && s.next_order_date === today
+          return (
+            <div key={s.id} style={{ background:G.white, borderRadius:14, padding:'16px 18px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${s.status==='active'?G.green:s.status==='paused'?G.amber:G.red}` }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10, flexWrap:'wrap', gap:8 }}>
+                <div>
+                  <p style={{ margin:'0 0 2px', fontWeight:700, fontSize:15, color:G.text }}>{s.customer_name || 'Customer'}</p>
+                  <p style={{ margin:0, fontSize:12, color:G.muted }}>{s.product_name} · {s.quantity_bags} bag{s.quantity_bags>1?'s':''} · {FREQ_LABEL[s.frequency] || s.frequency}</p>
+                </div>
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'flex-end' }}>
+                  <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:s.status==='active'?G.greenLight:s.status==='paused'?G.amberLight:G.redLight, color:s.status==='active'?G.green:s.status==='paused'?G.amber:G.red, textTransform:'capitalize' }}>
+                    {s.status}
+                  </span>
+                  {isOverdue && <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.redLight, color:G.red }}>⚠ Overdue</span>}
+                  {isDueToday && !isOverdue && <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:G.amberLight, color:G.amber }}>⏰ Due Today</span>}
+                </div>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:10 }}>
+                {[
+                  ['Discount', `${s.discount_pct || 0}% off`, G.green],
+                  ['Next Delivery', fmtDate(s.next_order_date), isOverdue?G.red:G.text],
+                  ['Total Orders', s.total_orders ?? 0, G.blue],
+                  ['Payment', (s.payment_method||'—').toUpperCase(), G.muted],
+                ].map(([label,val,color])=>(
+                  <div key={label} style={{ background:'#F9FAF7', borderRadius:8, padding:'7px 9px' }}>
+                    <p style={{ margin:'0 0 2px', fontSize:9, color:G.muted, textTransform:'uppercase', letterSpacing:'0.3px' }}>{label}</p>
+                    <p style={{ margin:0, fontSize:12, fontWeight:700, color }}>{val}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display:'flex', gap:12, fontSize:12, color:G.muted, flexWrap:'wrap' }}>
+                {s.phone && <span>📞 {s.phone}</span>}
+                {s.address && <span>📍 {s.address.slice(0,50)}{s.address.length>50?'…':''}</span>}
+                <span>Started: {fmtDate(s.created_at)}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
