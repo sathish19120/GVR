@@ -906,6 +906,8 @@ export default function CustomerShop() {
 
   // ── Success ───────────────────────────────────────────
   if (step === 'success') return (
+    <>
+      <Confetti />
     <div style={{ minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:G.surface,padding:20 }}>
       <div style={{ textAlign:'center',background:G.white,borderRadius:20,padding:'48px 40px',maxWidth:400,width:'100%',boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
         <div style={{ fontSize:60,marginBottom:16 }}>✅</div>
@@ -919,8 +921,9 @@ export default function CustomerShop() {
         </div>
       </div>
     </div>
+    </>
   )
-  <Confetti />
+  
 
   // ── Checkout ─────────────────────────────────────────
   if (step === 'checkout') return (
