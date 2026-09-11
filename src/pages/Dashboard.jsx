@@ -663,6 +663,40 @@ export default function Dashboard() {
             const lowStockProducts = products.filter(p=>p.stock_bags<=p.low_stock_threshold)
             const unpaidCod = todaysOrders.filter(o=>o.payment_method==='cod' && o.payment_status!=='paid')
 
+            // Branch-wise breakdown — groups today's orders by their
+            // branch field (falls back to "Unspecified" if not set,
+            // since walk-in/pickup orders always set it but some
+            // regular delivery orders historically may not have).
+            const branches = ['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu']
+            const branchBreakdown = branches.map(b => {
+              const branchOrders = todaysOrders.filter(o => o.branch === b || o.pickup_branch === b)
+              return { branch:b, count:branchOrders.length, revenue:branchOrders.reduce((s,o)=>s+Number(o.total_amount||0),0) }
+            }).filter(b => b.count > 0)
+            const unassignedOrders = todaysOrders.filter(o => !branches.includes(o.branch) && !branches.includes(o.pickup_branch))
+
+            // Payment method breakdown
+            const payMethods = ['cod','upi','bank']
+            const paymentBreakdown = payMethods.map(m => {
+              const mOrders = todaysOrders.filter(o => o.payment_method === m)
+              return { method:m, count:mOrders.length, revenue:mOrders.reduce((s,o)=>s+Number(o.total_amount||0),0) }
+            }).filter(p => p.count > 0)
+
+            // Top-selling products today — aggregates order_items
+            // across all of today's orders, grouped by product name
+            const productTally = {}
+            todaysOrders.flatMap(o=>o.order_items||[]).forEach(item=>{
+              if (!productTally[item.name]) productTally[item.name] = { qty:0, revenue:0 }
+              productTally[item.name].qty += item.quantity || 0
+              productTally[item.name].revenue += (item.quantity||0) * (item.price_per_unit||0)
+            })
+            const topProducts = Object.entries(productTally).map(([name,d])=>({name,...d})).sort((a,b)=>b.qty-a.qty).slice(0,5)
+
+            // Status breakdown for today's orders specifically
+            const statusList = ['pending','confirmed','packed','dispatched','delivered','cancelled']
+            const statusBreakdown = statusList.map(s => ({ status:s, count: todaysOrders.filter(o=>o.status===s).length })).filter(s=>s.count>0)
+
+            const payLabels = { cod:'💵 Cash on Delivery', upi:'📱 UPI', bank:'🏦 Bank Transfer' }
+
             return (
               <>
                 <div style={{ marginBottom:20 }}>
@@ -708,6 +742,69 @@ export default function Dashboard() {
                     <p style={{ margin:0, fontSize:14, fontWeight:600, color:G.greenDark }}>✅ All caught up — nothing needs attention right now</p>
                   </div>
                 )}
+
+                {/* Branch-wise, Payment, Top Products, Status — 2x2 grid */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
+
+                  <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                    <p style={{ margin:'0 0 14px', fontSize:14, fontWeight:700 }}>🏪 By Branch Today</p>
+                    {branchBreakdown.length===0 && unassignedOrders.length===0 && <p style={{ textAlign:'center', color:G.muted, padding:20, fontSize:13 }}>No orders yet today</p>}
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {branchBreakdown.map(b=>(
+                        <div key={b.branch} style={{ display:'flex', justifyContent:'space-between', padding:'8px 12px', background:'#F9FAF7', borderRadius:8 }}>
+                          <span style={{ fontSize:13, fontWeight:600 }}>{b.branch}</span>
+                          <span style={{ fontSize:13, color:G.muted }}>{b.count} order{b.count>1?'s':''} · <strong style={{color:G.green}}>{fmtRs(b.revenue)}</strong></span>
+                        </div>
+                      ))}
+                      {unassignedOrders.length > 0 && (
+                        <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 12px', background:'#F3F4F6', borderRadius:8 }}>
+                          <span style={{ fontSize:13, fontWeight:600, color:G.muted }}>Online / Unspecified</span>
+                          <span style={{ fontSize:13, color:G.muted }}>{unassignedOrders.length} order{unassignedOrders.length>1?'s':''}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                    <p style={{ margin:'0 0 14px', fontSize:14, fontWeight:700 }}>💳 By Payment Method Today</p>
+                    {paymentBreakdown.length===0 && <p style={{ textAlign:'center', color:G.muted, padding:20, fontSize:13 }}>No orders yet today</p>}
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {paymentBreakdown.map(p=>(
+                        <div key={p.method} style={{ display:'flex', justifyContent:'space-between', padding:'8px 12px', background:'#F9FAF7', borderRadius:8 }}>
+                          <span style={{ fontSize:13, fontWeight:600 }}>{payLabels[p.method]}</span>
+                          <span style={{ fontSize:13, color:G.muted }}>{p.count} order{p.count>1?'s':''} · <strong style={{color:G.green}}>{fmtRs(p.revenue)}</strong></span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                    <p style={{ margin:'0 0 14px', fontSize:14, fontWeight:700 }}>🌾 Top Products Today</p>
+                    {topProducts.length===0 && <p style={{ textAlign:'center', color:G.muted, padding:20, fontSize:13 }}>No sales yet today</p>}
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {topProducts.map((p,i)=>(
+                        <div key={p.name} style={{ display:'flex', justifyContent:'space-between', padding:'8px 12px', background:'#F9FAF7', borderRadius:8 }}>
+                          <span style={{ fontSize:13, fontWeight:600 }}>{i+1}. {p.name}</span>
+                          <span style={{ fontSize:13, color:G.muted }}>{p.qty} bags · <strong style={{color:G.green}}>{fmtRs(p.revenue)}</strong></span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                    <p style={{ margin:'0 0 14px', fontSize:14, fontWeight:700 }}>📦 Order Status Today</p>
+                    {statusBreakdown.length===0 && <p style={{ textAlign:'center', color:G.muted, padding:20, fontSize:13 }}>No orders yet today</p>}
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {statusBreakdown.map(s=>(
+                        <div key={s.status} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'#F9FAF7', borderRadius:8 }}>
+                          <Badge status={s.status} />
+                          <span style={{ fontSize:13, fontWeight:700, color:G.text }}>{s.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
 
                 <div style={{ background:G.white, borderRadius:16, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
                   <p style={{ margin:'0 0 14px', fontSize:14, fontWeight:700 }}>Today's Orders</p>
