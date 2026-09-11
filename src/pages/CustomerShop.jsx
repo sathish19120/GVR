@@ -60,10 +60,10 @@ function Confetti() {
   const pieces = Array.from({ length: 850 }, (_, i) => ({
     id: i,
     left: Math.random() * 100,
-    delay: Math.random() * 1.5,
-    duration: 4.5 + Math.random() * 2.5,
+    delay: Math.random() * 2.5,
+    duration: 2.5 + Math.random() * 1.5,
     color: colors[Math.floor(Math.random() * colors.length)],
-    size: 7 + Math.random() * 6,
+    size: 8 + Math.random() * 8,
   }))
   return (
     <div style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:999, overflow:'hidden' }}>
@@ -76,8 +76,8 @@ function Confetti() {
       {pieces.map(p => (
         <div key={p.id} style={{
           position:'absolute', left:`${p.left}%`, top:0,
-          width:p.size, height:p.size * 1.6, background:p.color,
-          borderRadius:3, animation:`confetti-fall ${p.duration}s ease-in ${p.delay}s forwards`,
+          width:p.size, height:p.size * 0.6, background:p.color,
+          borderRadius:2, animation:`confetti-fall ${p.duration}s ease-in ${p.delay}s forwards`,
         }} />
       ))}
     </div>
