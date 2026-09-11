@@ -347,6 +347,7 @@ export default function CustomerShop() {
   const [reviewModal, setRevModal]  = useState(null)
   const [reportModal, setRepModal]  = useState(null)
   const [notifyModal, setNotifyModal] = useState(null)
+  const [cancelModal, setCancelModal] = useState(null)
   const [notified, setNotified]       = useState({})
   const [ordersLoading, setOL]    = useState(false)
   const [error, setError]         = useState('')
@@ -793,6 +794,65 @@ export default function CustomerShop() {
       </div>
     )
   }
+  function CancelModal({ order, onClose }) {
+    const [reason, setReason] = useState('')
+    const [saving, setSaving] = useState(false)
+ 
+    const REASONS = [
+      'Ordered by mistake',
+      'Found a better price elsewhere',
+      'Taking too long to arrive',
+      'Changed my mind',
+      'Wrong address entered',
+      'Other',
+    ]
+ 
+    async function submit() {
+      if (!reason.trim()) return
+      setSaving(true)
+      try {
+        await supabase.from('orders').update({
+          status: 'cancelled',
+          cancellation_reason: reason.trim(),
+          cancelled_by: 'customer'
+        }).eq('id', order.id)
+        loadMyOrders()
+        onClose()
+      } catch(e) { console.error(e) }
+      finally { setSaving(false) }
+    }
+ 
+    return (
+      <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16 }}>
+        <div style={{ background:D.card,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:480,padding:28 }}>
+          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16 }}>
+            <p style={{ margin:0,fontSize:17,fontWeight:700,color:D.text }}>Cancel Order</p>
+            <button type="button" onClick={onClose} style={{ background:'none',border:'none',fontSize:22,cursor:'pointer',color:D.muted }}>✕</button>
+          </div>
+          <p style={{ margin:'0 0 14px',fontSize:13,color:D.muted }}>{order.order_number} · Please tell us why you're cancelling</p>
+          <div style={{ display:'flex',flexDirection:'column',gap:8,marginBottom:16 }}>
+            {REASONS.map(r=>(
+              <button key={r} type="button" onClick={()=>setReason(r)} style={{ padding:'10px 12px',borderRadius:10,border:`1.5px solid ${reason===r?G.red:D.border}`,background:reason===r?G.redLight:'transparent',color:reason===r?G.red:D.text,fontSize:13,fontWeight:reason===r?700:400,cursor:'pointer',textAlign:'left' }}>
+                {r}
+              </button>
+            ))}
+          </div>
+          {reason==='Other' && (
+            <textarea value={reason==='Other'?'':reason} onChange={e=>setReason(e.target.value)} rows={2}
+              placeholder="Please describe your reason..."
+              style={{ width:'100%',padding:'10px 12px',borderRadius:10,border:`1.5px solid ${D.border}`,fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',background:D.bg,color:D.text,boxSizing:'border-box',marginBottom:14 }} />
+          )}
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
+            <button type="button" onClick={onClose} style={{ padding:12,background:'transparent',border:`1px solid ${D.border}`,borderRadius:10,fontSize:13,fontWeight:600,color:D.muted,cursor:'pointer' }}>Keep Order</button>
+            <button type="button" onClick={submit} disabled={saving||!reason.trim()} style={{ padding:12,background:saving||!reason.trim()?'#9CA3AF':G.red,color:G.white,border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
+              {saving?'Cancelling...':'Confirm Cancel'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+ 
 
   const totalItems  = Object.values(cart).reduce((s,q) => s+q, 0)
   const totalAmount = products.reduce((s,p) => s+(cart[p.id]||0)*p.price_per_bag, 0)
@@ -1026,6 +1086,7 @@ export default function CustomerShop() {
       {reviewModal && <ReviewModal order={reviewModal} onClose={()=>setRevModal(null)} />}
       {reportModal && <ReportModal order={reportModal} onClose={()=>setRepModal(null)} />}
       {notifyModal && <NotifyModal product={notifyModal} onClose={()=>setNotifyModal(null)} />}
+      {cancelModal && <CancelModal order={cancelModal} onClose={()=>setCancelModal(null)} />}
 
       <header style={{ background:G.green,padding:'14px 20px',display:'flex',alignItems:'center',justifyContent:'space-between' }}>
         <div style={{ display:'flex',alignItems:'center',gap:10 }}>
@@ -1131,6 +1192,11 @@ export default function CustomerShop() {
                       ⚠️ Issue
                     </button>
                   )}
+                  {['pending','confirmed'].includes(order.status) && (
+                    <button type="button" onClick={()=>setCancelModal(order)} style={{ fontSize:10,fontWeight:700,padding:'3px 10px',borderRadius:20,background:G.redLight,color:G.red,border:'none',cursor:'pointer' }}>
+                      ✕ Cancel Order
+                    </button>
+                  )}
                   {(order.status==='delivered'||order.status==='dispatched') && (
                     <button type="button" onClick={()=>printInvoice(order)} style={{ fontSize:10,fontWeight:700,padding:'3px 10px',borderRadius:20,background:G.blueLight,color:G.blue,border:'none',cursor:'pointer' }}>
                       🧾 Invoice
@@ -1138,6 +1204,11 @@ export default function CustomerShop() {
                   )}
                 </div>
               </div>
+              {order.status==='cancelled' && order.cancellation_reason && (
+                <div style={{ background:G.redLight,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:12,color:G.red }}>
+                  ❌ Cancelled: {order.cancellation_reason}
+                </div>
+              )}
               <div style={{ display:'flex',flexWrap:'wrap',gap:6,marginBottom:10 }}>
                 {(order.order_items||[]).map((item,i)=>(
                   <span key={i} style={{ fontSize:11,padding:'3px 10px',borderRadius:20,background:G.greenLight,color:G.greenDark,fontWeight:600 }}>{item.name} × {item.quantity}</span>
