@@ -705,7 +705,27 @@ export default function Dashboard() {
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <span style={{ fontSize:11, color:G.muted, textTransform:'uppercase' }}>{o.payment_method||'—'}</span>
                       <Badge status={o.status} />
-                      <button onClick={()=>generateInvoice(o, o.order_items||[])} style={{ background:G.blueLight, border:'none', borderRadius:6, padding:'4px 10px', fontSize:11, fontWeight:600, color:G.blue, cursor:'pointer' }}>🖨</button>
+                       <button onClick={async()=>{
+                        const confirmed = window.confirm(
+                          `⚠️ PERMANENTLY DELETE order ${o.order_number}?\n\nThis cannot be undone. The order and its items will be completely removed from the database — this is NOT the same as cancelling.\n\nType matches: this is for cleaning up test/dummy orders only.`
+                        )
+                        if (!confirmed) return
+                        // Extra safety: require typing the order number to
+                        // confirm, so an accidental double-click can't
+                        // delete a real customer's order by mistake.
+                        const typed = window.prompt(`To confirm deletion, type the order number exactly: ${o.order_number}`)
+                        if (typed !== o.order_number) {
+                          if (typed !== null) alert('Order number did not match. Deletion cancelled.')
+                          return
+                        }
+                        // Delete order_items first (foreign key dependency),
+                        // then the order itself.
+                        await supabase.from('order_items').delete().eq('order_id', o.id)
+                        await supabase.from('orders').delete().eq('id', o.id)
+                        load()
+                      }} style={{ background:'#7F1D1D', border:'none', borderRadius:6, padding:'5px 10px', fontSize:11, fontWeight:700, color:G.white, cursor:'pointer' }}>
+                        🗑️ Delete
+                      </button>
                     </div>
                   </div>
                 </div>
