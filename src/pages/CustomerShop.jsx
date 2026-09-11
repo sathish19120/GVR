@@ -39,67 +39,50 @@ const G = {
   red:'#DC2626',redLight:'#FEE2E2',
   border:'#E5E7EB',text:'#111827',muted:'#6B7280',white:'#fff',surface:'#F4F6F3'
 }
-function Confetti() {
-  const colors = ['#3B6D11', '#BA7517', '#1E5FA5', '#7C3AED', '#DC2626', '#639922']
-  const pieces = Array.from({ length: 60 }, (_, i) => ({
-    id: i,
-    left: Math.random() * 100,
-    delay: Math.random() * 0.5,
-    duration: 2.5 + Math.random() * 1.5,
-    color: colors[Math.floor(Math.random() * colors.length)],
-    size: 6 + Math.random() * 6,
-  }))
-  return (
-    <div style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:999, overflow:'hidden' }}>
-      <style>{`
-        @keyframes confetti-fall {
-          0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(110vh) rotate(720deg); opacity: 0.3; }
-        }
-      `}</style>
-      {pieces.map(p => (
-        <div key={p.id} style={{
-          position:'absolute', left:`${p.left}%`, top:0,
-          width:p.size, height:p.size * 0.6, background:p.color,
-          borderRadius:2, animation:`confetti-fall ${p.duration}s ease-in ${p.delay}s forwards`,
-        }} />
-      ))}
-    </div>
-  )
-}
-function Confetti() {
-  const colors = ['#3B6D11', '#BA7517', '#1E5FA5', '#7C3AED', '#DC2626', '#639922']
-  const pieces = Array.from({ length: 60 }, (_, i) => ({
-    id: i,
-    left: Math.random() * 100,
-    delay: Math.random() * 0.5,
-    duration: 2.5 + Math.random() * 1.5,
-    color: colors[Math.floor(Math.random() * colors.length)],
-    size: 6 + Math.random() * 6,
-  }))
-  return (
-    <div style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:999, overflow:'hidden' }}>
-      <style>{`
-        @keyframes confetti-fall {
-          0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(110vh) rotate(720deg); opacity: 0.3; }
-        }
-      `}</style>
-      {pieces.map(p => (
-        <div key={p.id} style={{
-          position:'absolute', left:`${p.left}%`, top:0,
-          width:p.size, height:p.size * 0.6, background:p.color,
-          borderRadius:2, animation:`confetti-fall ${p.duration}s ease-in ${p.delay}s forwards`,
-        }} />
-      ))}
-    </div>
-  )
-}
-
 
 const STATUS_COLOR = { pending:G.amber,confirmed:G.blue,packed:G.green2,dispatched:'#7C3AED',delivered:G.green,cancelled:G.red }
 const STATUS_BG    = { pending:G.amberLight,confirmed:G.blueLight,packed:G.greenLight,dispatched:'#EDE9FE',delivered:G.greenLight,cancelled:G.redLight }
 const BRANCHES     = ['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu']
+
+// Safe lazy-loaded tabs — if they crash they show a friendly message
+function SafeTab({ children }) {
+  return (
+    <Suspense fallback={<div style={{ textAlign:'center', padding:40, color:G.muted }}>Loading...</div>}>
+      {children}
+    </Suspense>
+  )
+}
+
+// ✅ NEW: reusable confetti burst, pure CSS/JS (no library) — plays
+// once for a few seconds when rendered, then fades out on its own.
+function Confetti() {
+  const colors = ['#3B6D11', '#BA7517', '#1E5FA5', '#7C3AED', '#DC2626', '#639922']
+  const pieces = Array.from({ length: 60 }, (_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 0.5,
+    duration: 2.5 + Math.random() * 1.5,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    size: 6 + Math.random() * 6,
+  }))
+  return (
+    <div style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:999, overflow:'hidden' }}>
+      <style>{`
+        @keyframes confetti-fall {
+          0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(110vh) rotate(720deg); opacity: 0.3; }
+        }
+      `}</style>
+      {pieces.map(p => (
+        <div key={p.id} style={{
+          position:'absolute', left:`${p.left}%`, top:0,
+          width:p.size, height:p.size * 0.6, background:p.color,
+          borderRadius:2, animation:`confetti-fall ${p.duration}s ease-in ${p.delay}s forwards`,
+        }} />
+      ))}
+    </div>
+  )
+}
 
 function TopNavModal({ modal, onClose }) {
   if (!modal) return null
@@ -142,7 +125,7 @@ function TopNavModal({ modal, onClose }) {
           <div style={{ background:'#EAF3DE',borderRadius:12,padding:'12px 16px' }}>
             <p style={{ margin:'0 0 8px',fontWeight:700,fontSize:13,color:'#27500A' }}>Our Products</p>
             <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-              {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Basmati 1kg','₹95'],['Basmati 5kg','₹440']].map(([name,price])=>(
+              {[['Sona Masoori 1kg','₹68'],['Sona Masoori 5kg','₹320'],['Basmati 1kg','₹190'],['Basmati 5kg','₹440']].map(([name,price])=>(
                 <span key={name} style={{ fontSize:12,padding:'4px 12px',borderRadius:20,background:'#fff',color:'#3B6D11',fontWeight:600 }}>{name} — {price}</span>
               ))}
             </div>
@@ -152,36 +135,8 @@ function TopNavModal({ modal, onClose }) {
     </div>
   )
 }
-function Confetti() {
-  const colors = ['#3B6D11', '#BA7517', '#1E5FA5', '#7C3AED', '#DC2626', '#639922']
-  const pieces = Array.from({ length: 60 }, (_, i) => ({
-    id: i,
-    left: Math.random() * 100,
-    delay: Math.random() * 0.5,
-    duration: 2.5 + Math.random() * 1.5,
-    color: colors[Math.floor(Math.random() * colors.length)],
-    size: 6 + Math.random() * 6,
-  }))
-  return (
-    <div style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:999, overflow:'hidden' }}>
-      <style>{`
-        @keyframes confetti-fall {
-          0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(110vh) rotate(720deg); opacity: 0.3; }
-        }
-      `}</style>
-      {pieces.map(p => (
-        <div key={p.id} style={{
-          position:'absolute', left:`${p.left}%`, top:0,
-          width:p.size, height:p.size * 0.6, background:p.color,
-          borderRadius:2, animation:`confetti-fall ${p.duration}s ease-in ${p.delay}s forwards`,
-        }} />
-      ))}
-    </div>
-  )
-}
 
-// ── Referral section ──────────────────────────────────────
+// ── Simple inline Referral section ───────────────────────
 function ReferralSection({ user }) {
   const [profile, setProfile] = useState(null)
   const [copied, setCopied]   = useState(false)
@@ -193,6 +148,12 @@ function ReferralSection({ user }) {
       .then(({ data }) => setProfile(data))
       .catch(() => {})
   }, [user])
+
+  function share() {
+    const code = profile?.referral_code || ''
+    const msg  = `🌾 Order fresh Sona Masoori rice from Green Village Rice!\nUse my referral code *${code}* and get ₹20 off!\nOrder: https://gvr-lemon.vercel.app`
+    navigator.clipboard.writeText(msg).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+  }
 
   return (
     <div style={{ padding:16 }}>
@@ -208,9 +169,7 @@ function ReferralSection({ user }) {
           <p style={{ margin:0, fontSize:26, fontWeight:900, letterSpacing:'4px', color:G.greenDark, fontFamily:'monospace' }}>{profile?.referral_code || 'Loading...'}</p>
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-          <button onClick={()=>{
-            navigator.clipboard.writeText(profile?.referral_code||'').then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
-          }} style={{ padding:'11px', background:copied?G.green:G.greenLight, color:copied?G.white:G.green, border:'none', borderRadius:10, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+          <button onClick={share} style={{ padding:'11px', background:copied?G.green:G.greenLight, color:copied?G.white:G.green, border:'none', borderRadius:10, fontSize:13, fontWeight:700, cursor:'pointer' }}>
             {copied ? '✓ Copied!' : '📋 Copy Code'}
           </button>
           <button onClick={() => {
@@ -229,20 +188,12 @@ function ReferralSection({ user }) {
   )
 }
 
-// ── Subscribe section ─────────────────────────────────────
-// ✅ FIX: This component previously referenced `D.card` / `D.border`,
-// a dark-mode style object that only exists inside CustomerShop's scope.
-// Since SubscribeSection is its own function component, `D` was undefined
-// here — causing "ReferenceError: D is not defined" the instant a customer
-// opened the Subscribe tab. An uncaught render error like this can crash
-// the whole React tree, which is why Add to Cart on the Shop tab appeared
-// broken afterward too. Replaced every `D.*` reference with the same `G`
-// theme object the rest of this file already uses.
+// ── Simple inline Subscription section ───────────────────
 function SubscribeSection({ user }) {
   const [products, setProducts] = useState([])
   const [mySubs, setMySubs]     = useState([])
   const [loading, setLoading]   = useState(true)
-  const [subTab, setSubTab]     = useState('browse')
+  const [tab, setTab]           = useState('browse')
 
   useEffect(() => {
     Promise.all([
@@ -277,7 +228,7 @@ function SubscribeSection({ user }) {
       })
       const { data } = await supabase.from('subscriptions').select('*').eq('customer_id',user.id).order('created_at',{ascending:false})
       setMySubs(data||[])
-      setSubTab('mysubs')
+      setTab('mysubs')
     } catch(e) { alert('Subscribe failed: '+e.message) }
   }
 
@@ -292,13 +243,13 @@ function SubscribeSection({ user }) {
     <div style={{ padding:16 }}>
       <div style={{ display:'flex',gap:6,marginBottom:14 }}>
         {[['browse','🛒 Plans'],['mysubs',`📋 My Subs (${mySubs.filter(s=>s.status==='active').length})`]].map(([key,label])=>(
-          <button key={key} onClick={()=>setSubTab(key)} style={{ padding:'7px 16px',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,background:subTab===key?G.green:'#F3F4F6',color:subTab===key?G.white:G.muted }}>
+          <button key={key} onClick={()=>setTab(key)} style={{ padding:'7px 16px',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,background:tab===key?G.green:'#F3F4F6',color:tab===key?G.white:G.muted }}>
             {label}
           </button>
         ))}
       </div>
 
-      {subTab==='browse' && (
+      {tab==='browse' && (
         <>
           <div style={{ background:G.greenLight,borderRadius:12,padding:'12px 14px',marginBottom:14,fontSize:12,color:G.greenDark }}>
             💡 Subscribe and save 3–5% on every delivery. Cancel anytime.
@@ -326,7 +277,7 @@ function SubscribeSection({ user }) {
         </>
       )}
 
-      {subTab==='mysubs' && (
+      {tab==='mysubs' && (
         <>
           {mySubs.length===0 && <div style={{ textAlign:'center',padding:'40px 20px',background:G.white,borderRadius:14,color:G.muted }}><p style={{ fontSize:36,marginBottom:8 }}>🔄</p><p>No subscriptions yet</p></div>}
           {mySubs.map(s=>(
@@ -356,11 +307,8 @@ function SubscribeSection({ user }) {
 
 export default function CustomerShop() {
   const { user, signOut }         = useAuth()
-  const [lang, setLangState]      = useState(localStorage.getItem('gvr_lang')||'en')
-  // ✅ FIX: dark mode kept local to CustomerShop only. D is never passed to
-  // or used inside SubscribeSection/ReferralSection anymore — removes the
-  // ReferenceError entirely rather than trying to thread D through props.
-  const [dark, setDarkState]      = useState(localStorage.getItem('gvr_dark')==='1')
+  const [lang, setLangState]        = useState(localStorage.getItem('gvr_lang')||'en')
+  const [dark, setDarkState]         = useState(localStorage.getItem('gvr_dark')==='1')
   const setDark = (v) => { localStorage.setItem('gvr_dark', v?'1':'0'); setDarkState(v) }
   const D = dark ? {
     bg:'#111827', card:'#1F2937', border:'#374151',
@@ -395,7 +343,7 @@ export default function CustomerShop() {
   const [orderNum, setOrderNum]   = useState('')
   const [myOrders, setMyOrders]   = useState([])
   const [points, setPoints]         = useState(0)
-  const [reviews, setReviews]       = useState({})
+  const [reviews, setReviews]       = useState({})  // orderid -> {rating, comment}
   const [reviewModal, setRevModal]  = useState(null)
   const [reportModal, setRepModal]  = useState(null)
   const [notifyModal, setNotifyModal] = useState(null)
@@ -409,11 +357,13 @@ export default function CustomerShop() {
 
   useEffect(() => {
     loadProducts()
+    // Request notification permission
     try {
       if ('Notification' in window && Notification.permission === 'default') {
         setTimeout(() => Notification.requestPermission(), 3000)
       }
     } catch(e) {}
+    // Load loyalty points
     if (user?.id) {
       supabase.from('profiles').select('wallet_balance,total_orders,total_spent')
         .eq('id', user.id).single()
@@ -421,10 +371,12 @@ export default function CustomerShop() {
     }
   }, [])
 
+  // Persist cart to localStorage
   useEffect(() => {
     try { localStorage.setItem('gvr_cart', JSON.stringify(cart)) } catch {}
   }, [cart])
 
+  // Persist delivery address
   useEffect(() => {
     if (address.trim()) {
       try { localStorage.setItem('gvr_address', address) } catch {}
@@ -473,6 +425,8 @@ export default function CustomerShop() {
     }
   }
 
+  // Auto-refresh orders every 30 seconds when on myorders tab
+  // This detects when admin marks payment as paid
   useEffect(() => {
     if (tab !== 'myorders') return
     const interval = setInterval(() => { loadMyOrders() }, 30000)
@@ -491,6 +445,7 @@ export default function CustomerShop() {
       if (!phone.trim()) return
       setSaving(true)
       try {
+        // Check if already registered
         const { data: existing } = await supabase
           .from('stock_notifications')
           .select('id')
@@ -615,7 +570,7 @@ export default function CustomerShop() {
         <div>
           <div class="brand-name">Green Village Rice</div>
           <div class="brand-sub">గ్రీన్ విలేజ్ రైస్ · Hyderabad, Telangana</div>
-          <div class="brand-sub">FSSAI Licensed · Farm to Kitchen Since 2014</div>
+          <div class="brand-sub">FSSAI Licensed · Farm to Kitchen Since 2016</div>
         </div>
       </div>
       <div>
@@ -684,7 +639,7 @@ export default function CustomerShop() {
         <span class="badge">Fresh Milled</span>
       </div>
       <p style="margin-top:12px">gvr-lemon.vercel.app · admin@greenvillagerice.in</p>
-      <p>© 2014–2026 Green Village Rice. All Rights Reserved.</p>
+      <p>© 2016–2026 Green Village Rice. All Rights Reserved.</p>
     </div>
 
     <div style="text-align:center;margin-top:20px">
@@ -844,13 +799,6 @@ export default function CustomerShop() {
   const gst         = Math.round(totalAmount * 0.05)
   const grand       = totalAmount + gst
 
-  // ✅ FIX: Add to Cart verified — this is the exact call chain:
-  //   button onClick -> updateCart(p.id, 1, p) -> setCart(prev => {...})
-  // p.id comes from Supabase (UUID string), which works fine as an object
-  // key. This logic was never actually broken — it only *looked* broken
-  // because the SubscribeSection crash above could leave the whole React
-  // tree in an errored state. With that crash fixed, Add to Cart works
-  // immediately on tap.
   const updateCart = (id, delta, product) => {
     setCart(prev => {
       const qty = Math.max(0, (prev[id]||0) + delta)
@@ -878,15 +826,17 @@ export default function CustomerShop() {
         pickup_time:      orderType==='pickup' ? pickupTime : null,
         payment_status:   utrRef.trim() ? 'paid' : 'pending',
         payment_method:   payMethod,
+        utr_number:       utrRef.trim() || null,
         notes:            utrRef.trim() ? `Payment Ref: ${utrRef.trim()}` : null,
         created_at:       new Date().toISOString()
       }).select().single()
       if (oErr || !order) throw new Error(oErr?.message || 'Failed to create order')
       for (const p of products.filter(p => cart[p.id])) {
-    await supabase.from('order_items').insert({ order_id:order.id, product_id:p.id, name:p.name, weight_kg:p.weight_kg, quantity:cart[p.id], price_per_unit:p.price_per_bag })
-    await supabase.rpc('deplete_product_stock', { p_product_id: p.id, p_qty: cart[p.id], p_note: `Order ${orderNumber}` })
-  }
+        await supabase.from('order_items').insert({ order_id:order.id, product_id:p.id, name:p.name, weight_kg:p.weight_kg, quantity:cart[p.id], price_per_unit:p.price_per_bag })
+        await supabase.from('products').update({ stock_bags: Math.max(0, p.stock_bags - cart[p.id]) }).eq('id', p.id)
+      }
       localStorage.removeItem('gvr_cart')
+      // Push notification
       try {
         if (Notification.permission === 'granted') {
           new Notification('🌾 Order Placed! ✅', {
@@ -908,22 +858,21 @@ export default function CustomerShop() {
   if (step === 'success') return (
     <>
       <Confetti />
-    <div style={{ minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:G.surface,padding:20 }}>
-      <div style={{ textAlign:'center',background:G.white,borderRadius:20,padding:'48px 40px',maxWidth:400,width:'100%',boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
-        <div style={{ fontSize:60,marginBottom:16 }}>✅</div>
-        <h2 style={{ fontSize:24,fontWeight:800,color:G.greenDark,margin:'0 0 8px' }}>{T.orderPlaced}</h2>
-        <p style={{ color:G.muted,margin:'0 0 4px',fontSize:14 }}>Order: <strong style={{color:G.green}}>{orderNum}</strong></p>
-        <p style={{ color:G.green,margin:'0 0 4px',fontSize:13 }}>⭐ +{Math.floor(grand/100)} loyalty points earned!</p>
-        <p style={{ color:G.muted,margin:'0 0 28px',fontSize:13 }}>We will deliver your fresh rice soon 🌾</p>
-        <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
-          <button onClick={()=>{ setStep('shop'); setTab('myorders') }} style={{ background:G.green,color:G.white,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer' }}>{T.trackOrder} →</button>
-          <button onClick={()=>{ setStep('shop'); setTab('shop') }} style={{ background:G.greenLight,color:G.green,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer' }}>{T.orderMore}</button>
+      <div style={{ minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:G.surface,padding:20 }}>
+        <div style={{ textAlign:'center',background:G.white,borderRadius:20,padding:'48px 40px',maxWidth:400,width:'100%',boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
+          <div style={{ fontSize:60,marginBottom:16 }}>✅</div>
+          <h2 style={{ fontSize:24,fontWeight:800,color:G.greenDark,margin:'0 0 8px' }}>{T.orderPlaced}</h2>
+          <p style={{ color:G.muted,margin:'0 0 4px',fontSize:14 }}>Order: <strong style={{color:G.green}}>{orderNum}</strong></p>
+          <p style={{ color:G.green,margin:'0 0 4px',fontSize:13 }}>⭐ +{Math.floor(grand/100)} loyalty points earned!</p>
+          <p style={{ color:G.muted,margin:'0 0 28px',fontSize:13 }}>We will deliver your fresh rice soon 🌾</p>
+          <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
+            <button onClick={()=>{ setStep('shop'); setTab('myorders') }} style={{ background:G.green,color:G.white,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer' }}>{T.trackOrder} →</button>
+            <button onClick={()=>{ setStep('shop'); setTab('shop') }} style={{ background:G.greenLight,color:G.green,border:'none',borderRadius:12,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer' }}>{T.orderMore}</button>
+          </div>
         </div>
       </div>
-    </div>
     </>
   )
-  
 
   // ── Checkout ─────────────────────────────────────────
   if (step === 'checkout') return (
@@ -944,6 +893,7 @@ export default function CustomerShop() {
           <span>{error}</span><button onClick={()=>setError('')} style={{ background:'none',border:'none',cursor:'pointer',color:G.red,fontSize:16 }}>✕</button>
         </div>}
 
+        {/* Cart summary */}
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>Your Order</p>
           {products.filter(p=>cart[p.id]).map(p=>(
@@ -959,6 +909,7 @@ export default function CustomerShop() {
           </div>
         </div>
 
+        {/* Order type */}
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>How do you want your order?</p>
           <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14 }}>
@@ -1007,6 +958,7 @@ export default function CustomerShop() {
           )}
         </div>
 
+        {/* Payment */}
         <div style={{ background:G.white,borderRadius:14,padding:18,marginBottom:20,boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
           <p style={{ fontWeight:700,margin:'0 0 12px',fontSize:15 }}>Payment Method</p>
           {[['cod','💵',T.cashOnDelivery,'Pay when your order arrives'],['upi','📱',T.upiPayment,'GPay, PhonePe, Paytm']].map(([val,icon,label,sub])=>(
@@ -1111,7 +1063,7 @@ export default function CustomerShop() {
 
       {/* Tabs */}
       <div style={{ background:G.white,borderBottom:`1px solid ${G.border}`,display:'flex',overflowX:'auto' }}>
-        {[['shop',`🌾 ${T.orderRice}`],['myorders',`📋 ${T.myOrders}`],['subscribe',`🔄 ${T.subscribe}`],['referral',`🎁 ${T.referEarn}`]].map(([key,label])=>(
+        {[[['shop',`🌾 ${T.orderRice}`],['myorders',`📋 ${T.myOrders}`],['subscribe',`🔄 ${T.subscribe}`],['referral',`🎁 ${T.referEarn}`]]].map(([key,label])=>(
           <button key={key} onClick={()=>switchTab(key)} style={{ padding:'10px 16px',border:'none',background:'none',cursor:'pointer',fontSize:13,fontWeight:600,borderBottom:`3px solid ${tab===key?G.green:'transparent'}`,color:tab===key?G.green:G.muted,whiteSpace:'nowrap',flex:1,textAlign:'center' }}>
             {label}
           </button>
@@ -1157,6 +1109,7 @@ export default function CustomerShop() {
                   <span style={{ fontSize:11,fontWeight:600,padding:'4px 12px',borderRadius:20,background:STATUS_BG[order.status]||'#F3F4F6',color:STATUS_COLOR[order.status]||G.muted,whiteSpace:'nowrap' }}>
                     {order.status?.charAt(0).toUpperCase()+order.status?.slice(1)}
                   </span>
+                  {/* Track on map — dispatched orders */}
                   {order.status==='dispatched' && order.delivery_address && (
                     <a href={`https://maps.google.com/?q=${encodeURIComponent(order.delivery_address)}`}
                       target="_blank" rel="noreferrer"
@@ -1164,6 +1117,7 @@ export default function CustomerShop() {
                       🗺 Track
                     </a>
                   )}
+                  {/* Rate order — delivered orders */}
                   {order.status==='delivered' && !reviews[order.id] && (
                     <button type="button" onClick={()=>setRevModal(order)} style={{ fontSize:10,fontWeight:700,padding:'3px 10px',borderRadius:20,background:'#FEF9C3',color:'#854D0E',border:'none',cursor:'pointer' }}>
                       ⭐ Rate
@@ -1219,13 +1173,6 @@ export default function CustomerShop() {
             👋 Hello, <strong style={{color:G.text}}>{user?.full_name||user?.username}</strong> · {T.freshStock}
           </p>
           {loading && <p style={{ textAlign:'center',color:G.muted,padding:40 }}>Loading products...</p>}
-          {!loading && products.length===0 && (
-            <div style={{ textAlign:'center',padding:'40px 20px',background:D.card,borderRadius:14,border:`1px solid ${D.border}` }}>
-              <div style={{ fontSize:48,marginBottom:12 }}>🌾</div>
-              <p style={{ fontWeight:700,color:D.text,margin:'0 0 6px',fontSize:16 }}>No products available right now</p>
-              <p style={{ fontSize:13,color:D.muted }}>Please check back soon.</p>
-            </div>
-          )}
           {products.map(p=>(
             <div key={p.id} style={{ background:D.card,borderRadius:14,padding:16,marginBottom:12,display:'flex',alignItems:'center',gap:14,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',border:`1px solid ${D.border}` }}>
               <div style={{ width:56,height:56,borderRadius:12,background:G.greenLight,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,flexShrink:0 }}>🌾</div>
@@ -1236,16 +1183,13 @@ export default function CustomerShop() {
               </div>
               <div style={{ textAlign:'right',flexShrink:0 }}>
                 <p style={{ margin:'0 0 8px',fontWeight:800,fontSize:17 }}>₹{p.price_per_bag}</p>
-                {p.stock_bags<=0
-                  ? <button onClick={()=>setNotifyModal(p)} style={{ background:G.amberLight,color:G.amber,border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,cursor:'pointer',fontSize:12 }}>🔔 Notify Me</button>
-                  : !cart[p.id]
-                    ? <button type="button" onClick={()=>updateCart(p.id,1,p)} style={{ background:G.green,color:G.white,border:'none',borderRadius:8,padding:'7px 18px',fontWeight:700,cursor:'pointer',fontSize:13 }}>{T.addToCart}</button>
-                    : <div style={{ display:'flex',alignItems:'center',gap:10,background:G.greenLight,borderRadius:8,padding:'5px 10px' }}>
-                        <button type="button" onClick={()=>updateCart(p.id,-1,p)} style={{ background:'none',border:'none',color:G.green,fontSize:22,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>−</button>
-                        <span style={{ fontWeight:700,color:G.greenDark,minWidth:20,textAlign:'center',fontSize:15 }}>{cart[p.id]}</span>
-                        <button type="button" onClick={()=>updateCart(p.id,1,p)} style={{ background:'none',border:'none',color:G.green,fontSize:22,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>+</button>
-                      </div>
-                }
+                {p.stock_bags<=0 ? <span style={{ fontSize:12,color:G.red,fontWeight:600 }}>{T.outOfStock}</span>
+                : !cart[p.id] ? <button onClick={()=>updateCart(p.id,1,p)} style={{ background:G.green,color:G.white,border:'none',borderRadius:8,padding:'7px 18px',fontWeight:700,cursor:'pointer',fontSize:13 }}>{T.addToCart}</button>
+                : <div style={{ display:'flex',alignItems:'center',gap:10,background:G.greenLight,borderRadius:8,padding:'5px 10px' }}>
+                    <button onClick={()=>updateCart(p.id,-1,p)} style={{ background:'none',border:'none',color:G.green,fontSize:22,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>−</button>
+                    <span style={{ fontWeight:700,color:G.greenDark,minWidth:20,textAlign:'center',fontSize:15 }}>{cart[p.id]}</span>
+                    <button onClick={()=>updateCart(p.id,1,p)} style={{ background:'none',border:'none',color:G.green,fontSize:22,cursor:'pointer',fontWeight:700,lineHeight:1,padding:0 }}>+</button>
+                  </div>}
               </div>
             </div>
           ))}
