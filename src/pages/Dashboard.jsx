@@ -294,6 +294,9 @@ export default function Dashboard() {
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [stockBranchFilter, setStockBranchFilter] = useState('all')
   const [showStock, setShowStock] = useState(null)
+  const [actionHistory, setActionHistory] = useState([]) // stack of past actions
+  const [redoStack, setRedoStack] = useState([])          // stack of undone actions
+  const [historyIndex, setHistoryIndex] = useState(-1)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('gvr_dark_mode') === 'true')
 
   useEffect(() => {
@@ -363,6 +366,43 @@ export default function Dashboard() {
     return keys.map((k,i)=>({ name:labels[i], revenue:o.filter(x=>x.created_at?.startsWith(k)).reduce((s,x)=>s+Number(x.total_amount||0),0), orders:o.filter(x=>x.created_at?.startsWith(k)).length }))
   }
 
+    function recordAction(orderId, orderNumber, type, before, after) {
+    setActionHistory(prev => [...prev, { orderId, orderNumber, type, before, after, timestamp: Date.now() }])
+    setRedoStack([])
+  }
+
+  async function undoLastAction() {
+    if (actionHistory.length === 0) return
+    const last = actionHistory[actionHistory.length - 1]
+    setActionHistory(prev => prev.slice(0, -1))
+    setRedoStack(prev => [...prev, last])
+
+    if (last.type === 'delete') {
+      const { order_items, ...orderData } = last.before
+      await supabase.from('orders').insert(orderData)
+      if (order_items && order_items.length > 0) {
+        await supabase.from('order_items').insert(order_items)
+      }
+    } else {
+      await supabase.from('orders').update(last.before).eq('id', last.orderId)
+    }
+    load()
+  }
+
+  async function redoLastUndo() {
+    if (redoStack.length === 0) return
+    const last = redoStack[redoStack.length - 1]
+    setRedoStack(prev => prev.slice(0, -1))
+    setActionHistory(prev => [...prev, last])
+
+    if (last.type === 'delete') {
+      await supabase.from('order_items').delete().eq('order_id', last.orderId)
+      await supabase.from('orders').delete().eq('id', last.orderId)
+    } else {
+      await supabase.from('orders').update(last.after).eq('id', last.orderId)
+    }
+    load()
+  }
   async function updateOrderStatus(id, status) {
     await supabase.from('orders').update({ status }).eq('id', id)
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o))
@@ -678,6 +718,16 @@ export default function Dashboard() {
                   <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:8, padding:'7px 16px', fontSize:13, fontWeight:600, cursor:'pointer' }}>+ New Order</button>
                 </div>
               </div>
+                            <div style={{ display:'flex', gap:8 }}>
+                <button onClick={undoLastAction} disabled={actionHistory.length===0} style={{ background: actionHistory.length===0?'#F3F4F6':G.blueLight, color: actionHistory.length===0?'#9CA3AF':G.blue, border:'none', borderRadius:10, padding:'10px 16px', fontSize:13, fontWeight:700, cursor: actionHistory.length===0?'not-allowed':'pointer' }} title="Undo last action">
+                  ↶ Undo
+                </button>
+                <button onClick={redoLastUndo} disabled={redoStack.length===0} style={{ background: redoStack.length===0?'#F3F4F6':G.blueLight, color: redoStack.length===0?'#9CA3AF':G.blue, border:'none', borderRadius:10, padding:'10px 16px', fontSize:13, fontWeight:700, cursor: redoStack.length===0?'not-allowed':'pointer' }} title="Redo last undone action">
+                  ↷ Redo
+                </button>
+                <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 20px', fontSize:14, fontWeight:700, cursor:'pointer' }}>+ New Order</button>
+              </div>
+            </div>
               {orders.length===0 && <p style={{ textAlign:'center', padding:40, color:G.muted }}>No orders yet</p>}
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {orders.slice(0,8).map((o,i)=>(
@@ -761,6 +811,16 @@ export default function Dashboard() {
                 </span>
               </div>
               <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 20px', fontSize:14, fontWeight:700, cursor:'pointer' }}>+ New Order</button>
+            </div>
+                          <div style={{ display:'flex', gap:8 }}>
+                <button onClick={undoLastAction} disabled={actionHistory.length===0} style={{ background: actionHistory.length===0?'#F3F4F6':G.blueLight, color: actionHistory.length===0?'#9CA3AF':G.blue, border:'none', borderRadius:10, padding:'10px 16px', fontSize:13, fontWeight:700, cursor: actionHistory.length===0?'not-allowed':'pointer' }} title="Undo last action">
+                  ↶ Undo
+                </button>
+                <button onClick={redoLastUndo} disabled={redoStack.length===0} style={{ background: redoStack.length===0?'#F3F4F6':G.blueLight, color: redoStack.length===0?'#9CA3AF':G.blue, border:'none', borderRadius:10, padding:'10px 16px', fontSize:13, fontWeight:700, cursor: redoStack.length===0?'not-allowed':'pointer' }} title="Redo last undone action">
+                  ↷ Redo
+                </button>
+                <button onClick={()=>setShowNewOrder(true)} style={{ background:G.green, color:G.white, border:'none', borderRadius:10, padding:'10px 20px', fontSize:14, fontWeight:700, cursor:'pointer' }}>+ New Order</button>
+              </div>
             </div>
             {newOrderAlert > 0 && (
               <div style={{ background:G.amberLight, border:`1px solid ${G.amber}`, borderRadius:10, padding:'10px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
