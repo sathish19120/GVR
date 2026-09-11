@@ -27,7 +27,7 @@ function Confetti() {
   const colors = ['#3B6D11', '#BA7517', '#1E5FA5', '#7C3AED', '#DC2626', '#639922']
   const pieces = Array.from({ length: 950 }, (_, i) => ({
     id: i,
-    left: Math.random() * 100,
+    left: Math.random() * 200,
     delay: Math.random() * 1.5,
     duration: 2.5 + Math.random() * 0.5,
     color: colors[Math.floor(Math.random() * colors.length)],
