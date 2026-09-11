@@ -280,7 +280,7 @@ export default function Dashboard() {
   const [users, setUsers]     = useState([])
   const [movements, setMovements] = useState([])
   const [chart, setChart]     = useState([])
-  const [stats, setStats]     = useState({ revenue:0, :0, bags:0, pending:0, lowStock:0, customers:0, unpaidUpi:0 })
+  const [stats, setStats]     = useState({ revenue:0, orders:0, bags:0, pending:0, lowStock:0, customers:0, unpaidUpi:0 })
   const [loading, setLoading] = useState(true)
   const [showNewOrder, setShowNewOrder] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
