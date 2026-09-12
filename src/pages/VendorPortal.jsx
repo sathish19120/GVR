@@ -271,7 +271,7 @@ export default function VendorPortal() {
             </div>
             <div>
               <label style={{ display:'block', fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', marginBottom:5 }}>Contact Phone</label>
-              <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Mobile number"
+              <input type="tel" autoComplete="off" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Mobile number"
                 style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:`1.5px solid ${G.border}`, fontSize:14, outline:'none', boxSizing:'border-box' }}
                 onFocus={e=>e.target.style.borderColor=G.green} onBlur={e=>e.target.style.borderColor=G.border} />
             </div>
