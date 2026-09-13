@@ -340,6 +340,7 @@ export default function CustomerShop() {
   const [payMethod, setPayMethod] = useState('cod')
   const [orderType, setOrderType] = useState('delivery')
   const [pickupBranch, setPickupBranch] = useState('')
+  const [deliveryBranch, setDeliveryBranch] = useState('Hyderabad')
   const [pickupTime, setPickupTime]     = useState('')
   const [utrRef, setUtrRef]       = useState('')
   const [placing, setPlacing]     = useState(false)
@@ -890,8 +891,8 @@ export default function CustomerShop() {
         total_amount:     grand,
         status:           'pending',
         order_type:       orderType,
+        branch:           orderType==='pickup' ? pickupBranch : deliveryBranch,
         pickup_branch:    orderType==='pickup' ? pickupBranch : null,
-        pickup_time:      orderType==='pickup' ? pickupTime : null,
         payment_status:   utrRef.trim() ? 'paid' : 'pending',
         payment_method:   payMethod,
         utr_number:       utrRef.trim() || null,
@@ -991,6 +992,16 @@ export default function CustomerShop() {
           </div>
           {orderType==='delivery' && (
             <>
+              <p style={{ margin:'0 0 8px', fontSize:13, fontWeight:600 }}>Nearest Branch (for delivery routing) *</p>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:14 }}>
+                {['Hyderabad','Vijayawada','Kadapa','Anantapur','Tadipatri','Jammalamadugu'].map(b=>(
+                  <div key={b} onClick={()=>setDeliveryBranch(b)} style={{ padding:'9px 12px', borderRadius:10, cursor:'pointer', border:`2px solid ${deliveryBranch===b?G.green:G.border}`, background:deliveryBranch===b?G.greenLight:G.white, display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:14 }}>🏪</span>
+                    <span style={{ fontSize:13, fontWeight:deliveryBranch===b?700:400 }}>{b}</span>
+                    {deliveryBranch===b && <span style={{ marginLeft:'auto', color:G.green, fontWeight:700 }}>✓</span>}
+                  </div>
+                ))}
+              </div>
               {localStorage.getItem('gvr_address') && address === localStorage.getItem('gvr_address') && (
                 <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6 }}>
                   <span style={{ fontSize:12,color:G.green }}>✓ Using saved address</span>
