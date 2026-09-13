@@ -505,7 +505,7 @@ export default function CustomerShop() {
               </p>
               <div style={{ marginBottom:16 }}>
                 <label style={{ display:'block',fontSize:11,fontWeight:700,color:D.muted,textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6 }}>Phone Number</label>
-                <input type="tel" autoComplete="off" value={phone} onChange={e=>setPhone(e.target.value)}
+                <input type="tel" autoComplete="off" value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,'').slice(0,10))}
                   placeholder="Your mobile number"
                   style={{ width:'100%',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${phone?G.green:D.border}`,fontSize:14,outline:'none',background:D.bg,color:D.text,boxSizing:'border-box' }}
                   onFocus={e=>e.target.style.borderColor=G.green}
@@ -1010,7 +1010,7 @@ export default function CustomerShop() {
               )}
               <textarea value={address} onChange={e=>setAddress(e.target.value)} placeholder="House/flat number, street, area, landmark..." rows={3}
                 style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${address?G.green:G.border}`,fontSize:14,resize:'none',outline:'none',boxSizing:'border-box',fontFamily:'inherit',marginBottom:8 }} />
-              <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone number for delivery" type="tel" autoComplete="off"
+              <input value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,'').slice(0,10))} placeholder="Phone number for delivery" type="tel" autoComplete="off"
                 style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box' }} />
             </>
           )}
@@ -1032,7 +1032,7 @@ export default function CustomerShop() {
                 ))}
               </div>
               {pickupBranch && <div style={{ padding:'10px 14px',background:G.greenLight,borderRadius:10,fontSize:12,color:G.greenDark }}>✅ Pickup at <strong>{pickupBranch}</strong>{pickupTime?` · ${pickupTime}`:''} · Free</div>}
-             <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone number" type="tel" autoComplete="off" style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box',marginTop:10 }} />
+             <input value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,'').slice(0,10))} placeholder="Phone number" type="tel" autoComplete="off" style={{ width:'100%',padding:12,borderRadius:10,border:`1.5px solid ${G.border}`,fontSize:14,outline:'none',boxSizing:'border-box',marginTop:10 }} />
             </>
           )}
         </div>
